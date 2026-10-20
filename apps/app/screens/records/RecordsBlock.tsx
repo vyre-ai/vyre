@@ -180,7 +180,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
   const bulk = (_k: string, ticked: any[], clear: () => void) => <BulkActions def={def} records={ticked.map((r) => byId.get(String(r.id))).filter(Boolean)} noun={vd.plural.toLowerCase()} clear={clear} reload={reload} />;
   // A view of the whole Space (stored with the type) is renamed or deleted by an owner or an admin: one records.define of the type with the view changed (saved-views.js)
   const vn = viewName ?? "";
-  const sharedEdit = access.admin && vn && !vn.startsWith(MINE) && (def.views ?? []).some((v: any) => v.name === vn) ? {
+  const sharedEdit = access.admin && vn !== "" && !vn.startsWith(MINE) && (def.views ?? []).some((v: any) => v.name === vn) ? {
     rename: async (label: string) => { const next = renameShared(def, vn, label); if (next) { try { await store.define({ change_types: [defineInputOf(next)] } as any); reload(); showToast(`Renamed to ${label.trim()}.`); } catch (e) { showToast(plainError(e, "That did not save.")); } } },
     remove: async () => { try { await store.define({ change_types: [defineInputOf(deleteShared(def, vn))] } as any); setViewName(undefined); reload(); showToast("View deleted."); } catch (e) { showToast(plainError(e, "That did not delete.")); } },
   } : undefined;
@@ -225,7 +225,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
           <Text size="caption" tone="label">Views</Text>
           <Chip selected={!binOpen && !viewName} onPress={() => { setViewName(undefined); setPicked(null); setCleared(false); setBinOpen(false); }}>{`All ${vd.plural.toLowerCase()}`}</Chip>
           {named.map((n) => <Chip key={n.name} selected={!binOpen && viewName === n.name} icon={n.name.startsWith(MINE) ? "lock" : undefined} onPress={() => { setViewName(n.name); setPicked(null); setCleared(false); setBinOpen(false); }}>{n.label}</Chip>)}
-          <Chip selected={binOpen} icon="trash" onPress={() => setBinOpen(!binOpen)}>Bin</Chip>
+          {def.name !== "note" ? <Chip selected={binOpen} icon="trash" onPress={() => setBinOpen(!binOpen)}>Bin</Chip> : null}
           <View className="flex-1" />
           {switcher}
         </View>
@@ -249,7 +249,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
           <Text size="caption" tone="label">Views</Text>
           <Chip selected={!binOpen && !viewName} onPress={() => { setViewName(undefined); setPicked(null); setCleared(false); setBinOpen(false); }}>{`All ${vd.plural.toLowerCase()}`}</Chip>
           {named.map((n) => <Chip key={n.name} selected={!binOpen && viewName === n.name} icon={n.name.startsWith(MINE) ? "lock" : undefined} onPress={() => { setViewName(n.name); setPicked(null); setCleared(false); setBinOpen(false); }}>{n.label}</Chip>)}
-          <Chip selected={binOpen} icon="trash" onPress={() => setBinOpen(!binOpen)}>Bin</Chip>
+          {def.name !== "note" ? <Chip selected={binOpen} icon="trash" onPress={() => setBinOpen(!binOpen)}>Bin</Chip> : null}
         </View>
       ) : null}
       {phone ? (

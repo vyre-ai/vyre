@@ -175,7 +175,8 @@ test("through the member door a member moves a record, relates two, saves her ow
   await w.as(ANA, "records.layout.set", { type: "deal", scope: "mine", layout: { columns: ["name"] } });
   { const got = await w.as(ANA, "records.layout.get", { type: "deal" }); const all = await w.as(w.OWNER, "records.list", { type: "record-layout" }); assert.equal(JSON.stringify(got.layout.columns), JSON.stringify(["name"]), `${JSON.stringify(got)} rows: ${JSON.stringify(all.rows.map((/** @type {any} */ r) => r.data))}`); }
   assert.equal(await code(w.as(ANA, "records.layout.set", { type: "deal", scope: "space", layout: { columns: ["name"] } })), "not_allowed");
-  for (const k of ["records.pipeline.set", "records.type.update", "records.field.add", "records.link.add", "records.sample.add"]) assert.equal(/** @type {any} */ (MEMBER_TOOLS)[k], undefined, `${k} is not a row of the member door`);
+  // (adding a field or a link is a row since 0.6.4, refused by the tool to any member but an owner or an admin: core/work/member-records-access.test.js)
+  for (const k of ["records.pipeline.set", "records.type.update", "records.sample.add"]) assert.equal(/** @type {any} */ (MEMBER_TOOLS)[k], undefined, `${k} is not a row of the member door`);
   assert.equal(typeof /** @type {any} */ (w.svc).records["pipeline.set"], "undefined", "and the door has no such call");
   assert.ok((await w.as(w.OWNER, "records.layout.get", { type: "deal" })).layout.columns === undefined, "her layout is hers alone");
 });
