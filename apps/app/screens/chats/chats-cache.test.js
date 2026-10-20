@@ -21,11 +21,11 @@ test("a kept list comes back as it went in; another version, a broken copy or on
   const rows = [row("chat_a", "Lease reply"), row("chat_b", "Intake with Sam Rivera")];
   const packed = JSON.parse(JSON.stringify(packChats(rows, () => T)));
   assert.deepEqual(unpackChats(packed, () => T + 60_000), rows);
-  assert.equal(unpackChats({ ...packed, v: 2 }, () => T), null);
+  assert.equal(unpackChats({ ...packed, v: 3 }, () => T), null);
   assert.equal(unpackChats(null), null);
   assert.equal(unpackChats({ v: 1, at: T, rows: "x" }, () => T), null);
   assert.equal(unpackChats(packed, () => T + MAX_AGE_MS + 1), null);
-  assert.deepEqual(unpackChats({ v: 1, at: T, rows: [null, { id: "" }, row("chat_c", "Kept")] }, () => T).map((r) => r.id), ["chat_c"], "a row with no id is dropped");
+  assert.deepEqual(unpackChats({ v: 2, at: T, rows: [null, { id: "" }, row("chat_c", "Kept")] }, () => T).map((r) => r.id), ["chat_c"], "a row with no id is dropped");
 });
 
 test("what draws: the answer, else the kept list (stale), else a note when the read failed, else the placeholder", () => {

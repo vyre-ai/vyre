@@ -30,5 +30,14 @@ export function keyStep(k, w, o) {
   return null;
 }
 
+/** How far past the least width a drag goes before the panel snaps shut (the sidebar: dragging it down to the edge collapses it, like Cmd backslash). */
+export const SNAP_SLACK = 24;
+/** Should a drag that wants `raw` px collapse a panel whose least width is `min`? @param {number} raw @param {number} min */
+export const snapsShut = (raw, min) => raw < min - SNAP_SLACK;
+/** How far a drag out of a collapsed edge goes before it opens (px). */
+export const OPEN_AFTER = 40;
+/** The width the pointer asks for, unclamped. @param {number} start @param {number} dx @param {"left" | "right"} edge */
+export const rawWidth = (start, dx, edge) => (edge === "right" ? start + dx : start - dx);
+
 /** The width after the pointer moved `dx`. An edge on the right of the panel (the left sidebar) grows with the pointer; one on its left (the right panel) shrinks. @param {number} start @param {number} dx @param {"left" | "right"} edge @param {{ min: number, max: number }} o */
 export const dragWidth = (start, dx, edge, o) => clampWidth(edge === "right" ? start + dx : start - dx, o.min, o.max);

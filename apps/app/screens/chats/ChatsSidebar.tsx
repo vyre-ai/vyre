@@ -86,7 +86,7 @@ export function ChatsSidebar() {
   // a chat you pinned sits under Pinned with your assistant
   const marked = convos.map((c) => (c.chat && prefs.pinned.includes(c.chat) && c.section !== "pinned" ? { ...c, section: "pinned" as const } : c));
   // one draw: the list waits (a few hundred ms at most) for the agents and teammates, kept or fresh, so rows never appear and then merge
-  const settled = allowsMock() || convos.ready === true;
+  const settled = allowsMock() || (convos.ready === true && chats.named);
   const found = !settled ? [] : [...convosShown(marked, { project: f.project, query: f.q, type: f.type })].sort((a, b) => pinnedFirst(a) - pinnedFirst(b));
   const open = (c: Convo) => {
     if (c.id === "assistant:new") { router.push("/u/chats/new-thread" as never); return; }

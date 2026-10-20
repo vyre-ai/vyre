@@ -18,6 +18,15 @@ const PROVIDERS = AIS;
 /** The chat id out of a record address (vyre://<space>/chat/<id>) or the id itself. @param {string} urn */
 export const chatIdOf = (urn) => { const m = /\/chat\/([^/?#]+)$/.exec(urn); return m ? m[1] : urn; };
 
+/** A chat nobody named ("New chat", "New site") is called by what was said in it, so a list of them does not read as one title repeated. @param {string} title @param {string} line */
+export function titleOf(title, line) {
+  const t = title.trim();
+  if (t && !/^(new chat|new thread|new site|chat|untitled)$/i.test(t)) return t;
+  const l = line.replace(/\s+/g, " ").trim();
+  if (!l) return t || "New chat";
+  return l.length > 48 ? `${l.slice(0, 47).trimEnd()}\u2026` : l;
+}
+
 /**
  * work.chat.list's rows. A row is the Chat record (its fields flat, or under `data`); `open` is only true when the box says the caller is in the chat, so a row for a chat the caller is not in
  * is greyed and cannot be opened. @param {any} data @returns {ChatRow[]}
@@ -32,7 +41,7 @@ export function chatsFrom(data) {
     const id = chatIdOf(str(d.chat) || str(d.id) || str(d.urn));
     if (!id) continue;
     out.push({
-      id, place: str(d.place), title: str(d.title) || "New chat", project: str(d.project_name) || str(d.projectName) || projectName(d.project), people: strs(d.people), agents: strs(d.agents), models: strs(d.models),
+      id, place: str(d.place), title: titleOf(str(d.title), str(d.last_line) || str(d.summary)), project: str(d.project_name) || str(d.projectName) || projectName(d.project), people: strs(d.people), agents: strs(d.agents), models: strs(d.models),
       tags: parseTags(d.tags), providers: strs(d.providers).filter((p) => PROVIDERS.includes(p)), status: str(d.status) || "idle",
       pinned: d.pinned === "assistant" || d.pinned === "engineer" ? d.pinned : "", last: Number(d.last_active ?? d.updated_at ?? d.last ?? 0) || 0, line: str(d.last_line) || str(d.summary), asks: Number(d.asks ?? 0) || 0, engineer: d.engineer_chat === true, unread: Number.isInteger(d.unread) && d.unread > 0 ? d.unread : 0, open: d.open === true,
     });

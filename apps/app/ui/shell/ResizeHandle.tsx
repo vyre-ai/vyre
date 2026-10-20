@@ -4,7 +4,7 @@
 import { useCallback, useState } from "react";
 import { Platform, View } from "react-native";
 import { useUiTheme } from "../theme";
-import { clampWidth, dragWidth, keyStep, readWidth, writeWidth } from "./resize.js";
+import { OPEN_AFTER, clampWidth, dragWidth, keyStep, rawWidth, readWidth, snapsShut, writeWidth } from "./resize.js";
 
 const store = () => { try { return typeof localStorage !== "undefined" ? localStorage : null; } catch { return null; } };
 
@@ -17,7 +17,14 @@ export function useStoredWidth(name: string, def: number, min: number, max: numb
   return { width, set, reset };
 }
 
-export function ResizeHandle({ width, onChange, onReset, min, max, def, edge, label }: {
+/**
+ * THE one resize handle: a thin line on a pane's inner edge that shows on hover (cursor col-resize), drags, resets on a double click and takes the arrow keys; the width is remembered per pane
+ * with useStoredWidth. Import both from "@vyre/ui". A pane that can fold (the sidebar) passes `onCollapse`: dragging it past its least width snaps it shut. A folded pane draws the handle with
+ * `collapsed` and `onOpen`: dragging out from its edge opens it.
+ */
+export function ResizeHandle({ width, onChange, onReset, min, max, def, edge, label, onCollapse, collapsed, onOpen }: {
+  /** A pane that can fold: dragging past its least width calls this once. */ onCollapse?: () => void;
+  /** The pane is folded: the handle sits on its edge and a drag outward calls onOpen with the width asked for. */ collapsed?: boolean; onOpen?: (w: number) => void;
   width: number; onChange: (w: number) => void; onReset: () => void; min: number; max: number; def: number;
   /** Which edge of the panel the handle sits on: "right" for the left sidebar, "left" for the right panel. */ edge: "left" | "right"; label: string;
 }) {
@@ -29,7 +36,14 @@ export function ResizeHandle({ width, onChange, onReset, min, max, def, edge, la
     e.preventDefault();
     const x0 = e.clientX, w0 = width;
     setDrag(true);
-    const move = (m: PointerEvent) => onChange(dragWidth(w0, m.clientX - x0, edge, { min, max }));
+    let shut = false;
+    const move = (m: PointerEvent) => {
+      if (shut) return;
+      const dx = m.clientX - x0;
+      if (collapsed) { if (rawWidth(0, dx, edge) > OPEN_AFTER) { shut = true; onOpen?.(clampWidth(rawWidth(0, dx, edge), min, max)); } return; }
+      if (onCollapse && snapsShut(rawWidth(w0, dx, edge), min)) { shut = true; onCollapse(); return; }
+      onChange(dragWidth(w0, dx, edge, { min, max }));
+    };
     const up = () => { setDrag(false); document.removeEventListener("pointermove", move); document.removeEventListener("pointerup", up); };
     document.addEventListener("pointermove", move);
     document.addEventListener("pointerup", up);

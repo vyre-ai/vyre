@@ -11,14 +11,14 @@ export const LIST_BUDGET_MS = 6000;
 export const chatsKey = (space) => `chats.list.${space || "home"}`;
 
 /** The rows as plain JSON for the view cache. @param {readonly any[]} rows @param {() => number} [clock] */
-export const packChats = (rows, clock = Date.now) => ({ v: 1, at: clock(), rows: [...rows] });
+export const packChats = (rows, clock = Date.now) => ({ v: 2, at: clock(), rows: [...rows] });
 
 /**
  * The rows back from the cache, or null when there are none, they are from another version or too old.
  * @param {any} raw @param {() => number} [clock] @returns {any[] | null}
  */
 export function unpackChats(raw, clock = Date.now) {
-  if (!raw || typeof raw !== "object" || raw.v !== 1 || !Array.isArray(raw.rows) || !Number.isFinite(raw.at) || clock() - raw.at > MAX_AGE_MS) return null;
+  if (!raw || typeof raw !== "object" || raw.v !== 2 || !Array.isArray(raw.rows) || !Number.isFinite(raw.at) || clock() - raw.at > MAX_AGE_MS) return null;
   const rows = raw.rows.filter((/** @type {any} */ r) => r && typeof r === "object" && typeof r.id === "string" && r.id);
   // an empty kept list is no copy at all: it must never draw "No chats yet" before the box has answered
   return rows.length ? rows : null;

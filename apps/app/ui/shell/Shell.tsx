@@ -239,7 +239,7 @@ function Rail(p: RailProps) {
         {panel ? <SidebarPanel panel={panel} folded={folded} onOpen={p.onNavigate} /> : <MainNav p={p} folded={folded} />}
       </Animated.View>
       <RailFoot p={p} folded={folded} />
-      {folded ? null : <ResizeHandle edge="right" label="Resize the sidebar" width={w.width} onChange={w.set} onReset={w.reset} min={RAIL.minWidth} max={RAIL.maxWidth} def={RAIL.width} />}
+      <ResizeHandle edge="right" label="Resize the sidebar" width={w.width} onChange={w.set} onReset={w.reset} min={RAIL.minWidth} max={RAIL.maxWidth} def={RAIL.width} collapsed={folded} onCollapse={toggle} onOpen={(x) => { w.set(x); toggle(); }} />
     </View>
   );
 }
