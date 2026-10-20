@@ -72,7 +72,8 @@ export function entriesOf(base, entries) {
   const out = [];
   for (const e of Array.isArray(entries) ? entries : []) {
     const name = String(e && e.name || "");
-    if (!name || name.includes("/")) continue;
+    // dot files and folders (.cache, .config, the trash) are the computer's own bookkeeping: Files shows the agent's folder calm, as the desk's file manager does by default
+    if (!name || name.includes("/") || name.startsWith(".")) continue;
     const kind = e.kind === "link" ? e.to : e.kind;
     const at = typeof e.mtime === "number" ? e.mtime : 0;
     if (kind === "dir") out.push({ path: `${base}/${name}/${FOLDER_MARK}`, name: FOLDER_MARK, size: 0, ver: 0, at, ...(e.readOnly ? { read_only: true } : {}) });

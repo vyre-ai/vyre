@@ -346,7 +346,8 @@ try {
   check(await refusedAs(files.read("a", "to-etc/passwd")) === "denied" && await refusedAs(files.list("a", "to-other")) === "denied", "nor follow a link out of the home (to /etc, to another agent's home)");
   check(await refusedAs(files.write("a", "Downloads/planted.txt", Buffer.from("x"))) === "denied", "Downloads is read-only through Files");
   check(await refusedAs(files.read("b", "Inbox/from-files.txt")) === "not_found", "agent B's folder is its own: A's file is not there");
-  const owner = shOk(["exec", "-u", "0", CONTAINER, "stat", "-c", "%u %a", `${AH}/Inbox/from-files.txt`]);
+  // read as the agent itself: root in the computer has no DAC_OVERRIDE, so it cannot look inside a 0700 home
+  const owner = shOk(["exec", "-u", "20000", CONTAINER, "stat", "-c", "%u %a", `${AH}/Inbox/from-files.txt`]);
   check(/^20000 /.test(owner), "the file Files wrote belongs to the agent", owner);
 
   await b.close(); await a2.close(); await adapter.close();

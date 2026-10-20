@@ -250,9 +250,9 @@ test("the move from the Drive and the sessions folder: into Inbox at the old pat
   assert.ok(!fs.existsSync(path.join(r.homes.writer, "Inbox", "context")), "the move ran once");
 });
 
-test("a computer listing becomes Drive-shaped entries: folders by their mark, files with a size, links out of the home left out", () => {
+test("a computer listing becomes Drive-shaped entries: folders by their mark, files with a size, links out of the home and dot names left out", () => {
   assert.deepEqual(entriesOf("agents/x", [{ name: "Work", kind: "dir", mtime: 5 }, { name: "a.txt", kind: "file", size: 3, mtime: 6 }, { name: "Downloads", kind: "dir", readOnly: true },
-    { name: "out", kind: "link", to: null }, { name: "in", kind: "link", to: "file", size: 1, mtime: 7 }]), [
+    { name: "out", kind: "link", to: null }, { name: "in", kind: "link", to: "file", size: 1, mtime: 7 }, { name: ".cache", kind: "dir" }, { name: ".notes.txt", kind: "file", size: 1 }]), [
     { path: "agents/x/Work/.folder", name: ".folder", size: 0, ver: 0, at: 5 }, { path: "agents/x/a.txt", name: "a.txt", size: 3, ver: 1, at: 6 },
     { path: "agents/x/Downloads/.folder", name: ".folder", size: 0, ver: 0, at: 0, read_only: true }, { path: "agents/x/in", name: "in", size: 1, ver: 1, at: 7 }]);
 });
