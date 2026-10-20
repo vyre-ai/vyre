@@ -17,6 +17,7 @@
 import { kindOf } from "./frame-type.js";
 import { quoteFromData } from "./reply.js";
 import { turnSummary } from "./turn-summary.js";
+import { personWords } from "./notice-words.js";
 
 const STATES = ["starting", "working", "asking", "waiting", "paused", "stopped", "finished", "failed"];
 /** Status changes that leave a quiet line in the transcript. */
@@ -179,7 +180,7 @@ export function createFolder() {
         const mid = f.message ?? d.message;
         if (d.notice && typeof d.text === "string" && d.text) {
           const key = "n:" + mid + ":" + f.cur;
-          put(key, "notice", { key, kind: "notice", text: d.text });
+          put(key, "notice", { key, kind: "notice", text: personWords(d.text, (id) => (names.has(`person:${id}`) ? nameOf(`person:${id}`) : nameOf(id))) });
           out.layout = true;
           touch(key);
           break;

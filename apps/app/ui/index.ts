@@ -24,6 +24,8 @@ export type { AnsweringAi } from "./components/AnsweringControl";
 export { SpaceTag } from "./components/SpaceTag";
 export { ProviderBadge } from "./components/ProviderBadge";
 export { ProviderLogo } from "./components/ProviderLogo";
+export { ModelPicker, ModelPickerSheet } from "./components/ModelPicker";
+export type { ModelPick } from "./components/ModelPicker";
 export { providerName, providerOfModel, providerVendor } from "./marks/provider.js";
 export { Fab } from "./components/Fab";
 export { Card, Divider } from "./components/Card";

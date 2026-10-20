@@ -14,6 +14,8 @@ import { Segmented } from "../components/Segmented";
 import { Sheet } from "../components/Sheet";
 import { Switch } from "../components/Switch";
 import { Text } from "../components/Text";
+import { ModelPicker } from "../components/ModelPicker";
+import type { ModelGroup } from "../../src/models/model-choice.js";
 import { useUiTheme } from "../theme";
 // @ts-ignore the agent family's renderer is plain JavaScript
 import { AGENT_COLORS } from "../../../../lib/wink-code/agent2.js";
@@ -22,10 +24,9 @@ import { PARTS, SHAPES, lookSeed } from "./agent-look.js";
 /** What each of the sixteen colours is called, for a screen reader (the order of AGENT_COLORS). */
 const COLOUR_NAMES = ["Peach", "Sun", "Seafoam", "Amber", "Rose", "Sand", "Salmon", "Sage", "Blue", "Indigo", "Violet", "Teal", "Coral", "Mint", "Sky", "Graphite"];
 
-export type NewAgentValues = { name: string; shape: number; color: number; job: string; projects: string[]; runsOn: "subscription" | "key"; budget: string; model: string; effort: string; computer: boolean; personal: boolean };
+export type NewAgentValues = { name: string; shape: number; color: number; job: string; projects: string[]; runsOn: "subscription" | "key"; budget: string; model: string; provider?: string; effort: string; computer: boolean; personal: boolean };
 
 /** The effort choices: the box's own default, then four levels. */
-const EFFORTS: [string, string][] = [["", "Default"], ["low", "Low"], ["medium", "Medium"], ["high", "High"], ["max", "Max"]];
 
 /**
  * The grid of eight shapes and the sixteen colours that make an agent's look, and, when the caller can change a part (`parts` and `onPart`), a "Customize" icon button that opens the character's parts as rows of
@@ -80,10 +81,10 @@ export function AgentLookPicker({ shape, color: col, parts, onChange, onPart }: 
   );
 }
 
-export function NewAgentDialog({ open, onClose, values, onChange, projects, models, owner, busy, problem, onCreate }: {
+export function NewAgentDialog({ open, onClose, values, onChange, projects, groups, owner, busy, problem, onCreate }: {
   open: boolean; onClose: () => void; values: NewAgentValues; onChange: (v: Partial<NewAgentValues>) => void;
   /** The projects it could work in; null while they load. */ projects: readonly { slug: string; name: string }[] | null;
-  /** The box's model choices (sessions.models.get); null while they load, empty when it lists none. */ models?: readonly { id: string; name: string }[] | null;
+  /** The person's own AI accounts and the models each can run (src/models/useMyModels.ts, the one model service); null while they load. */ groups?: ModelGroup[] | null;
   /** The person may give an agent a computer and let it use their personal memory: owner only. */ owner?: boolean;
   busy?: boolean; problem?: string; onCreate: () => void;
 }) {
@@ -109,12 +110,9 @@ export function NewAgentDialog({ open, onClose, values, onChange, projects, mode
               {projects === null ? <Text tone="muted">Looking.</Text> : !projects.length ? <Text tone="muted">No projects yet. It will see none until you add some.</Text>
                 : projects.map((p) => <Row key={p.slug} dense title={p.name} end={<Switch label={p.name} on={values.projects.includes(p.slug)} onChange={() => toggle(p.slug)} />} />)}
             </View>
-            <View style={{ gap: 8 }}>
-              <Text medium>Model</Text>
-              {models === undefined || models === null ? <Text tone="muted">Looking.</Text> : models.length ? <Segmented label="Model" value={values.model} onChange={(model) => onChange({ model })} options={[["", "Default"], ...models.slice(0, 4).map((m) => [m.id, m.name] as [string, string])]} /> : <Text tone="muted">The box picks the model.</Text>}
-              <Text medium>Effort</Text>
-              <Segmented label="Effort" value={values.effort} onChange={(effort) => onChange({ effort })} options={EFFORTS} />
-            </View>
+            <ModelPicker groups={groups ?? null} value={{ provider: values.provider || null, model: values.model || null }} effort={values.effort || null} details={false}
+              onChange={({ model }) => onChange({ model: model.id, provider: model.provider, effort: model.efforts.includes(values.effort) ? values.effort : model.default_effort || "" })}
+              onEffort={(effort) => onChange({ effort })} note={values.model ? undefined : "None chosen: it runs on the default model of the person using it."} />
             {owner ? (
               <View style={{ gap: 4 }}>
                 <Row dense title="Give it a computer" sub="Its own Chrome, terminal and files in Space's Cloud" end={<Switch label="Give it a computer" on={values.computer} onChange={(computer) => onChange({ computer })} />} />

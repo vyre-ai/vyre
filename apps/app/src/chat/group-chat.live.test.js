@@ -2,7 +2,7 @@
 // Group chat against a REAL daemon (not the sample world): a chat made with an agent, then the three lists the composer needs, filled from the box's own answers through the app's own builders:
 //   @  the chat's members and agents  (work.chat.get, records.actors, agents.list -> membersFrom, peopleFor)
 //   #  the records the person may read (records.types, records.list -> recordPicks)
-//   the models a slot can switch to  (providers.list -> modelChoices, threads.chat-switch through switchCall)
+//   the models a slot can switch to  (sessions.accounts.list and sessions.accounts.models -> the one picker's groups, threads.chat-switch through switchCall)
 // The daemon runs in a temp home with the fake claude (core/sessions/testing/boot.js). Needs the One Chat tools (work.chat.*, threads.chat-switch), which a tree without chat's server does not have: it says so.
 import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
@@ -14,7 +14,8 @@ import { start } from "../../../../core/daemon/index.js";
 import { asOwner, tempHome, present } from "../../../../test/helpers.js";
 import { FAKE, until } from "../../../../core/sessions/testing/boot.js";
 import { membersFrom, slotNames } from "./members.js";
-import { modelChoices, peopleFor, recordPicks, switchCall } from "./real-composer.js";
+import { peopleFor, recordPicks, switchCall } from "./real-composer.js";
+import { accountsOf, groupsOf } from "../models/model-choice.js";
 import crypto from "node:crypto";
 import { createRing, holdersOf } from "../../../../lib/chat-keys.js";
 
@@ -80,11 +81,11 @@ test("group chat on a real daemon: @ lists the chat's members and agents, # list
   assert.deepEqual(picks.map((p) => p.name).sort(), ["Northwind lease dispute", "Reyes probate"]);
 
   // the models: providers.list builds the choices, and a switch is a call the box takes (it may refuse for want of a signed-in account, never as an unknown tool or a bad input)
-  const prov = await data("providers.list", {});
-  const { models } = modelChoices(prov, { provider: "claude" });
-  assert.ok(Array.isArray(models));
+  const accounts = accountsOf(await data("sessions.accounts.list", {}));
+  const groups = groupsOf(accounts, await Promise.all(accounts.map((a) => data("sessions.accounts.models", { account: a.id }).catch(() => null))));
+  assert.ok(Array.isArray(groups));
   const slot = (got.slots || [])[0]?.slot;
-  const sw = switchCall(chat, "claude||sonnet", prov, { provider: "claude" }, slot);
+  const sw = switchCall(chat, { account: { id: "" }, model: { id: "lab-fast-1", provider: "claude" } }, slot);
   assert.ok(sw && sw.tool === "threads.chat-switch" && sw.input.chat === chat);
   const out = await call(sw.tool, sw.input);
   assert.ok(!out.error || !["no_such_tool", "bad_input"].includes(String(out.error.code)), `threads.chat-switch: ${JSON.stringify(out.error)}`);

@@ -3,7 +3,7 @@ import { RC } from "../shell/rc";
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { AgentLookPicker, Avatar, Banner, Sheet, lookOf, lookSeed, PARTS, partsOf, withParts, rememberLook, Button, Card, Chip, Divider, EmptyState, ErrorState, Field, LoadingState, Row, Segmented, Select, Tabs, Text, markRef, showToast } from "@vyre/ui";
+import { AgentLookPicker, Avatar, Banner, Sheet, lookOf, lookSeed, PARTS, partsOf, withParts, rememberLook, Button, Card, Chip, Divider, EmptyState, ErrorState, Field, LoadingState, Row, Tabs, Text, markRef, showToast, ModelPicker } from "@vyre/ui";
 import AgentWork from "./AgentWork";
 import { displayName } from "../agents/home-model.js";
 import { Context, Instructions, Models, Sharing, Used } from "./AgentParts";
@@ -13,7 +13,8 @@ import { agent } from "./agent";
 import { useChats } from "../../src/state/chats";
 import { assistantChatRoute, startChat } from "../../src/state/start-chat";
 import { chatHas } from "../agents/home-model.js";
-import { EFFORT, accountModelsFor, computerView, modelsFor, usageView, type AgentFull, type Computer, type UsageFull } from "./agent-model.ts";
+import { computerView, usageView, type AgentFull, type Computer, type UsageFull } from "./agent-model.ts";
+import { useMyModels } from "../../src/models/useMyModels";
 import { AgentThreads } from "./AgentThreads";
 import { RealSkills } from "../skills/RealSkills";
 
@@ -45,7 +46,7 @@ export default function AgentPage() {
           {tab === "threads" ? <AgentThreads name={a.name} /> : null}
           {tab === "overview" ? <><Instructions name={a.name} /><Context name={a.name} /><AgentMemory name={a.name} /><Used name={a.name} /><Sharing name={a.name} /></> : null}
           {tab === "skills" ? <RealSkills initialLevel="agent" scope={a.name} /> : null}
-          {tab === "ai" ? <><Models name={a.name} /><Model a={a} onSaved={(m, e) => setA({ ...a, model: m, effort: e })} /></> : null}
+          {tab === "ai" ? <><Model a={a} onSaved={(m, p, e) => setA({ ...a, model: m, model_provider: p, effort: e })} /><Models /></> : null}
           {tab === "computer" ? <><ComputerCard a={a} onChange={load} /><Talk name={a.name} /><AgentWork name={a.name} /><Usage name={a.name} /></> : null}
         </>
       ) : null}
@@ -125,24 +126,20 @@ function Usage({ name }: { name: string }) {
   );
 }
 
-function Model({ a, onSaved }: { a: AgentFull; onSaved: (m: string, e: string) => void }) {
-  // the models the person's own AI accounts offer (the listing the new agent card reads); the box's alias list only when the accounts cannot be read
-  const [rows, setRows] = useState<{ id: string; name: string }[]>(() => modelsFor(a.model, undefined));
-  useEffect(() => {
-    let live = true;
-    agent.accountModels().then((g) => { if (live) setRows(accountModelsFor(a.model, g)); })
-      .catch(() => agent.models().then((al) => { if (live) setRows(modelsFor(a.model, al)); }).catch(() => {}));
-    return () => { live = false; };
-  }, [a.model]);
-  const [model, setModel] = useState(a.model || "");
-  const [effort, setEffort] = useState(a.effort || "medium");
-  const save = (m: string, e: string) => agent.setModel(a.name, m, e).then(() => { onSaved(m, e); showToast("Saved."); }).catch((x) => showToast(say(x)));
+function Model({ a, onSaved }: { a: AgentFull; onSaved: (m: string, provider: string, e: string) => void }) {
+  // the one model picker: the person's own AI accounts and what each can run, with their details (src/models/useMyModels.ts); the effort control shows only for a model that takes one, with its own levels
+  const who = displayName(a);
+  const { groups, error } = useMyModels();
+  const [pick, setPick] = useState({ provider: a.model_provider || null, model: a.model || null, effort: a.effort || null });
+  const save = (model: string, provider: string, effort: string) => agent.setModel(a.name, model, provider, effort).then(() => { onSaved(model, provider, effort); showToast("Saved."); }).catch((x) => showToast(say(x)));
   return (
     <Sec title="Model">
       <Card className="gap-s3">
-        <Select label={`${a.name}'s model`} value={model || rows[0]?.id || ""} options={rows.map((m) => [m.id, m.name])} onChange={(m) => { setModel(m); void save(m, effort); }} />
-        <Segmented label="Effort" value={effort} options={EFFORT as [string, string][]} onChange={(e) => { setEffort(e); void save(model, e); }} />
-        <Text size="caption" tone="label">{`${a.name} answers every question. Memory gives ${a.name} the relevant facts, with where they came from, as context. It never answers instead.`}</Text>
+        <ModelPicker label={`${who}'s model`} groups={groups} value={{ provider: pick.provider, model: pick.model }} effort={pick.effort}
+          onChange={({ model }) => { const e = model.efforts.includes(pick.effort || "") ? (pick.effort as string) : model.default_effort || ""; setPick({ provider: model.provider, model: model.id, effort: e || null }); void save(model.id, model.provider, e); }}
+          onEffort={(e) => { setPick((x) => ({ ...x, effort: e })); if (pick.model) void save(pick.model, pick.provider || "", e); }}
+          note={error ? `Your models could not be read just now. ${error}` : undefined} />
+        <Text size="caption" tone="label">{`${who} answers every question. Memory gives ${who} the relevant facts, with where they came from, as context. It never answers instead.`}</Text>
       </Card>
     </Sec>
   );

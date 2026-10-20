@@ -45,6 +45,7 @@ import { GroupedTasksDemo, ImportDemo, RecordFormDemo, RecordPageDemo } from "..
 import { ChatComposer } from "../src/chat/ChatComposer";
 import { FileViewerFixture } from "../ui/files/Fixture";
 import { ChatPanel, type PanelPage } from "../src/chat/ChatPanel";
+import { sampleGroups, sampleNow } from "../src/models/mock-models.js";
 
 const MD_SAMPLE = [
   "## The short answer", "",
@@ -311,13 +312,13 @@ const CMP_RECORDS = [
   { name: "Trust certificate.pdf", type: "File", sealed: 0, urn: "urn:rec:3", kind: "file" }, { name: "Quarterly review", type: "Tag", sealed: 0, urn: "urn:rec:4", kind: "tag" },
 ];
 const CMP_SLOTS = [{ id: "s1", label: "kit on Claude", provider: "claude" }, { id: "s2", label: "kit on Codex", provider: "codex" }, { id: "s3", label: "Grok", provider: "grok" }];
-const CMP_MODELS = [{ id: "opus", label: "Opus", fit: 94 }, { id: "sonnet", label: "Sonnet", fit: 88 }, { id: "haiku", label: "Haiku", fit: 71 }];
+const CMP_MODELS = sampleGroups();
 
 /** The composer, before and after, side by side: /gallery?f=composer. The "after" is live: try / @ # and Cmd+/ with the keyboard only. */
 function ComposerCompare() {
-  const [model, setModel] = useState("opus");
+  const [model, setModel] = useState<{ account?: string | null; provider?: string | null; model?: string | null }>(sampleNow());
   const [where, setWhere] = useState<"mac" | "server">("server");
-  const common = { state: "idle", people: CMP_PEOPLE, records: CMP_RECORDS, models: CMP_MODELS, model, onModel: (id: string) => setModel(id), slots: CMP_SLOTS, runsOn: where, onRunsOn: () => setWhere((w) => (w === "mac" ? "server" : "mac")), onSend: () => {}, onAttachFile: () => {}, vyreFiles: [{ id: "f1", name: "Trust certificate.pdf", path: "Projects/Wine estate/Received" }, { id: "f2", name: "Site visit.mp4", path: "Projects/Wine estate/Made" }, { id: "f3", name: "Deed scan.png", path: "Projects/Wine estate/Received" }], onAttachVyreFile: () => {} };
+  const common = { state: "idle", people: CMP_PEOPLE, records: CMP_RECORDS, models: CMP_MODELS, model, onModel: (p: { account: { id: string }; model: { id: string; provider: string } }) => setModel({ account: p.account.id, provider: p.model.provider, model: p.model.id }), slots: CMP_SLOTS, runsOn: where, onRunsOn: () => setWhere((w) => (w === "mac" ? "server" : "mac")), onSend: () => {}, onAttachFile: () => {}, vyreFiles: [{ id: "f1", name: "Trust certificate.pdf", path: "Projects/Wine estate/Received" }, { id: "f2", name: "Site visit.mp4", path: "Projects/Wine estate/Made" }, { id: "f3", name: "Deed scan.png", path: "Projects/Wine estate/Received" }], onAttachVyreFile: () => {} };
   return (
     <View style={{ gap: 24 }}>
       <View style={{ gap: 6 }}><Text size="caption" tone="label">After (live)</Text><ChatComposer {...common} phone={false} /></View>

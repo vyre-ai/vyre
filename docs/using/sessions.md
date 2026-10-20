@@ -1,6 +1,6 @@
 ---
 title: How Vyre runs your sessions
-summary: The sessions Vyre starts run on your own server with your own Claude, Codex, Grok and OpenRouter accounts, one model picker per session, closed when idle and resumed on the next message, with a system prompt you can edit at three levels and undo.
+summary: The sessions Vyre starts run on your own server with your own Claude, Codex, Grok and OpenRouter accounts, one model picker everywhere, closed when idle and resumed on the next message, with a system prompt you can edit at three levels and undo.
 audience: users
 owner: docs
 status: draft
@@ -60,16 +60,27 @@ A sign-in session (Claude, Codex or Grok on your own subscription) talks to its 
 
 ## One picker per session
 
-Chat has one chip above the message box that says who answers, the model and the effort, for
-example "Codex · GPT-5 high", with the provider's logo. Press it to open **Answer with**: each
-signed-in account, the models under it, and (for Claude) the effort levels. The choice applies
-from the next turn.
+Every place you choose a model uses the same picker: an agent's AI tab, the model switch in Chat,
+welcome's model step, a Flow's AI step and the new agent card. It lists only your own AI accounts,
+each with its provider's logo, and under each one the models that account can run. Each model shows
+its real name from its provider, who makes it, its context window, its price per million tokens in
+and out, and a mark when it reads images or uses tools. Type to search. Under the chosen model you
+see its version, how much it reads and writes, and, only when the model takes one, an effort
+control with that model's own levels.
 
-- Picking another account moves the same session, folder and files to that provider between
-  turns. The new provider is given a short brief of what was said so far, and the session says
-  so in the thread, for example "Switched to Codex. It has this session's memory and files.",
-  with a line on anything the new provider cannot do. Switching while a turn runs is refused
-  until you stop it or it finishes.
+The models come from one service on your server: each provider's own list for a key, what a CLI
+reports for a sign-in, and OpenRouter's public catalogue, which lists Anthropic's, OpenAI's and
+xAI's models with their details. There is no built-in list of model names: a model shows when one
+of these lists it.
+
+In a chat, your pick is yours. Pressing the model in Chat picks the model your own turns run on,
+on your own account, in that chat only. Everyone else keeps theirs, and the chat says so once, for
+example "Sam switched to GPT-5.5".
+
+- When your pick is on another provider or account than the chat, your turn moves there for that
+  turn and comes back. The model taking over gets the whole conversation, every turn word for
+  word, and every tool call with what it returned. When that is more than the new model's context
+  window holds, the oldest part is summarised, and the chat says so in one quiet line.
 - Switching back to a provider that ran this session before returns to its own memory of the
   session: "Back on Claude. It has this session's memory and files, and what Codex said this
   turn."

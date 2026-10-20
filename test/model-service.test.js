@@ -59,7 +59,7 @@ test("a person sees only the models of their own AI accounts, each with its deta
   assert.deepEqual(bobs.map((g) => g.account), ["Bob Codex"], "Bob's picker is Bob's account only");
   const codex = bobs[0].models.find((/** @type {any} */ m) => m.id === "gpt-5.3-codex");
   assert.ok(codex, JSON.stringify(bobs[0].models.map((/** @type {any} */ m) => m.id)));
-  assert.deepEqual([codex.name, codex.vendor, codex.context, codex.efforts, codex.default_effort], ["GPT-5.3-Codex", "OpenAI", 400000, ["none", "low", "medium", "high", "xhigh"], "medium"]);
+  assert.deepEqual([codex.name, codex.vendor, codex.context, codex.efforts, codex.default_effort], ["GPT-5.3-Codex", "OpenAI", 400000, ["low", "medium", "high", "xhigh"], "medium"]);
   assert.ok(!bobs[0].models.some((/** @type {any} */ m) => m.provider === "claude"), "no model of the owner's account reaches Bob");
   assert.equal((await as(BOB, "sessions.accounts.models", { account: o.data.id })).error?.code, "not_found", "Bob cannot list the owner's account by its id");
   assert.equal((await as(owner, "sessions.accounts.models", { account: b.data.id })).error?.code, "not_found", "nor the owner Bob's");

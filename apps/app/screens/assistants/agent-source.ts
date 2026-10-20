@@ -1,7 +1,6 @@
 // An assistant's page on the real box, over an injected `call` (the app's box connection, or a fake box in a test).
 import type { Call } from "../settings/real-source";
-import { limitsInput, projectsOf, type Computer, type ModelGroup, type UsageFull, type AgentFull } from "./agent-model.ts";
-import { accountRows, modelRows } from "../../src/chat/agent-new-model.js";
+import { limitsInput, projectsOf, type Computer, type UsageFull, type AgentFull } from "./agent-model.ts";
 
 export function agentSource(call: Call) {
   async function ask<T>(tool: string, input: Record<string, unknown> = {}): Promise<T> {
@@ -14,19 +13,10 @@ export function agentSource(call: Call) {
       const d = await ask<any>("agents.list");
       return (Array.isArray(d) ? d : d?.agents || []).find((x: AgentFull) => x.name === name) ?? null;
     },
-    /** The box's one model list (sessions.models.get aliases). */
-    models: async (): Promise<unknown> => (await ask<any>("sessions.models.get"))?.aliases,
-    /** What each AI account the person may use offers (sessions.accounts.list, then sessions.accounts.models), the same listing the new agent card reads. An account whose list fails offers none. */
-    accountModels: async (): Promise<ModelGroup[]> => {
-      const accts = accountRows(await ask<unknown>("sessions.accounts.list"));
-      return Promise.all(accts.slice(0, 8).map(async (a) => {
-        const r = await call<unknown>("sessions.accounts.models", { account: a.id });
-        return { account: a.id, label: a.label, models: r.error ? [] : modelRows(r.data) };
-      }));
-    },
     projects: async () => projectsOf(await ask("projects.list")),
     setJob: (name: string, instructions: string) => ask("agents.update", { name, instructions: instructions.trim() }),
-    setModel: (name: string, model: string, effort: string) => ask("agents.update", { name, model, effort }),
+    /** The model, the provider it is on (as the one model service names it) and the effort; an effort the model takes none of is left out. */
+    setModel: (name: string, model: string, provider: string, effort: string) => ask("agents.update", { name, model, ...(provider ? { model_provider: provider } : {}), ...(effort ? { effort } : {}) }),
     /** Say something to the agent, or give it a task. Returns the thread it landed in. */
     talk: (agent: string, text: string) => ask<{ thread?: string; project?: string }>("agents.ask", { agent, text: text.trim() }),
     usage: async (agent: string): Promise<UsageFull | undefined> => {

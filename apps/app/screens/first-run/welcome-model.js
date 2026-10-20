@@ -1,5 +1,6 @@
 // @ts-check
 // The welcome screen's words and its small rules: the address the person types, the Space last used, the three theme choices. Words are the owner's (polish-proposal/onboarding.html). Pure.
+import { chosen, groupsOf } from "../../src/models/model-choice.js";
 import { spaceAddressOf } from "../../../../lib/first-run-shape.js";
 
 export const WELCOME_COPY = Object.freeze({
@@ -104,3 +105,15 @@ export function addressFrom(typed) {
   const t = String(typed || "").trim().toLowerCase();
   return spaceAddressOf(t.includes(".") ? t : `${t}.vyre.run`);
 }
+
+/**
+ * The model step's accounts (onboard.assistant.models: each connected account with the models it can run, in the one shape) as the one picker's groups. @param {any[]} accounts
+ * @returns {import("../../src/models/model-choice.js").ModelGroup[]}
+ */
+export function welcomeGroups(accounts) {
+  const list = (accounts || []).filter((a) => a && typeof a.id === "string");
+  return groupsOf(list.map((a) => ({ id: String(a.id), label: String(a.label || a.provider || "AI account"), provider: String(a.provider || ""), kind: String(a.kind || "") })), list.map((a) => ({ models: Array.isArray(a.models) ? a.models : [] })));
+}
+
+/** The chosen row from the step's pick (an account, a provider and a model), or null. @param {import("../../src/models/model-choice.js").ModelGroup[]} groups @param {{ account: string, provider: string, model: string }} pick */
+export const pickedModel = (groups, pick) => chosen(groups, pick);

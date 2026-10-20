@@ -21,42 +21,6 @@
 /** @typedef {"message"|"command"|"shell"|"memory"|"teammate"} DraftKind */
 /** @typedef {"steer"|"queue"} SendMode */
 
-// ---- models --------------------------------------------------------------------------------
-
-/** The model's family name, never the vendor's: a full Opus id reads as opus. @param {string|null|undefined} m */
-export const shortModel = m => (m ? (/(opus|sonnet|haiku|fable)/i.exec(m)?.[1]?.toLowerCase() || String(m).replace(/^claude-/i, "")) : null);
-
-/**
- * The model picker's rows: the box's aliases (sessions.models.get's `aliases`, its one list), then
- * every other id it names, from its per-purpose map ({purposes: {chat: {model}, ...}}, "Used for
- * chat, agent") and this thread's own (thread.started, the record). "now" marks the thread's
- * model: the exact id, else its family's alias. No list lives here (test/cohesion-drift.test.js).
- * @param {{ current?: string|null, purposes?: any, aliases?: any, seen?: (string|null|undefined)[] }} o
- * @returns {{ id: string, label: string, description?: string, now: boolean }[]}
- */
-export function modelChoices(o = {}) {
-  /** @type {any[]} */
-  const aliases = Array.isArray(o.aliases) ? o.aliases.filter((/** @type {any} */ m) => m && typeof m.id === "string" && /^[a-z][a-z0-9-]{0,31}$/.test(m.id)) : [];
-  /** @type {Map<string, { id: string, label: string, description?: string, now: boolean }>} */
-  const rows = new Map(aliases.map((/** @type {any} */ m) => [m.id, { id: m.id, label: String(m.label || m.id), ...(m.description ? { description: String(m.description) } : {}), now: false }]));
-  /** @type {Map<string, string[]>} */
-  const uses = new Map();
-  const purposes = o.purposes && typeof o.purposes === "object" ? o.purposes : {};
-  for (const [purpose, v] of Object.entries(purposes)) {
-    const id = typeof v === "string" ? v : v && typeof v === "object" && typeof v.model === "string" ? v.model : null;
-    if (!id) continue;
-    (uses.get(id) || uses.set(id, []).get(id))?.push(purpose);
-  }
-  const ok = (/** @type {any} */ id) => typeof id === "string" && /^[A-Za-z0-9._:\[\]-]{1,80}$/.test(id);
-  for (const id of [...uses.keys(), o.current, ...(o.seen || [])]) if (ok(id) && !rows.has(/** @type {string} */ (id))) rows.set(/** @type {string} */ (id), { id: /** @type {string} */ (id), label: /** @type {string} */ (id), now: false });
-  for (const [id, ps] of uses) { const r = rows.get(id); if (r) r.description = "Used for " + ps.join(", "); }
-  const cur = o.current || null;
-  const exact = cur ? rows.get(cur) : undefined;
-  if (exact) exact.now = true;
-  else if (cur) { const fam = rows.get(/** @type {string} */ (shortModel(cur))); if (fam) fam.now = true; }
-  return [...rows.values()];
-}
-
 // ---- modes ---------------------------------------------------------------------------------
 
 /** Claude Code's permission modes, in its order (bypass only ever read, from a session started in it). */

@@ -188,10 +188,10 @@ export async function listAssistantModels() {
   catch (e) { return fail(e); }
 }
 
-/** Keep the Assistant's default model. @param {string} model */
-export async function setAssistantModel(model) {
+/** Keep the Assistant's default model, the provider it is on and its effort (when it takes one). @param {string} model @param {string} [provider] @param {string} [effort] */
+export async function setAssistantModel(model, provider = "", effort = "") {
   if (MOCK) return mock.setAssistantModel(model);
-  try { return done(await tool("onboard.assistant.model", { model })); }
+  try { return done(await tool("onboard.assistant.model", { model, ...(provider ? { provider } : {}), ...(effort ? { effort } : {}) })); }
   catch (e) { return fail(e); }
 }
 

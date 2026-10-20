@@ -8,7 +8,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Platform, Pressable, TextInput, View, type NativeSyntheticEvent, type TextInputSelectionChangeEventData } from "react-native";
-import { AiMark, AnsweringControl, Button, Chip, ChipToken, Icon, PickerList, Row, Sheet, Text, Tip, optionId, useUiTheme, type IconName, type PickerItem } from "@vyre/ui";
+import { AiMark, AnsweringControl, Button, Chip, ChipToken, Icon, ModelPickerSheet, PickerList, ProviderLogo, Row, Sheet, Text, Tip, optionId, useUiTheme, type IconName, type ModelPick, type PickerItem } from "@vyre/ui";
+import { chosen, type ModelGroup } from "../models/model-choice.js";
 import { answeringSummary, composerShortcut, deleteTokenBack, filterItems, moveActive, pickerKey, removeToken, toggleAnswering, tokensIn } from "@vyre/ui/lib/picker-model.js";
 import { crumbsOf, nestHint, nestKey, nestRows, nestStep, type NestRow } from "@vyre/ui/lib/nest-model.js";
 import { useMentionNodes } from "./useMentionNodes";
@@ -25,14 +26,19 @@ export type Person = { name: string; family: "person" | "assistant"; doing?: str
 /** A record the # picker offers: its urn goes to the box beside the words; `sealed` is how many of its fields are sealed (the assistant sees those only as placeholders). */
 export type RecordPick = { name: string; type: string; sealed: number; urn?: string; kind?: string };
 export type PickedMention = { kind: string; id: string; name: string };
-export type ModelChoice = { id: string; label: string; fit: number | null };
+/** What the chat runs this person's turns on now: the account when known, the provider and the model id. */
+export type ModelNow = { account?: string | null; provider?: string | null; model?: string | null };
 export type ComposerProps = {
   state: string;
   people?: readonly Person[];
   records?: readonly RecordPick[];
-  models?: readonly ModelChoice[];
-  model?: string;
-  onModel?: (id: string, slot?: string) => void;
+  /** The person's own AI accounts and what each can run (src/models/useMyModels.ts, the one model service): the model switcher lists only these. */
+  models?: readonly ModelGroup[] | null;
+  model?: ModelNow;
+  /** The person picks a model: it is theirs, for this chat (threads.chat-switch), never anyone else's. */
+  onModel?: (pick: ModelPick, slot?: string) => void;
+  /** The effort this person's turns run at, and its setter; the control shows only for a model that takes effort. */
+  effort?: string | null; onEffort?: (e: string, slot?: string) => void;
   /** The slots in a chat with several assistants or models: each gets its own chip to switch that one's model. Fewer than two: the one model chip. */
   slots?: readonly { id: string; label: string; provider?: string | null }[];
   /** A chat between people (set to "AI answers when mentioned", or with no AI in it): a message goes to the people and no AI answers, unless an AI is asked for that one message. The chip reads "People". */
@@ -181,8 +187,11 @@ export function ChatComposer(p: ComposerProps) {
   const pm = !!p.peopleOnly;
   const effective = answering.length ? answering : dflt && !pm ? [dflt] : [];
   const ais = effective.map((id) => slots.find((s) => s.id === id)).filter(Boolean) as { id: string; label: string; provider?: string | null }[];
-  const current = (p.models ?? []).find((m) => m.id === p.model);
-  const summary = pm && !answering.length ? "People" : slots.length ? answeringSummary(answering, slots, pm ? undefined : dflt) : current ? current.label : "Model";
+  const groups = p.models ? [...p.models] : null;
+  const current = groups ? chosen(groups, p.model ?? {}) : null;
+  const hasModels = !!groups?.some((g) => g.models.length);
+  const summary = pm && !answering.length ? "People" : slots.length ? answeringSummary(answering, slots, pm ? undefined : dflt) : current ? current.model.name : "Model";
+  const [modelSheet, setModelSheet] = useState(false);
 
   const insert = (ch: string) => { const t = text.slice(0, caret) + ch + text.slice(caret); setText(t); setCaret(caret + 1); input.current?.focus(); };
   const closePop = () => { setPop(null); setMenuQ(""); setActive(0); input.current?.focus(); };
@@ -195,7 +204,7 @@ export function ChatComposer(p: ComposerProps) {
       const rows: Row[] = [
         { key: "attach", group: "Add", label: "Attach a file", leading: <Icon name="clip" size={18} />, hint: "Cmd U", run: () => { if (p.vyreFiles && p.onAttachVyreFile) { setPop("files"); setMenuQ(""); setActive(0); } else { closePop(); p.onAttachFile?.(); } } },
         { key: "cmd", group: "Add", label: "Run a command", leading: <Icon name="terminal" size={18} />, hint: "/", run: () => { setPop(null); setMenuQ(""); insert("/"); } },
-        ...(pm || slots.length > 1 || p.models?.length ? [{ key: "who", group: "Add", label: "Who answers", sub: summary, leading: <Icon name="agents" size={18} />, hint: "Cmd /", run: () => { setPop("answering"); setMenuQ(""); setActive(0); } } as Row] : []),
+        ...(pm || slots.length > 1 || hasModels ? [{ key: "who", group: "Add", label: "Who answers", sub: summary, leading: <Icon name="agents" size={18} />, hint: "Cmd /", run: () => { setPop("answering"); setMenuQ(""); setActive(0); } } as Row] : []),
         { key: "at", group: "Insert", label: "Mention a person or agent", leading: <Icon name="mention" size={18} />, hint: "@", run: () => { setPop(null); setMenuQ(""); insert("@"); } },
         { key: "hash", group: "Insert", label: "Tag a record", leading: <Icon name="hash" size={18} />, hint: "#", run: () => { setPop(null); setMenuQ(""); insert("#"); } },
       ];
@@ -232,13 +241,13 @@ export function ChatComposer(p: ComposerProps) {
         slots.forEach((sl, i) => rows.push({ key: sl.id, group: ask, label: sl.label, sub: sl.id === dflt && !pm ? "Answers by default" : undefined, leading: <AiMark ai={sl} size={22} />, checked: effective.includes(sl.id), hint: i < 9 ? `Alt ${i + 1}` : undefined, run: () => toggleAi(sl.id) }));
       }
       // In a chat between people the model rows wait until an AI is picked.
-      if (p.models?.length && !(pm && !answering.length)) {
-        (slots.length > 1 ? (pm ? slots.filter((sl) => answering.includes(sl.id)) : slots) : [{ id: "", label: "This chat", provider: null }]).forEach((sl) => rows.push({ key: `m-${sl.id}`, group: "Model", label: slots.length > 1 ? `Model for ${sl.label}` : "Switch model", sub: slots.length > 1 ? undefined : current?.label, leading: <Icon name="spark" size={18} />, hint: "Right", run: () => { setSlotSel(sl.id || undefined); setPop("model"); setMenuQ(""); setActive(0); } }));
+      if (hasModels && !(pm && !answering.length)) {
+        (slots.length > 1 ? (pm ? slots.filter((sl) => answering.includes(sl.id)) : slots) : [{ id: "", label: "This chat", provider: null }]).forEach((sl) => rows.push({ key: `m-${sl.id}`, group: "Model", label: slots.length > 1 ? `Model for ${sl.label}` : "Switch model", sub: slots.length > 1 ? undefined : current?.model.name, leading: current && slots.length <= 1 ? <ProviderLogo provider={current.model.provider} size={18} /> : <Icon name="spark" size={18} />, hint: "Right", run: () => { setSlotSel(sl.id || undefined); setPop(null); setMenuQ(""); setActive(0); setModelSheet(true); } }));
       }
       return rows;
     }
     if (pop === "model") {
-      return (p.models ?? []).map((m) => ({ key: m.id, label: m.label, checked: m.id === p.model, trailing: m.fit != null ? <Text size="caption" tone="label">{`${m.fit}% match`}</Text> : undefined, run: () => { p.onModel?.(m.id, slotSel); closePop(); } }));
+      return [];
     }
     return [];
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -435,7 +444,7 @@ export function ChatComposer(p: ComposerProps) {
   // In a chat with several people, what the picker puts in front of the chat's agent is read by all of them: say so where the pick is made.
   const footer = p.groupChat && !pop && (trig?.kind === "record" || nested) ? `Everyone in this chat sees what you pick. ${footerBase}` : footerBase;
   const header = pop === "files" || pop === "vyrefiles" ? "Files" : pop === "answering" ? "Answering" : pop === "model" ? "Model" : trig?.kind === "command" ? "Commands" : trig?.kind === "person" ? "Mention" : trig?.kind === "record" ? "Tag" : undefined;
-  const aiMenu = pm || slots.length > 1 || !!p.models?.length;
+  const aiMenu = pm || slots.length > 1 || hasModels;
 
   return (
     <View onLayout={(e) => { const w = Math.round(e.nativeEvent.layout.width); setBoxW((o) => (Math.abs(o - w) > 4 ? w : o)); }} style={{ width: "100%", maxWidth: 760, alignSelf: "center", paddingHorizontal: p.phone ? 8 : 16, paddingBottom: 16, paddingTop: 6 }}>
@@ -475,6 +484,9 @@ export function ChatComposer(p: ComposerProps) {
         </View>
       </View>
       {p.agentName ? <Text size="caption" tone="label" style={{ textAlign: "center", paddingTop: 6 }}>{agentHint(p.agentName, working)}</Text> : null}
+      {modelSheet && groups ? <ModelPickerSheet title={slotSel ? `Your model for ${slots.find((x) => x.id === slotSel)?.label ?? "this AI"}` : "Your model for this chat"} groups={groups} current={current}
+        onClose={() => { setModelSheet(false); input.current?.focus(); }} onPick={(pk) => { setModelSheet(false); p.onModel?.(pk, slotSel); input.current?.focus(); }}
+        effort={p.effort} onEffort={p.onEffort ? (e) => p.onEffort?.(e, slotSel) : undefined} /> : null}
     </View>
   );
 }
