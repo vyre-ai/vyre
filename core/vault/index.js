@@ -620,7 +620,7 @@ export default {
     try { ctx.events.on("thread.deleted", (/** @type {any} */ e) => { const t = String((e && e.payload && (e.payload.thread || e.payload.uuid || e.payload.id)) || (e && e.thread) || ""); if (t) said.dropThread(t, "module:vault"); }); } catch { /* no event bus in a bare test */ }
     // A vendor API call with an api-credential: reads run, asked-for sends run, the rest hold at the Gate.
     const requests = requestTools.register({ vault, tool, internal, said, call: ctx.call ? (name, input) => ctx.call(name, input) : undefined, log: ctx.log });
-    // Agents use items by placeholder and never see a secret: vault.find, {{vault:Item.FIELD}} in vault.request, Used with, Allowed in scripts (use.js).
+    // Agents use items by placeholder and never see a secret: vault.use.find, {{vault:Item.FIELD}} in vault.request, Used with, Allowed in scripts (use.js).
     /** @type {any} */ (vault).use = useTools.register({ vault, api: requests, said, tool, emit: (t, p) => ctx.events.emit(t, p) });
 
     tool("vault.offboard", [...SURFACES, "mcp"], "Someone left: revoke every pass they hold and list what must be rotated.",

@@ -210,7 +210,7 @@
       { "name": "vault.said.list", "reach": "modules" },
       { "name": "vault.said.revoke", "reach": "modules" },
       { "name": "vault.request", "effect": "write", "reach": "anyone" },
-      { "name": "vault.find", "effect": "read", "reach": "anyone" },
+      { "name": "vault.use.find", "effect": "read", "reach": "anyone" },
       { "name": "vault.use.env", "effect": "write", "reach": "anyone" },
       { "name": "vault.use.set", "effect": "write", "reach": "person" },
       { "name": "vault.api.send", "asks": true, "outward": true, "reach": "modules" },

@@ -12,6 +12,8 @@
 import readline from "node:readline";
 import { Transform } from "node:stream";
 import { CONCEALED, valueForms } from "../../lib/scrub.js";
+// `vyre vault run --item` in an agent's session (core/cli/session.js) makes a key for one run and opens the sealed answer with it: the vault's one sealing mechanism, offered here with the rest of the CLI's vault I/O.
+export { newIdentity as runKeys, openFrom as openRun } from "./crypto.js";
 
 export { CONCEALED };
 

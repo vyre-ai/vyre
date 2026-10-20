@@ -84,8 +84,8 @@ test("presence: every value-out or access-giving tool declares it, with a summar
     "vault.person.browser-profile-key", "vault.space.browser-profile-key",
     // A space item is placed on an outbound request while nobody is unlocked. The response comes back with the value redacted, the same shape as vault.request.
     "vault.space.use",
-    // Items by placeholder (use.js): vault.find gives names, field names and plain values, never a secret; vault.use.env answers an agent session's vault run, sealed to the run's own key, only for items the person marked Allowed in scripts (that setting, vault.use.set, asks for presence).
-    "vault.find", "vault.use.env"]);
+    // Items by placeholder (use.js): vault.use.find gives names, field names and plain values, never a secret; vault.use.env answers an agent session's vault run, sealed to the run's own key, only for items the person marked Allowed in scripts (that setting, vault.use.set, asks for presence).
+    "vault.use.find", "vault.use.env"]);
   // Internal tools (vault.release, vault.master.install, …): modules-only plumbing, no presence card.
   for (const n of tools.keys()) {
     const def = tools.get(n);

@@ -1,5 +1,5 @@
 // "Allowed in scripts" for one item of the Space's vault: the one setting that lets an agent's session run a program with the item in its environment (vyre vault run --item). Off by default,
-// because a program can read the value. It reads the item's state with vault.find and writes it with vault.use.set; turning it on asks for the person's proof there, turning it off never does.
+// because a program can read the value. It reads the item's state with vault.use.find and writes it with vault.use.set; turning it on asks for the person's proof there, turning it off never does.
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
 import { Card, Row, Switch, Text, showToast } from "@vyre/ui";

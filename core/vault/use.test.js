@@ -1,6 +1,6 @@
 // @ts-check
 // Vault items by placeholder (core/vault/use.js), with fakes only: a fake DNS lookup and transport that record what would have gone where, a fake Gate, and a fake kernel that answers which
-// agent holds "Can use it, without seeing it" on which item. What these prove: vault.find shows names and plain values and never a secret; placeholders are filled in the url, headers and body;
+// agent holds "Can use it, without seeing it" on which item. What these prove: vault.use.find shows names and plain values and never a secret; placeholders are filled in the url, headers and body;
 // every secret is hidden in the answer, encoded forms too; an unknown or ungranted placeholder refuses the whole request; a new host waits for the person, then works; a host off the list, plain
 // http and a bare address never get a secret; scripts get nothing unless the item is Allowed in scripts, under canonical names; no audit row, event or log line carries a value; and an agent
 // running for a member reaches nothing of the owner's. Every value is a sample.
@@ -52,6 +52,7 @@ async function mk(t, { gated = false } = {}) {
   const grants = new Set();
   /** @type {any} */ (v).access = {
     K: { owner: OWNER, chain: async meta => ({ hops: meta.hops || [] }) },
+    items: () => [],
     modelName: (meta, caller) => String(meta.agent || (/(?:^|:)agent:([^:\s]+)/.exec(caller) || [])[1] || "assistant").toLowerCase(),
     effectFor: async (name, item, action) => (action === "vault.read" && grants.has(`${name}:${item}`) ? "allow" : "deny"),
   };
@@ -82,16 +83,16 @@ async function items(r) {
 }
 
 test("canonical names: case and punctuation do not matter", () => {
-  assert.equal(canon("GHL Sales"), "GHL_SALES");
-  assert.equal(canon("ghl-sales"), "GHL_SALES");
+  assert.equal(canon("Northwind CRM"), "NORTHWIND_CRM");
+  assert.equal(canon("northwind-crm"), "NORTHWIND_CRM");
   assert.equal(canon(" northwind.crm "), "NORTHWIND_CRM");
 });
 
-test("vault.find returns item names, field names and plain values, and for a secret field only its name", async t => {
+test("vault.use.find returns item names, field names and plain values, and for a secret field only its name", async t => {
   const r = await mk(t);
   await items(r);
   r.grants.add("kit:northwind-crm");
-  const got = await r.run("vault.find", { q: "northwind" });
+  const got = await r.run("vault.use.find", { q: "northwind" });
   assert.equal(got.items.length, 1);
   const it = got.items[0];
   assert.equal(it.name, "northwind-crm");
@@ -101,15 +102,15 @@ test("vault.find returns item names, field names and plain values, and for a sec
   assert.ok(!JSON.stringify(got).includes(SECRET.slice(0, 12)), "the secret is nowhere in the answer, not even in part");
   assert.equal(it.placeholder, "{{vault:northwind-crm.NORTHWIND_API_KEY}}");
   // not shared with this agent: not found at all
-  assert.equal((await r.run("vault.find", { q: "juniper" })).items.length, 0);
+  assert.equal((await r.run("vault.use.find", { q: "juniper" })).items.length, 0);
   // several matches all come back, so the agent can choose or ask
   r.grants.add("kit:juniper-mail");
-  const both = await r.run("vault.find", {});
+  const both = await r.run("vault.use.find", {});
   assert.deepEqual(both.items.map(x => x.name).sort(), ["juniper-mail", "northwind-crm"]);
   assert.match(both.note, /Several items match/);
   assert.ok(!JSON.stringify(both).includes(OTHER));
   // another agent holds nothing
-  assert.equal((await r.run("vault.find", {}, "mcp:agent:juno")).items.length, 0);
+  assert.equal((await r.run("vault.use.find", {}, "mcp:agent:juno")).items.length, 0);
 });
 
 test("placeholders are filled in the url and headers on the server; the answer hides every form of the secret", async t => {
@@ -269,15 +270,15 @@ test("the asker's account: an agent running for member A finds and uses nothing 
   await items(r);
   r.grants.add("kit:northwind-crm");
   const memberA = { token: "tok-a", hops: [person("per_membera"), agentHop("ag_kit")] };
-  await assert.rejects(r.run("vault.find", {}, "mcp:agent:kit", memberA), /this is the owner's vault/);
+  await assert.rejects(r.run("vault.use.find", {}, "mcp:agent:kit", memberA), /this is the owner's vault/);
   await assert.rejects(r.ask({ method: "GET", url: "https://api.example.com/v1/x", headers: { authorization: "Bearer {{vault:northwind-crm.NORTHWIND_API_KEY}}" } }, "mcp:agent:kit", memberA), /this is the owner's vault/);
   await assert.rejects(r.run("vault.use.env", { items: ["northwind-crm"], key: newIdentity().box.public }, "mcp:agent:kit", { token: "tok-b", hops: [person("per_memberb"), agentHop("ag_kit")] }), /this is the owner's vault/);
   assert.equal(r.net.calls.length, 0);
   // the owner's own assistant, on a turn for the owner, has the owner's reach (names and plain values only)
-  const own = await r.run("vault.find", {}, "mcp:agent:juno", { token: "tok-o", agent: "juno", agentKind: "assistant", hops: [person(OWNER), agentHop("ag_juno")] });
+  const own = await r.run("vault.use.find", {}, "mcp:agent:juno", { token: "tok-o", agent: "juno", agentKind: "assistant", hops: [person(OWNER), agentHop("ag_juno")] });
   assert.deepEqual(own.items.map(x => x.name).sort(), ["juniper-mail", "northwind-crm"]);
   assert.ok(!JSON.stringify(own).includes(SECRET) && !JSON.stringify(own).includes(OTHER));
   // a named agent of the owner's still needs its own grant
-  const named = await r.run("vault.find", {}, "mcp:agent:juno", { token: "tok-o", agent: "juno", agentKind: "agent", hops: [person(OWNER), agentHop("ag_juno")] });
+  const named = await r.run("vault.use.find", {}, "mcp:agent:juno", { token: "tok-o", agent: "juno", agentKind: "agent", hops: [person(OWNER), agentHop("ag_juno")] });
   assert.equal(named.items.length, 0);
 });

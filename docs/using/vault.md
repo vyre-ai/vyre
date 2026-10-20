@@ -307,7 +307,7 @@ A credential's older `scope` (`projects` and `agents`) is converted to grants on
 
 An agent never sees a secret. It asks the Vault what it may use, and writes the fields it needs as placeholders; the Vault puts the values in on the server and hides them in the answer.
 
-- **What an agent finds.** `vault.find` lists the items the agent may use: each item's name, its app, the hosts it is used with, its field names, and the value of each plain field. A secret field shows only its name. When several items match, all come back, and the agent picks one or asks you which.
+- **What an agent finds.** `vault.use.find` lists the items the agent may use: each item's name, its app, the hosts it is used with, its field names, and the value of each plain field. A secret field shows only its name. When several items match, all come back, and the agent picks one or asks you which.
 - **Who may use what.** An agent uses an item you shared with it at Can use it, without seeing it, or one you tagged with `#` in the chat. Your own assistant, on a turn you asked for, uses your items. An agent working for another member of your Space reaches nothing in your Vault.
 - **Placeholders.** The agent writes `{{vault:Northwind CRM.NORTHWIND_API_KEY}}` anywhere in a `vault.request`: the address, a header or the body. Names match whatever their case or punctuation (`northwind-crm` and `Northwind CRM` are the same item). A placeholder for an item or field the agent may not use stops the whole request, and the refusal names it.
 - **The answer.** Every secret the request used is hidden in the response as `[hidden: NORTHWIND_API_KEY]`, in its base64, URL-encoded and JSON forms too.

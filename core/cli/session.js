@@ -19,8 +19,7 @@ import { catalogOf, indexOf, find, shapeFind } from "../../harness/mcp/core-tool
 import { spawn } from "node:child_process";
 import { finished } from "node:stream/promises";
 import path from "node:path";
-import { newIdentity, openFrom } from "../vault/crypto.js";
-import { Scrubber } from "../vault/cli-io.js";
+import { Scrubber, runKeys, openRun } from "../vault/cli-io.js";
 
 const MAX_INPUT = 64 * 1024;
 const MAX_OUT = 20_000;
@@ -123,7 +122,7 @@ export async function run(argv, d = {}) {
 }
 
 /**
- * `vyre vault run --item "<name>" [--item "<name>"] -- <command...>`: run one program with Vault items in its environment, each field under its canonical name (GHL_API_KEY). Only an item the
+ * `vyre vault run --item "<name>" [--item "<name>"] -- <command...>`: run one program with Vault items in its environment, each field under its canonical name (NORTHWIND_API_KEY). Only an item the
  * person marked Allowed in scripts, and only one this session's agent may use: the daemon decides (vault.use.env). The values come sealed to a key made here for this one run, so no tool result
  * carries them, and the program's output is shown with every secret hidden as [hidden: NAME], in its encoded forms too. The program itself can read them: that is what the setting allows.
  * @param {string[]} args @param {{ req: typeof request, ident: any, err: (s: string) => void, spawnFn?: typeof spawn, stdout?: NodeJS.WritableStream, stderr?: NodeJS.WritableStream }} o
@@ -141,11 +140,11 @@ export async function vaultRun(args, { req, ident, err, spawnFn = spawn, stdout 
     else { err(`vyre: name each item with --item: ${usage}`); return 2; }
   }
   if (!items.length || !cmd.length) { err(`vyre: ${usage}`); return 2; }
-  const box = newIdentity().box;
+  const box = runKeys().box;
   const r = await req("POST", "/v1/tools/vault.use.env", { items, key: box.public, command: path.basename(cmd[0]) }, ident);
   if (r.error) { err(`${r.error.code}: ${r.error.message}`); return 1; }
   /** @type {{ env?: Record<string, string>, hidden?: string[] }} */ let opened;
-  try { opened = openFrom(box.private, r.data && r.data.box, "vault-run", "vault-run"); } catch { err("vyre: the Vault's answer could not be opened, so nothing ran"); return 1; }
+  try { opened = openRun(box.private, r.data && r.data.box, "vault-run", "vault-run"); } catch { err("vyre: the Vault's answer could not be opened, so nothing ran"); return 1; }
   const env = opened.env || {}, hidden = new Set(opened.hidden || []);
   const values = Object.entries(env).filter(([k]) => hidden.has(k)).map(([k, v]) => ({ value: String(v), mark: `[hidden: ${k}]` }));
   const child = spawnFn(cmd[0], cmd.slice(1), { env: { ...process.env, ...env }, stdio: ["inherit", "pipe", "pipe"] });

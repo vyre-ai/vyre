@@ -2,11 +2,11 @@
 // core/vault/use.js: agents use Vault items by placeholder and never see a secret (the owner, 20 Oct: "the agent asks Vyre what's in store for this, the Vault sends back what's
 // available to it ... the agent uses them in whatever format it wants, and then the Vault plugs in the keys").
 //
-//   vault.find       the items THIS caller may use: names, field names, plain values in full, and for a secret field only { name, secret: true } (no length, no last four, no hash).
+//   vault.use.find       the items THIS caller may use: names, field names, plain values in full, and for a secret field only { name, secret: true } (no length, no last four, no hash).
 //   placeholders     `{{vault:<Item>.<FIELD>}}` anywhere in a vault.request (url, query, headers, body). Names match canonically (case and punctuation do not matter). The values are put in
-//                    here, on the server, and the answer comes back with every secret it used hidden ("[hidden: GHL_API_KEY]"), in its base64, URL-encoded and JSON forms too.
+//                    here, on the server, and the answer comes back with every secret it used hidden ("[hidden: NORTHWIND_API_KEY]"), in its base64, URL-encoded and JSON forms too.
 //   Used with        where an item's secrets may go: the hosts written on the item plus the hosts the person allowed. A host that is not on the list holds the request and asks the person once
-//                    ("Use GHL Sales with services.leadconnectorhq.com?", vault.pending and vault.approve, or their own words through said.js); their yes puts the host on the list. Until then the
+//                    ("Use Northwind CRM with api.example.com?", vault.pending and vault.approve, or their own words through said.js); their yes puts the host on the list. Until then the
 //                    secret goes nowhere. Never over plain http, never to a bare address, never to a private one (api-request.js checkTarget). Plain fields go anywhere.
 //   scripts          an item marked "Allowed in scripts" (off by default) may be put into one program's environment by `vyre vault run --item <name> -- <cmd>` in an agent's session. The values
 //                    travel sealed to a key the command line made for that one run (crypto.js sealFor), so no tool result carries them; the program's output is hidden the same way.
@@ -56,7 +56,7 @@ const json = (/** @type {any} */ v, /** @type {any} */ d) => { try { return v ==
 const bad = (/** @type {string} */ msg, code = "bad_input") => Object.assign(new Error(msg), { code });
 const printable = (/** @type {any} */ s, /** @type {number} */ n) => String(s).replace(/[^\x20-\x7e]/g, "?").slice(0, n);
 
-/** A name as the Vault compares it: upper case, every run of other characters one underscore. "GHL Sales" and ghl-sales are both GHL_SALES. @param {unknown} s */
+/** A name as the Vault compares it: upper case, every run of other characters one underscore. "Northwind CRM" and northwind-crm are both NORTHWIND_CRM. @param {unknown} s */
 export const canon = s => String(s ?? "").trim().toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "");
 
 /** A host that is really an address. A secret goes to a named host only. @param {string} h */
@@ -231,7 +231,7 @@ export class VaultUse {
     return out;
   }
 
-  // ---- vault.find ----
+  // ---- vault.use.find ----
 
   /** @param {{ q?: string, limit?: number }} input @param {any} meta */
   async find(input, meta) {
@@ -284,7 +284,7 @@ export class VaultUse {
         const hits = all.filter((/** @type {any} */ x) => canon(x.name) === canon(r.item));
         if (hits.length > 1) throw bad(`${shown}: ${hits.length} items are called ${canon(r.item)}; ask the person to rename one`, "ambiguous");
         row = hits.length ? this.v.row(hits[0].name) : null;
-        if (!row || NOT_HERE.has(row.kind) || !(await j.may(row))) throw bad(`${shown}: there is no item called ${printable(r.item, 80)} that you may use. vault.find lists the ones you can; the person shares one with Can use it, without seeing it.`, "not_found");
+        if (!row || NOT_HERE.has(row.kind) || !(await j.may(row))) throw bad(`${shown}: there is no item called ${printable(r.item, 80)} that you may use. vault.use.find lists the ones you can; the person shares one with Can use it, without seeing it.`, "not_found");
         rows.set(canon(r.item), row);
       }
       const names = json(row.fields, []).map(String);
@@ -329,7 +329,7 @@ export class VaultUse {
     }
     const ctype = templHeaders["content-type"] || (templBody !== undefined ? (/^\s*[[{]/.test(templBody) ? "application/json" : "application/x-www-form-urlencoded") : "");
     const refs = [...refsIn(templUrl, true), ...Object.values(templHeaders).flatMap(v => refsIn(v)), ...(templBody !== undefined ? refsIn(templBody) : [])];
-    if (!refs.length) throw bad("name a credential, or write an item's field as {{vault:Item.FIELD}} in the url, headers or body (vault.find lists what you may use)");
+    if (!refs.length) throw bad("name a credential, or write an item's field as {{vault:Item.FIELD}} in the url, headers or body (vault.use.find lists what you may use)");
     const used = await this.resolve(refs, j);
     const value = (/** @type {string} */ item, /** @type {string} */ field) => /** @type {any} */ (used.get(`${canon(item)}.${canon(field)}`)).value;
     const filledUrl = fillUrl(templUrl, value);
@@ -567,7 +567,7 @@ export class VaultUse {
     for (const name of items) {
       const hits = this.v.list().items.filter((/** @type {any} */ x) => canon(x.name) === canon(name));
       const row = hits.length === 1 ? this.v.row(hits[0].name) : null;
-      if (!row || NOT_HERE.has(row.kind) || !(await j.may(row))) { this.v.audit("use", null, this.whoOf(meta), false, `refused: an item for ${command} that this caller may not use`); throw bad(`there is no item called ${printable(name, 80)} that you may use (vault.find lists them)`, "not_found"); }
+      if (!row || NOT_HERE.has(row.kind) || !(await j.may(row))) { this.v.audit("use", null, this.whoOf(meta), false, `refused: an item for ${command} that this caller may not use`); throw bad(`there is no item called ${printable(name, 80)} that you may use (vault.use.find lists them)`, "not_found"); }
       if (!this.rules(row).scripts) { this.note([row.name], meta, false, `refused: not allowed in scripts (${command})`, `command ${command}`, person); throw bad(`${row.name} is not allowed in scripts. The person can turn on Allowed in scripts for it in the Vault; until then use it through vault.request with {{vault:${row.name}.FIELD}}.`, "denied"); }
       const f = await this.v.fields(row);
       const rules = this.rules(row);
@@ -598,7 +598,7 @@ export function register({ vault, api, said, tool, emit }) {
   const str = { type: "string" };
   const obj = (/** @type {any} */ properties, /** @type {string[]} */ required = []) => ({ type: "object", properties, required });
 
-  tool("vault.find", ["cli", "local", "deck", "capsule", "mcp", "harness"], "Vault items you may use: names, field names, plain values. Secret fields show only their name; use them as {{vault:Item.FIELD}} in vault.request.",
+  tool("vault.use.find", ["cli", "local", "deck", "capsule", "mcp", "harness"], "Vault items you may use: names, field names, plain values. Secret fields show only their name; use them as {{vault:Item.FIELD}} in vault.request.",
     obj({ q: { type: "string", description: "words to match the item, its app or a field name" }, limit: { type: "integer" } }), (input, meta) => use.find(input || {}, meta));
 
   tool("vault.use.env", ["mcp", "harness"], "For vyre vault run --item in an agent's session: the items' fields for one program, sealed to the run's key. Only items Allowed in scripts.",

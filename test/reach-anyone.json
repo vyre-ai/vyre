@@ -1877,7 +1877,7 @@
    "module": "vault",
    "reason": "scope check and the Gate: the key is never shown, a read runs, a send, payment or deletion runs only when asked for exactly or is held at the Gate"
   },
-  "vault.find": {
+  "vault.use.find": {
    "module": "vault",
    "reason": "read-only, behind the owner check (member-gate.js) and the kernel's Can use grant per item: names, field names and plain values, never a secret value"
   },
