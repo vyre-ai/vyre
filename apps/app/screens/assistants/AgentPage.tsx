@@ -126,6 +126,11 @@ function Usage({ name }: { name: string }) {
   );
 }
 
+/** The AI tab: the agent's model from the one picker, and whose AI account it runs on. Also drawn by the gallery. */
+export function AgentAiTab({ a }: { a: AgentFull }) {
+  return <><Model a={a} onSaved={() => {}} /><Models /></>;
+}
+
 function Model({ a, onSaved }: { a: AgentFull; onSaved: (m: string, provider: string, e: string) => void }) {
   // the one model picker: the person's own AI accounts and what each can run, with their details (src/models/useMyModels.ts); the effort control shows only for a model that takes one, with its own levels
   const who = displayName(a);
