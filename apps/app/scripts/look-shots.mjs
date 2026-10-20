@@ -37,14 +37,20 @@ async function photoShots(ctx, page, shot, w, theme) {
   await maker.setContent(`<body style="margin:0"><div style="width:1200px;height:900px;background:linear-gradient(135deg,#4b6cb7,#182848);display:flex;align-items:center;justify-content:center"><div style="width:420px;height:420px;border-radius:50%;background:radial-gradient(circle at 40% 35%,#f3d1b5,#c98f6b);box-shadow:0 0 0 40px #2c3e50"></div></div></body>`);
   fs.writeFileSync(pic, await maker.screenshot({ type: "png" }));
   await maker.close();
-  await page.goto(`${root}/u/profile`, { waitUntil: "networkidle" }); await page.waitForTimeout(2500);
-  // a profile is per Space: the sample opens on All spaces, so pick its first Space with the switcher (the sidebar is unfolded first if an earlier shot folded it)
+  // a profile is per Space: the sample opens on All spaces, so pick its first Space with the switcher on Now, then open Your profile from the account menu (the rail's foot on a wide screen, the face
+  // at the end of the title row on a phone). The sidebar is unfolded first if an earlier shot folded it.
+  await page.goto(`${root}/u/now`, { waitUntil: "networkidle" }); await page.waitForTimeout(2500);
   const switcher = page.getByRole("button", { name: /Switch space/ }).first();
   if (!(await switcher.isVisible().catch(() => false)) && w > 600) { await page.keyboard.press("Control+Backslash"); await page.waitForTimeout(600); }
   await switcher.click().catch(() => console.log(`photo ${w} ${theme}: no Space switcher`));
   await page.waitForTimeout(500);
   await page.getByRole("menuitem", { name: /Juniper Studio/ }).first().click().catch(() => console.log(`photo ${w} ${theme}: no Juniper Studio in the switcher`));
   await page.waitForTimeout(1500);
+  await page.getByRole("button", { name: /your profile, AI accounts/ }).first().click().catch(() => console.log(`photo ${w} ${theme}: no account menu`));
+  await page.waitForTimeout(500);
+  await shot("p0-account-menu");
+  await page.getByRole("menuitem", { name: "Your profile" }).first().click().catch(() => console.log(`photo ${w} ${theme}: no Your profile in the account menu`));
+  await page.waitForTimeout(2000);
   await shot("p1-profile");
   const upload = page.getByRole("button", { name: /Upload photo|Change photo/ }).first();
   if (!(await upload.count())) { console.log(`photo ${w} ${theme}: no Upload photo button (the profile needs a Space showing)`); return; }

@@ -1,7 +1,7 @@
 import "../../../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ABOUT_MAX, PHOTO_TYPE, PROFILE_TYPE, aboutProblem, looksByName, photoCreate, photosOf, profileWrite, profilesOf } from "./profiles-model.js";
+import { ABOUT_MAX, PHOTOS_KEY, PHOTO_TYPE, PROFILE_TYPE, aboutProblem, looksByName, photoCacheKey, photoCreate, photoIdOf, photoUrn, photoWipe, photosOf, profileWrite, profilesOf, retiredPhotos } from "./profiles-model.js";
 import { MEMBER_PHOTO, MEMBER_PROFILE } from "../../../../records/core-types.js";
 
 const row = (id, data, version = 1, updated_at = 1) => ({ type: PROFILE_TYPE, id, version, data, updated_at });
@@ -66,4 +66,18 @@ test("a save makes the record once, then changes only what changed, against the 
   const cur = profilesOf({ rows: [row("r1", first.input.data, 4)] }).per_bob;
   assert.equal(profileWrite(cur, "per_bob", { name: "Bob", about: "Runs intake" }, "spc_aaaaaaaaaaaa"), null, "nothing changed");
   assert.deepEqual(profileWrite(cur, "per_bob", { about: "Runs intake and billing" }, "spc_aaaaaaaaaaaa"), { tool: "records.update", input: { urn: `vyre://spc_aaaaaaaaaaaa/${PROFILE_TYPE}/r1`, patch: { about: "Runs intake and billing" }, base_version: 4 } });
+});
+
+test("this device keeps a photo by its id, and forgets the ones a fresh read no longer names", () => {
+  const S = "spc_aaaaaaaaaaaa", A = PID, B = PID.replace(/1$/, "2"), C = PID.replace(/1$/, "3");
+  assert.equal(photoIdOf(photoUrn(S, A)), A);
+  assert.equal(photoIdOf("vyre://spc_aaaaaaaaaaaa/member-profile/x"), "", "only a photo address");
+  assert.equal(photoIdOf("vyre://spc_aaaaaaaaaaaa/member-photo/../../etc"), "");
+  assert.equal(photoCacheKey(A), `photo:${A}`);
+  assert.equal(typeof PHOTOS_KEY, "string");
+  const was = profilesOf({ rows: [row("a", { person: "p1", photo: A }), row("b", { person: "p2", photo: B }), row("c", { person: "p3", photo: C })] });
+  const now = profilesOf({ rows: [row("a", { person: "p1", photo: A }), row("b", { person: "p2", photo: C.replace(/3$/, "4") }), row("c", { person: "p3" })] });
+  assert.deepEqual(retiredPhotos(was, now).sort(), [B, C].sort(), "a replaced one and a removed one");
+  assert.deepEqual(retiredPhotos(undefined, now), [], "a first read forgets nothing");
+  assert.deepEqual(photoWipe(photoUrn(S, A), 3), { urn: photoUrn(S, A), patch: { image: "", bytes: 0 }, base_version: 3 }, "a wipe keeps the record and its person, never the picture");
 });

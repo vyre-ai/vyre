@@ -26,6 +26,8 @@ export function ProfileScreen() {
   const load = useProfiles((s) => s.load);
   const save = useProfiles((s) => s.save);
   const setPhoto = useProfiles((s) => s.setPhoto);
+  const leftover = useProfiles((s) => Boolean(s.leftover[space]));
+  const retryLeftover = useProfiles((s) => s.retryLeftover);
   const deviceLook = useMyLook((s) => s.look);
   const mock = allowsMock();
   const one = Boolean(showing) && space !== "all";
@@ -108,6 +110,12 @@ export function ProfileScreen() {
               {hasPhoto ? <Button kind="ghost" size="sm" icon="trash" label="Remove photo" disabled={busy} onPress={() => void removePhoto()} /> : null}
               <Button kind="ghost" size="sm" icon="spark" label="Change your look" onPress={() => setPicking(true)} />
             </View>
+            {leftover ? (
+              <View className="flex-row flex-wrap items-center gap-s2">
+                <Text size="caption" tone="muted">The old photo couldn't be removed. Try again.</Text>
+                <Button kind="ghost" size="sm" icon="refresh" label="Try again" disabled={busy} onPress={() => { setBusy(true); void retryLeftover(space).then(() => showToast("The old photo is removed."), (e) => showToast(say(e))).finally(() => setBusy(false)); }} />
+              </View>
+            ) : null}
             {editingName ? (
               <View className="gap-s2">
                 <Field label="Your name" value={nameDraft} onChangeText={setNameDraft} help="One line of up to 60 characters. It is your name in every Space. Your username stays the same." />

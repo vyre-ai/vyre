@@ -46,6 +46,26 @@ export function looksByName(byPerson) {
 /** The address of a profile photo record in a Space. @param {string} space @param {string} id */
 export const photoUrn = (space, id) => `vyre://${space}/${PHOTO_TYPE}/${id}`;
 
+/** The photo id an address names, or "". @param {string} urn */
+export const photoIdOf = (urn) => { const m = /\/member-photo\/([^/?#]+)$/.exec(String(urn || "")); return m && PHOTO_ID.test(m[1]) ? m[1] : ""; };
+
+/** Where this device keeps a photo it read (the view cache, src/state/cache): by photo id, which names one picture for good. @param {string} id */
+export const photoCacheKey = (id) => `photo:${id}`;
+/** Where this device keeps the Space's last photo addresses, so faces draw the photos at once on the next start, before the profiles are read again. */
+export const PHOTOS_KEY = "profile-photos";
+
+/**
+ * The photo ids a fresh read of a Space's profiles no longer names: each was replaced or taken away, so this device forgets its copy.
+ * @param {Record<string, Profile> | undefined} was @param {Record<string, Profile>} now @returns {string[]}
+ */
+export function retiredPhotos(was, now) {
+  const named = new Set(Object.values(now).map((p) => p.photo).filter(Boolean));
+  return [...new Set(Object.values(was || {}).map((p) => p.photo).filter((id) => id && !named.has(id)))];
+}
+
+/** What wipes a photo's picture: the record keeps no image, only the person it was theirs. @param {string} urn @param {number} version */
+export const photoWipe = (urn, version) => ({ urn, patch: { image: "", bytes: 0 }, base_version: version });
+
 /**
  * The photos of a Space's people, for the faces the app draws (ui/marks/usePersonLooks.ts): by person id, and by lower-case name for a face drawn with a name alone. A name two people share is left
  * out, as with looks, so nobody is drawn with someone else's photo. A person with no photo is not in it.
