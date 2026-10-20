@@ -653,6 +653,10 @@
    "class": "review",
    "why": "an HTTP call with a vault credential: vault owner to confirm it needs a grant for this surface"
   },
+  "vault.use.env": {
+   "class": "refused",
+   "reason": "the body refuses a plain session (bare mcp or harness): vyre vault run --item is for a session Vyre started for an agent or a chat, and only for items Allowed in scripts"
+  },
   "vault.revoke": {
    "class": "own",
    "why": "taking access away is always allowed"

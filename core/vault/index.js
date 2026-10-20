@@ -55,6 +55,7 @@ import * as memberShareTools from "./tools/member-share.js";
 import { grantPrompt, putPrompt } from "./prompt.js";
 import { scanEnvFiles } from "./envscan.js";
 import * as requestTools from "./request.js";
+import * as useTools from "./use.js";
 
 export { presence };
 import * as shareTools from "./tools/share.js";
@@ -341,11 +342,18 @@ export default {
 
     // "module": the approvals queue lists what waits as cards (core/approvals/items.js); names only, and only Vyre's own modules (closeToAddedModules above).
     tool("vault.pending", [...SURFACES, "mcp", "module"], "Grants and passes an agent asked for, waiting for a person.",
-      obj({}), () => vault.pending());
+      // useHosts: an agent asked to send an item's secret to a host not yet on its Used with (use.js)
+      obj({}), () => ({ ...vault.pending(), useHosts: /** @type {any} */ (vault).use ? /** @type {any} */ (vault).use.pending() : [] }));
 
     tool("vault.approve", SURFACES, "Approve a pending grant or pass.",
-      obj({ id: str }, ["id"]), (input, meta) => { windowUse(meta.presence, "approve", input.id, meta.caller); return vault.approve(input, meta.caller, meta); },
+      obj({ id: str }, ["id"]), (input, meta) => {
+        windowUse(meta.presence, "approve", input.id, meta.caller);
+        if (String(input.id).startsWith("vu_") && /** @type {any} */ (vault).use) return /** @type {any} */ (vault).use.approve(String(input.id), String(meta.caller));
+        return vault.approve(input, meta.caller, meta);
+      },
       presence("Approve a pending grant or pass", ({ id }) => {
+        const u = /** @type {any} */ (vault).use ? /** @type {any} */ (vault).use.one(String(id)) : null;
+        if (u) return `Use ${quoted(u.item)} with ${String(u.host)}: its secrets may be sent there from now on, and you trust that host with them fully`;
         const p = vault.pending();
         const g = p.grants.find(x => x.id === id);
         if (g) return grantPrompt(g, vault.row(g.name)?.vault === "personal");
@@ -619,6 +627,8 @@ export default {
     try { ctx.events.on("thread.deleted", (/** @type {any} */ e) => { const t = String((e && e.payload && (e.payload.thread || e.payload.uuid || e.payload.id)) || (e && e.thread) || ""); if (t) said.dropThread(t, "module:vault"); }); } catch { /* no event bus in a bare test */ }
     // A vendor API call with an api-credential: reads run, asked-for sends run, the rest hold at the Gate.
     const requests = requestTools.register({ vault, tool, internal, said, call: ctx.call ? (name, input) => ctx.call(name, input) : undefined, log: ctx.log });
+    // Agents use items by placeholder and never see a secret: vault.use.find, {{vault:Item.FIELD}} in vault.request, Used with, Allowed in scripts (use.js).
+    /** @type {any} */ (vault).use = useTools.register({ vault, api: requests, said, tool, emit: (t, p) => ctx.events.emit(t, p) });
 
     tool("vault.offboard", [...SURFACES, "mcp"], "Someone left: revoke every pass they hold and list what must be rotated.",
       obj({ person: str }, ["person"]), (input, { caller }) => vault.offboard(input, caller),

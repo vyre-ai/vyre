@@ -49,7 +49,7 @@ import { Release, RELEASE_BODY_MIGRATION, GRANT_REQUEST_KIND_MIGRATION } from ".
 import { MCP_PASSES_MIGRATION } from "./passmcp.js";
 import { Links } from "./links.js";
 import { Emergency, EMERGENCY_MIGRATION, EMERGENCY_MACED } from "./emergency.js";
-import { SAID_MIGRATION, SAID_MACED } from "./said.js";
+import { SAID_MIGRATION, SAID_MACED } from "./said.js"; import { USE_MIGRATION, USE_MACED } from "./use.js";
 import { CONNECTIONS_MIGRATION, CONNECTIONS_PICKER_MIGRATION, CONNECTION_MACED, DEFAULT_SUGGEST_MIGRATION } from "./connections.js";
 import { newId as newUuid } from "../../lib/id.js";
 
@@ -152,7 +152,7 @@ export const MIGRATIONS = [
   // The Vault MCP: passes made for outside agents, and what they asked to see (passmcp.js).
   MCP_PASSES_MIGRATION,
   // What was converted once to kernel grants (a credential's scope): so it is made, and logged, once (access.js). Then the Space member a person is linked to, last so earlier steps keep their numbers (share.js).
-  CONVERSIONS_MIGRATION, GRANT_REQUEST_KIND_MIGRATION, NAMED_MIGRATION, ...MEMBER_MIGRATIONS,
+  CONVERSIONS_MIGRATION, GRANT_REQUEST_KIND_MIGRATION, NAMED_MIGRATION, ...MEMBER_MIGRATIONS, USE_MIGRATION, // then each item's own rules for agents: Used with, Allowed in scripts, plain fields (use.js)
 ];
 
 /** The two classes of vault (ADR 0006 decision 1), and the key version each is on. */
@@ -185,7 +185,7 @@ export const MACED = {
   // Which connection a row is, what it can do, and which surfaces may use it (ADR 0028, 9b).
   vault_connections: CONNECTION_MACED,
   // What the person said to send, post or pay, and whether it still stands (said.js).
-  vault_said_intents: SAID_MACED,
+  vault_said_intents: SAID_MACED, vault_item_use: USE_MACED, // and an item's rules for agents (use.js)
 };
 /** The key column of each MACed table, where it is not `id`. */
 const KEY_COL = { vault_ssh_keys: "name", vault_marks: "name", vault_device_keys: "device" };

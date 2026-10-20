@@ -22,7 +22,7 @@ export const AUDIT_WHERE_MIGRATION = `ALTER TABLE vault_audit ADD COLUMN origin 
 export const AGENT_GRANT_MACED = ["id", "item", "agent", "origin", "expires", "status", "revoked"];
 
 /** Audit actions that are a use of an item: a value went somewhere, or was asked to. */
-export const USE_ACTIONS = ["fill", "agent-fill", "fill-native", "release", "relay", "totp", "copy", "reveal", "inject"];
+export const USE_ACTIONS = ["fill", "agent-fill", "fill-native", "release", "relay", "totp", "copy", "reveal", "inject", "use"];
 
 /** The surfaces a use is recorded from (ADR 0028, decision 2). */
 export const SURFACES = ["ios", "android", "mac", "chrome", "firefox", "capsule", "computer", "deck", "cli"];
