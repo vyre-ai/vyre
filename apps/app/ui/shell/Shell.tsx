@@ -246,7 +246,7 @@ function Rail(p: RailProps) {
   );
 }
 
-/** A tab: icon 24, label 11 medium. The current tab is the strong ink, icon and label together (violet is only for what needs you). */
+/** A tab: icon 24, label 12 medium. The current tab is the strong ink, icon and label together (violet is only for what needs you). */
 function Tab({ it, on, onPress }: { it: NavItem | null; on: boolean; onPress: () => void }) {
   const { color } = useUiTheme();
   if (!it) return null;
@@ -256,7 +256,7 @@ function Tab({ it, on, onPress }: { it: NavItem | null; on: boolean; onPress: ()
       <View style={Platform.OS === "android" ? { width: 64, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center", backgroundColor: on ? color.selected : "transparent" } : null}>
         <Icon name={it.icon} tone={on ? "text" : "label"} size={24} />
       </View>
-      <Text medium style={{ fontSize: 11, lineHeight: 13 }} tone={on ? "default" : "label"}>{it.label}</Text>
+      <Text medium style={{ fontSize: 12, lineHeight: 14 }} tone={on ? "default" : "label"}>{it.label}</Text>
     </Pressable>
   );
 }
