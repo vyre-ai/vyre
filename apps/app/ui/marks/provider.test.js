@@ -2,12 +2,22 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { badgeLabel, badgeSize, providerArt, providerMono, providerName, providerOfModel } from "./provider.js";
+import fs from "node:fs";
+import { badgeLabel, badgeSize, providerIcon, providerMono, providerName, providerOfModel, providerVendor } from "./provider.js";
 
-test("a known provider has its own mark in both schemes; an unknown one has a monogram and none has nothing", () => {
-  for (const p of ["claude", "codex", "openrouter", "grok"]) { assert.ok(providerArt(p, "dark")?.startsWith("<svg"), p); assert.ok(providerArt(p, "paper")?.startsWith("<svg"), p); }
-  assert.equal(providerArt("mistral"), null);
-  assert.equal(providerArt(null), null);
+// the icon set's names, read from the generated module (the one icon family every Icon draws from)
+const family = new Set([...fs.readFileSync(new URL("../../src/ui/icons.generated.ts", import.meta.url), "utf8").matchAll(/^\s*\|\s*"([a-z0-9-]+)"/gm)].map((m) => m[1]));
+
+test("every provider's mark is in the app's icon set; an unknown one has a monogram and none has nothing", () => {
+  const want = { claude: "logo-claude", codex: "logo-openai", grok: "logo-grok", openrouter: "logo-openrouter", "openai-compatible": "key" };
+  for (const [p, icon] of Object.entries(want)) {
+    assert.equal(providerIcon(p), icon, p);
+    assert.ok(family.has(icon), `${icon} is in src/ui/icons.generated.ts`);
+  }
+  assert.deepEqual(["claude", "codex", "grok", "openrouter", "openai-compatible"].map(providerVendor), ["Anthropic", "OpenAI", "xAI", "OpenRouter", "Any key"]);
+  assert.equal(providerName("openai-compatible"), "OpenAI-compatible");
+  assert.equal(providerIcon("mistral"), null);
+  assert.equal(providerIcon(null), null);
   assert.equal(providerMono("mistral"), "Mi");
   assert.equal(providerMono("codex"), "Cx");
   assert.equal(providerName("codex"), "Codex");

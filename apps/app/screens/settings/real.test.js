@@ -75,10 +75,6 @@ const AGENTS = [
   { name: "new", kind: "agent", projects: [], status: "new", doing: "not started", thread: null },
 ];
 const USAGE = [{ agent: "juno", kind: "assistant", turns: 4, threads: 1, cost_usd: 1.5, api_cost_usd: 0, budget_usd: null, spent_usd: 1.5, left_usd: null, auth: "subscription" }, { agent: "kit", kind: "agent", turns: 9, threads: 2, cost_usd: 12, api_cost_usd: 12, budget_usd: 50, spent_usd: 50, left_usd: 0, auth: "api-key" }];
-const PROVIDERS = [
-  { id: "codex", label: "Codex", accounts: [], models: [] },
-  { id: "claude", label: "Claude", accounts: [{ id: "default", label: "Default", kind: "login", plan: "Max plan", signed_in: true, default: true }], models: [{ id: "opus", label: "Opus" }] },
-];
 
 test("assistants: the list as lines, pause is agents.stop and resume is agents.resume", { skip: !strip }, async () => {
   const { settingsSource } = await import("./real-source.ts");
@@ -92,13 +88,11 @@ test("assistants: the list as lines, pause is agents.stop and resume is agents.r
   assert.deepEqual(b.seen.slice(1), [{ tool: "agents.stop", input: { agent: "juno" } }, { tool: "agents.resume", input: { agent: "kit" } }]);
 });
 
-test("AI accounts: connected providers first with their plan, spend and budget in words", { skip: !strip }, async () => {
+test("AI accounts: what the agents spent and their budgets in words", { skip: !strip }, async () => {
   const { settingsSource } = await import("./real-source.ts");
   const m = await import("./agents-model.ts");
-  const b = box({ "providers.list": { data: PROVIDERS }, "agents.usage": { data: USAGE } });
+  const b = box({ "agents.usage": { data: USAGE } });
   const s = settingsSource(b.call);
-  const rows = m.providerRows(await s.providers());
-  assert.deepEqual(rows.map((r) => [r.name, r.on, r.line]), [["Claude", true, "Default, Max plan"], ["Codex", false, "Not connected"]]);
   const us = await s.agentsUsage();
   assert.equal(m.budgetLine(us[0]), "$1.50 spent. No budget set.");
   assert.equal(m.budgetLine(us[1]), "$50 of $50. At the limit: the agent stops and asks you.");

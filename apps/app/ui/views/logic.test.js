@@ -5,7 +5,7 @@ import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createMockStore } from "../../src/store-core/mock-store.js";
-import { galleryCards, barPct, dashboardCards, numberOf, saysWhere, whereFn, MONTHS, ago, assistantNote, boardColumns, columnOf, fieldOf, filesOf, filterRows, isSealedField, linkIndex, listColumns, monthWeeks, newFieldSpec, relatedRecords, rowsByDay, sealSpec, stageField, startMonth, stepMonth, titleOf, urnParam, filterWords, isHiddenType, viewDefOf, storedViewsOf, viewRows, viewsOf, columnNote, forecastLine } from "./logic.js";
+import { canSealField, galleryCards, barPct, dashboardCards, numberOf, saysWhere, whereFn, MONTHS, ago, assistantNote, boardColumns, columnOf, fieldOf, filesOf, filterRows, isSealedField, linkIndex, listColumns, monthWeeks, newFieldSpec, relatedRecords, rowsByDay, sealSpec, stageField, startMonth, stepMonth, titleOf, urnParam, filterWords, isHiddenType, viewDefOf, storedViewsOf, viewRows, viewsOf, columnNote, forecastLine } from "./logic.js";
 
 const store = createMockStore({ world: "morning" });
 const types = await store.types();
@@ -75,6 +75,13 @@ test("Seal for all names how many records have a value", () => {
   assert.match(s.body, new RegExp(`^${byType.contact.filter((r) => r.data.ssn?.present).length} of ${byType.contact.length} people`));
   assert.equal(isSealedField(f), true);
   assert.equal(isSealedField(fieldOf(def("contact"), "name")), false);
+});
+
+test("Seal is offered only on a field the kernel can seal in place", () => {
+  assert.equal(canSealField({ name: "account", kind: "text" }), true);
+  assert.equal(canSealField({ name: "notes", kind: "rich_text" }), true);
+  for (const f of [{ name: "ssn", kind: "sealed" }, { name: "age", kind: "number" }, { name: "email", kind: "text", unique: true }, { name: "ref", kind: "text", read_only: true }, { name: "status", kind: "text", owned_by: "kernel" }, { name: "old", kind: "text", hidden: true }, { name: "budget", kind: "text", fast: true }])
+    assert.equal(canSealField(f), false, f.name);
 });
 
 test("the assistant's note says what is sealed, or that nothing is", () => {
@@ -216,7 +223,7 @@ test("a record's reveal and fill go to the box held for the owner's yes: the pag
   assert.equal(/simulatedProof/.test(page), false);
   assert.match(page, /Hidden from AI; your agent sees a placeholder/);
   const link = readSrc(new URL("../../src/api/store-link.ts", import.meta.url), "utf8");
-  assert.match(link, /HELD = new Set\(\["records\.seal-put", "records\.reveal"\]\)/);
+  assert.match(link, /HELD = new Set\(\["records\.seal-put", "records\.reveal", "records\.field\.seal"\]\)/, "sealing a field for good goes through the held door too");
 });
 
 test("a type with several stored views of one kind: the first is the default, a name picks another", () => {

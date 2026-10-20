@@ -1,6 +1,8 @@
 // The app's icon drawings, from the one 24-grid family (team/0.3/assets/icons: 95 icons, stroke 1.6, round caps and joins, currentColor) in
 // src/ui/icons.source.json, into src/ui/icons.generated.ts: a typed IconName union plus the element data both Icon components draw with
 // react-native-svg. Every name the earlier 16-grid set had still works through ALIASES (chev-r is chevron, faceid is face).
+// The AI providers' brand marks (logo-claude, logo-openai, logo-grok, logo-openrouter) are filled, not stroked: their one element is <fill d="..."/>, a path drawn
+// as a solid shape in the same ink. They are simple-icons' CC0 paths on the same 24 grid; Grok, which simple-icons lacks, is xAI's published mark scaled to the grid.
 //
 //   node scripts/gen-ui-icons.mjs            write src/ui/icons.generated.ts
 //   node scripts/gen-ui-icons.mjs --check    exit 1 if the file would change
@@ -18,7 +20,7 @@ export const ALIASES = {
   "wifi-off": "offline", alarm: "bell", todo: "task", box: "kits",
 };
 
-const TAGS = { path: ["d"], circle: ["cx", "cy", "r"], rect: ["x", "y", "width", "height", "rx"], ellipse: ["cx", "cy", "rx", "ry"] };
+const TAGS = { path: ["d"], fill: ["d"], circle: ["cx", "cy", "r"], rect: ["x", "y", "width", "height", "rx"], ellipse: ["cx", "cy", "rx", "ry"] };
 const ELEMENT = /<([a-z]+)((?:\s+[a-z][a-z0-9-]*="[^"]*")*)\s*\/>/g;
 const ATTR = /([a-z][a-z0-9-]*)="([^"]*)"/g;
 
@@ -71,6 +73,7 @@ export function renderIcons(icons, aliases = ALIASES) {
     "/** One element of a drawing on the 24 grid: its SVG tag and attributes. */",
     "export type IconElement =",
     '  | { el: "path"; d: string }',
+    '  | { el: "fill"; d: string }',
     '  | { el: "circle"; cx: number; cy: number; r: number }',
     '  | { el: "rect"; x: number; y: number; width: number; height: number; rx?: number }',
     '  | { el: "ellipse"; cx: number; cy: number; rx: number; ry: number };',

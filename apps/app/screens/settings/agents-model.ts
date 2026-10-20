@@ -29,13 +29,5 @@ export function budgetLine(u: Usage): string {
 }
 export const usedShare = (u: Usage): number => (u.budget_usd ? Math.min(1, u.spent_usd / u.budget_usd) : 0);
 
-/** One row per provider: its signed-in accounts, or "Not connected". */
-export function providerRows(ps: Provider[]): { id: string; name: string; on: boolean; line: string; accounts: string[] }[] {
-  return ps.map((p) => {
-    const on = p.accounts.filter((a) => a.signed_in);
-    return { id: p.id, name: p.label, on: on.length > 0, line: on.length ? on.map((a) => `${a.label}${a.plan ? `, ${a.plan}` : ""}`).join("; ") : "Not connected", accounts: on.map((a) => a.id) };
-  }).sort((a, b) => Number(b.on) - Number(a.on));
-}
-
 /** What the agents together have spent, for the top of AI accounts. */
 export const totalSpent = (us: Usage[]): number => us.reduce((n, u) => n + (u.spent_usd || 0), 0);
