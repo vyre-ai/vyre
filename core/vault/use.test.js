@@ -51,7 +51,8 @@ async function mk(t, { gated = false } = {}) {
   // the kernel's answers: which agent holds Can use on which item, and whose chain a call carries
   const grants = new Set();
   /** @type {any} */ (v).access = {
-    K: { owner: OWNER, chain: async meta => ({ hops: meta.hops || [] }) },
+    // the kernel's own vault grants (module releases, lent logins): none in this rig
+    K: { owner: OWNER, space: "sp_test", vault: { grantsOn: () => [] }, chain: async meta => ({ hops: meta.hops || [] }) },
     items: () => [],
     modelName: (meta, caller) => String(meta.agent || (/(?:^|:)agent:([^:\s]+)/.exec(caller) || [])[1] || "assistant").toLowerCase(),
     effectFor: async (name, item, action) => (action === "vault.read" && grants.has(`${name}:${item}`) ? "allow" : "deny"),
