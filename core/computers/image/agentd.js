@@ -358,3 +358,36 @@ export function planExec(u, req, lim = {}) {
 
 /** A streaming run (a harness session) may carry a longer command line than a one-shot exec. */
 export const RUN_ARGV_BYTES = 10_000;
+
+/** The file operations an "fs" ticket may carry: agentd-fs.js runs one, as the agent, with computerd's own /fs routes (Files > Agents > <agent>, owner decision 20 Oct 2026). */
+export const FS_OPS = Object.freeze(["list", "stat", "read", "write", "mkdir", "move", "trash"]);
+/** The largest file one write carries. vyred's own cap is lower (what one Files call takes); this is the floor the computer keeps whatever vyred asks. */
+export const FS_WRITE_MAX = 256 * 1024 * 1024;
+
+/**
+ * Check a request for one file operation in the agent's home, before the relay holds it: the operation, its paths (relative, no "..", no NUL, at most 4096 characters), a write's exact size and
+ * whether it may replace a file, a read's one byte range. The helper checks every path again as the agent, through computerd/fs.js (symlinks, private names, Downloads read-only); this is the first gate.
+ * @param {any} spec @returns {{ op: string, path?: string, from?: string, to?: string, size?: number, overwrite?: boolean, range?: string }}
+ */
+export function validateFs(spec) {
+  if (!spec || typeof spec !== "object" || Array.isArray(spec)) throw new Error("a file request is an object");
+  const op = String(spec.op);
+  if (!FS_OPS.includes(op)) throw new Error("not a file operation");
+  const rel = (/** @type {unknown} */ v, /** @type {string} */ name) => {
+    const s = v === undefined || v === null ? "" : v;
+    if (typeof s !== "string" || s.length > 4096 || s.includes("\0") || /^[\\/~]/.test(s) || s.split(/[\\/]+/).includes("..")) throw new Error(`${name} is a path inside the agent's home`);
+    return s;
+  };
+  /** @type {{ op: string, path?: string, from?: string, to?: string, size?: number, overwrite?: boolean, range?: string }} */ const out = { op };
+  if (op === "move") { out.from = rel(spec.from, "from"); out.to = rel(spec.to, "to"); if (!out.from || !out.to) throw new Error("a move names where from and where to"); }
+  else out.path = rel(spec.path, "path");
+  if (op === "write") {
+    if (!Number.isSafeInteger(spec.size) || spec.size < 0 || spec.size > FS_WRITE_MAX) throw new Error(`a write is 0 to ${FS_WRITE_MAX} bytes, said up front`);
+    out.size = spec.size; out.overwrite = spec.overwrite === true;
+  }
+  if (op === "read" && spec.range !== undefined && spec.range !== null) {
+    if (typeof spec.range !== "string" || !/^bytes=\d{0,15}-\d{0,15}$/.test(spec.range)) throw new Error("a range is bytes=start-end");
+    out.range = spec.range;
+  }
+  return out;
+}

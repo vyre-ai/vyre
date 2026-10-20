@@ -550,3 +550,13 @@ test("isolation (static): the screen is the browser uid's, never the agent's: Xv
   assert.doesNotMatch(relay, /asAgent\(u\), "\/usr\/bin\/python3"/, "the screen relay's pipe is not the agent's");
   assert.match(relay, /XAUTHORITY: browserOf\(u\)\.xauth/, "a terminal gets the untrusted cookie");
 });
+
+test("isolation (static): a file ticket runs one operation as the agent itself, through computerd's own path guard, never as the browser or with a shell", () => {
+  const relay = fs.readFileSync(path.join(HERE_DIR, "agentd-relay.js"), "utf8"), helper = fs.readFileSync(path.join(HERE_DIR, "agentd-fs.js"), "utf8");
+  assert.match(relay, /u\.kind === "fs" \? \[\.\.\.asAgent\(u, \{ noAddressCap: true, dataMb: 2048, cpuSeconds: 600 \}\), "\/usr\/bin\/node", FS\]/, "the agent's own uid, no capability, a fixed helper and no argument");
+  assert.match(relay, /if \(spec !== null\) spec = kind === "fs" \? validateFs\(spec\)/, "the operation is checked when the ticket is held");
+  assert.match(helper, /uid < 20000 \|\| uid > 20063/, "it refuses to run as anything but an agent's uid");
+  assert.match(helper, /createFs\(\{ root: o\.root, downloads: o\.downloads/, "computerd's own routes, on the uid's home");
+  assert.doesNotMatch(helper, /child_process|spawn|exec\(/, "it starts nothing");
+  assert.match(DOCKERFILE, /^COPY computerd\/fs\.js \/opt\/agentd\/computerd\/fs\.js$/m, "the guard is in the image beside it, root's");
+});

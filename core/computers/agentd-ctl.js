@@ -34,6 +34,8 @@ export function agentdCtl(deps) {
     cdpTicket: (u, ticket) => post("ticket", { user: u.user, uid: u.uid, display: u.display, ticket, kind: "cdp" }),
     /** register a one-use ticket to run one command as the agent and stream it (a harness session): what to run rides with the ticket, checked again by the helper */
     runTicket: (u, ticket, spec) => post("ticket", { user: u.user, uid: u.uid, display: u.display, ticket, kind: "run", argv: spec.argv, cwd: spec.cwd, env: spec.env }),
+    /** register a one-use ticket for ONE file operation in the agent's home (Files > Agents > <agent>): the operation rides with the ticket, checked by agentd and again by the helper, as the agent */
+    fsTicket: (u, ticket, spec) => post("ticket", { user: u.user, uid: u.uid, display: u.display, ticket, kind: "fs", fs: spec }),
     /** register a one-use ticket for one terminal (a tmux session of the agent) */
     terminalTicket: (u, ticket, session) => post("ticket", { user: u.user, uid: u.uid, display: u.display, ticket, session }),
     /** run a command as the agent (agentd.js planExec): { code, signal, stdout, stderr, truncated } */
