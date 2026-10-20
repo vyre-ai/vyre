@@ -96,8 +96,8 @@ const fileOf = (f: any): FileHit | null => (f && typeof f.path === "string" && f
 export function fileHitsOf(d: any): { results: FileHit[]; notes: string[] } {
   const results = list(d, "results").map(fileOf).filter((x): x is FileHit => !!x);
   const sources = Array.isArray(d?.sources) ? d.sources : [];
-  const notes = sources.filter((s: any) => s && s.ok === false).map((s: any) => `The ${s.source === "mac" ? "Mac" : s.source || "other machine"} did not answer${s.error ? ": " + s.error : "."}`);
-  if (!sources.some((s: any) => s && s.source === "mac" && s.ok !== false) && !results.some((f) => f.source === "mac")) notes.push("Files on your Mac are not searched from here.");
+  const notes = sources.filter((s: any) => s && s.ok === false).map((s: any) => `${s.source === "mac" ? "Your computer" : `The ${s.source || "other machine"}`} did not answer${s.error ? ": " + s.error : "."}`);
+  if (!sources.some((s: any) => s && s.source === "mac" && s.ok !== false) && !results.some((f) => f.source === "mac")) notes.push("Files on your computer are not searched from here.");
   return { results, notes };
 }
 /** files.recent's answer: the newest first. */

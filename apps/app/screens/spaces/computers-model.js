@@ -10,7 +10,7 @@ export const switchLine = (allowed, space) => (allowed ? `Sessions in ${space} m
 /** The line on a member's "Run on this computer" for one Space they are in. @param {string} space @param {boolean | null | undefined} allowed */
 export function memberLine(space, allowed) {
   if (allowed === true) return `${space} allows sessions on your computer.`;
-  if (allowed === false) return `${space} keeps sessions on its server. An owner can allow your computer.`;
+  if (allowed === false) return `${space} keeps sessions on its server. Ask your Space's admin to allow this.`;
   return "";
 }
 

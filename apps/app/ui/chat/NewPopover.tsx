@@ -1,7 +1,7 @@
 // The New menu: a compact popover from the compose button (Cmd N), not a modal. A To: field, then the agents (each starts a new thread), the people, then New group, New agent and New Flow.
 // It draws what new-menu-model.js shapes and calls nothing itself; the screen says what each pick does.
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, View } from "react-native";
 import { Avatar } from "../components/Avatar";
 import { Field } from "../components/Field";
@@ -11,12 +11,15 @@ import { markRef } from "../marks/useMark";
 import { RAIL } from "../shell/rail-tokens.js";
 import { useUiTheme } from "../theme";
 import { elevation } from "../lib/elevation";
+import { usePopoverDismiss } from "../lib/useDismiss";
 import { firstRow, newMenuRows, type NewRow } from "./new-menu-model.js";
 
 export type { NewRow };
 
-export function NewPopover({ open, onClose, agents, people, onPick }: {
+export function NewPopover({ open, onClose, agents, people, onPick, anchor }: {
   open: boolean; onClose: () => void;
+  /** The control that opens it: pressing it again toggles, so a press there is not "outside". */
+  anchor?: { current: unknown };
   agents: readonly { name: string; role?: string; id?: string }[]; people: readonly { id: string; name: string; role?: string }[];
   onPick: (row: NewRow) => void;
 }) {
@@ -24,6 +27,9 @@ export function NewPopover({ open, onClose, agents, people, onPick }: {
   const [q, setQ] = useState("");
   useEffect(() => { if (open) setQ(""); }, [open]);
   const rows = useMemo(() => newMenuRows(q, agents, people), [q, agents, people]);
+  const box = useRef<View>(null);
+  // A press anywhere else, or Esc, closes it (the one rule for popovers, lib/dismiss.js).
+  usePopoverDismiss(open, anchor ? [box, anchor] : [box], onClose);
   if (!open) return null;
   const pick = (r: NewRow) => { onClose(); onPick(r); };
   const row = (r: NewRow) => (
@@ -36,7 +42,7 @@ export function NewPopover({ open, onClose, agents, people, onPick }: {
   );
   const label = (t: string) => <Text size="caption" tone="label" style={{ paddingHorizontal: 8, paddingTop: 8, paddingBottom: 2 }}>{t}</Text>;
   return (
-    <View accessibilityLabel="New" style={{ position: "absolute", top: 4, left: RAIL.rowInset + 4, right: RAIL.rowInset + 4, zIndex: 30, padding: 8, gap: 2, borderRadius: 12, borderWidth: 1, borderColor: color.edge, backgroundColor: color["surface-2"], ...elevation(resolved.scheme, 2) } as any}>
+    <View ref={box} accessibilityLabel="New" style={{ position: "absolute", top: 4, left: RAIL.rowInset + 4, right: RAIL.rowInset + 4, zIndex: 30, padding: 8, gap: 2, borderRadius: 12, borderWidth: 1, borderColor: color.edge, backgroundColor: color["surface-2"], ...elevation(resolved.scheme, 2) } as any}>
       <Field name="To" value={q} onChangeText={setQ} placeholder="To: a person or an agent" autoFocus onKey={(k) => { if (k === "Escape") onClose(); }} onSubmit={() => { const f = firstRow(rows); if (f) pick(f); }} />
       {rows.agents.length ? <>{label("Agents, each starts a new thread")}{rows.agents.map(row)}</> : null}
       {rows.people.length ? <>{label("People")}{rows.people.map(row)}</> : null}

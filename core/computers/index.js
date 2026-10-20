@@ -146,7 +146,7 @@ export default {
       open: async (/** @type {string} */ agent) => {
         await agentUsers.wake(agent);
         const h = pool.hosts.get(SHARED_COMPUTER_ID);
-        if (!h) throw new Error(NOT_SET);
+        if (!h) throw notSet();
         // the relay lets in vyred's address only: have the computer pin this vyred's address (it can change when vyred is recreated) before the ticket
         await pool.pin(SHARED_COMPUTER_ID);
         const hello = crypto.randomBytes(24).toString("base64url");
@@ -160,7 +160,7 @@ export default {
     /** The agent's Chrome for the code that drives it (hands, fill): a ticket with the relay for its debugging pipe, held as one link per agent in the adapter (cdp-adapter.js). */
     const cdpAdapter = createCdpAdapter({ log: ctx.log, open: async (/** @type {string} */ agent) => {
       const h = pool.hosts.get(SHARED_COMPUTER_ID);
-      if (!h) throw new Error(NOT_SET);
+      if (!h) throw notSet();
       await pool.pin(SHARED_COMPUTER_ID);
       const hello = crypto.randomBytes(24).toString("base64url");
       await agentUsers.cdpTicket(agent, hello);
@@ -172,7 +172,7 @@ export default {
     const agentTerminal = {
       openTerminal: async (/** @type {string} */ agent, /** @type {string} */ session) => {
         const h = pool.hosts.get(SHARED_COMPUTER_ID);
-        if (!h) throw new Error(NOT_SET);
+        if (!h) throw notSet();
         await pool.pin(SHARED_COMPUTER_ID);
         const hello = crypto.randomBytes(24).toString("base64url");
         await agentUsers.terminalTicket(agent, hello, session);
@@ -280,11 +280,13 @@ export default {
     // The agents of the space's one computer: a Linux user each, a screen woken on demand and closed after 5 idle minutes (agent-users.js).
     // agentd inside the computer does the work, on a root-only unix socket. vyred reaches it only through the driver running agentd-client.js in the computer
     // (`execIn`, the one exec shape policy.js allows); a driver that cannot do that (none configured, the fake) leaves the Computer tab saying so.
-    const NOT_SET = "the agent computer is not set up on this machine: its container is not running, or this machine's driver cannot run commands in it";
+    // Said to a person in the Computer tab, so in plain words with the next step; the code lets the app add the button (computer_unavailable in lib/error-catalogue.js).
+    const NOT_SET = "This agent's computer isn't running on your server yet. An owner can set it up in Settings, This computer.";
+    const notSet = () => Object.assign(new Error(NOT_SET), { code: "computer_unavailable" });
     const lazy = name => async (/** @type {any[]} */ ...args) => {
       const driver = pool.driver;
       const box = pool.row(SHARED_COMPUTER_ID);
-      if (!driver || typeof /** @type {any} */ (driver).execIn !== "function" || !box || !box.container) throw new Error(NOT_SET);
+      if (!driver || typeof /** @type {any} */ (driver).execIn !== "function" || !box || !box.container) throw notSet();
       const exec = (/** @type {string} */ input) => /** @type {any} */ (driver).execIn(String(box.container), input);
       const ctl = agentdCtl({ transport: execTransport(exec), vncKey: () => memberKey() });
       return /** @type {any} */ (ctl)[name](...args);
@@ -500,7 +502,7 @@ export default {
       ticket: (agent, hello, spec) => agentUsers.runTicket(agent, hello, spec),
       where: async () => {
         const h = pool.hosts.get(SHARED_COMPUTER_ID);
-        if (!h) throw new Error(NOT_SET);
+        if (!h) throw notSet();
         // the relay lets in vyred's address only: have the computer pin this vyred's address first
         await pool.pin(SHARED_COMPUTER_ID);
         return { host: h.host, port: RELAY_PORT };

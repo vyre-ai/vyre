@@ -5,6 +5,8 @@
 //   const onEvent = createAgentWake({ space, gw, chain, editChain, callModule, log });
 //   k.log.subscribe("agent-wake", {}, onEvent);
 
+import { connectOwn, isConnectOwn } from "../../lib/own-account.js";
+
 /** A task older than this is never woken by a replayed event (a restart reading the log from the start must not wake what was left long ago). */
 const MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const TYPES = /^task\.(created|readied|unblocked)$/;
@@ -117,7 +119,10 @@ export function createAgentWake(o) {
       const project = typeof t.project === "string" && t.project ? t.project.split("/").pop() : undefined;
       const r = await o.callModule("agents.wake", { task: `${t.id}#changes:${rv.at || clock()}`, task_id: t.id, slot: "changes", agent: t.doer.id, title: t.title, info, ...(t.record ? { record: t.record } : {}), ...(project ? { project } : {}), ...(approver ? { approver } : {}) }, o.space);
       if (r && typeof r.thread === "string" && typeof o.bind === "function") await o.bind(t, r.thread).catch((/** @type {Error} */ err) => log(`agent wake ${o.space}: the lend of task ${t.id} was not held to its thread (${err.message})`));
-    } catch (err) { log(`agent wake ${o.space}: task ${id} did not wake its doer for the changes (${/** @type {Error} */ (err).message})`); }
+    } catch (err) {
+      log(`agent wake ${o.space}: task ${id} did not wake its doer for the changes (${/** @type {Error} */ (err).message})`);
+      try { const t = await o.gw.ask.get(o.chain(), id); if (t && t.doer) await noAccount(t, String(t.doer.id), /** @type {Error} */ (err).message); } catch { /* the task could not be read: the log line above is all there is */ }
+    }
   }
   /**
    * An agent holding the reviewer slot (task in_review) or the approver slot (task needs_check, internal work) is woken once per hand-in with what it may do: review against the checklist, or decide. It holds the task for
@@ -165,6 +170,18 @@ export function createAgentWake(o) {
     try { await o.gw.ask.request(o.chain(), { title: `${r.agent} could not ${r.slot === "reviewer" ? "review" : "check"} "${String(r.t.title).slice(0, 120)}"`, doer: who, output: { kind: "note" }, source: "flow_step", ...(r.t.record ? { record: r.t.record } : {}), note: `${said.reason} ${said.suggested_fix}`.slice(0, 400), form: { fyi: true } }, { idem: `slot-failed:${r.key}` }); }
     catch (err) { log(`agent wake ${o.space}: task ${r.t.id} could not wake its ${r.slot} and no person was told (${/** @type {Error} */ (err).message})`); }
   }
+  /**
+   * A job that did not start because the person it acts for (who gave the task, else who it was requested for) has no AI account of their own: nobody else's is used for them, so that person is handed a
+   * note in Needs you with the next step, once per task and agent, the way slotFailed tells the giver of a review round.
+   * @param {any} t @param {string} agent @param {string} why
+   */
+  async function noAccount(t, agent, why) {
+    if (!isConnectOwn(why) || typeof o.gw.ask.request !== "function") return;
+    const who = t.assigned_by && t.assigned_by.kind === "person" ? t.assigned_by : typeof t.requested_for === "string" && t.requested_for ? { kind: "person", id: t.requested_for } : null;
+    if (!who) return;
+    try { await o.gw.ask.request(o.chain(), { title: `${agent} could not start "${String(t.title).slice(0, 120)}"`, doer: who, output: { kind: "note" }, source: "flow_step", ...(t.record ? { record: t.record } : {}), note: `${agent} runs on the AI account of the person it works for, and you have none here yet. ${connectOwn(agent)} Then retry the task.`.slice(0, 400), form: { fyi: true } }, { idem: `no-account:${t.id}:${agent}` }); }
+    catch (err) { log(`agent wake ${o.space}: task ${t.id} has no AI account to run on and no person was told (${/** @type {Error} */ (err).message})`); }
+  }
 
   async function onEvent(e) {
     if (e && ENDS.test(String(e.type)) && e.data && e.data.task && typeof e.data.task.id === "string") {
@@ -208,7 +225,7 @@ export function createAgentWake(o) {
     } catch (err) {
       log(`agent wake ${o.space}: task ${id} did not wake its agent (${/** @type {Error} */ (err).message})`);
       await drop(id);   // no job runs: nothing stays lent
-      try { const t = await o.gw.ask.get(o.chain(), id); if (wakes(t, clock())) await stick(t, /** @type {Error} */ (err).message); } catch { /* the task could not be read: the log line above is all there is */ }
+      try { const t = await o.gw.ask.get(o.chain(), id); if (wakes(t, clock())) { await stick(t, /** @type {Error} */ (err).message); await noAccount(t, String(t.doer.id), /** @type {Error} */ (err).message); } } catch { /* the task could not be read: the log line above is all there is */ }
     }
   }
   return Object.assign(onEvent, { threadEnded });
@@ -217,6 +234,8 @@ export function createAgentWake(o) {
 /** The words a person reads when an agent's job failed: what happened, cut short and free of anything that looks like a secret, and the next step. @param {string} agent @param {string} why */
 export function sayWhy(agent, why) {
   const clean = String(why || "").replace(/[A-Za-z0-9_\-./+=]{24,}/g, "[removed]").replace(/\s+/g, " ").trim().slice(0, 160);
+  // the person the job was for has no AI account of their own: nobody else's is used, and the next step is theirs to take
+  if (isConnectOwn(clean)) return { reason: `${agent} did not start: it runs on the AI account of the person it works for, and they have none here yet.`, suggested_fix: `${connectOwn(agent)} Then retry.` };
   const auth = AUTH.test(clean);
   if (auth) return { reason: `${agent}'s AI sign-in has expired.${clean ? ` (${clean})` : ""}`.slice(0, 400), suggested_fix: `Reconnect the AI account for ${agent} in Settings, then retry.` };
   return { reason: `${agent} stopped before it finished this task.${clean ? ` (${clean})` : ""}`.slice(0, 400), suggested_fix: `Open ${agent}'s thread to see what happened, then retry.` };

@@ -9,10 +9,11 @@ import { FileViewer, Avatar, AvatarStack, Banner, Button, Chip, Divider, Icon, P
 import { useRouter } from "expo-router";
 import { RAIL, ResizeHandle, useStoredWidth } from "@vyre/ui";
 import { ComputerTab } from "./ComputerTab";
+import { agentWords } from "../state/agent-name.js";
 import { ThreadsTab } from "./ThreadsTab";
 import { callT } from "../real/call-tool";
 import { sharedView } from "./person-shared-model.js";
-import { addPeopleLine, chatKind, groupView, panelTabs, tabOf, threadsTab } from "./threads-model.js";
+import { addPeopleLine, chatKind, groupView, panelTabs, tabOf } from "./threads-model.js";
 import { StandingRows } from "./StandingRows";
 import { jumpIndex, stepFocus } from "@vyre/ui/lib/picker-model.js";
 import { ProjectPicker } from "./ProjectPicker";
@@ -124,8 +125,8 @@ export function ChatPanel(p: ChatPanelProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [p.open, p.page]);
 
-  const here = p.info.runsOn === "mac" ? "My Computer" : "Space's Cloud";
-  const there = p.info.runsOn === "mac" ? "Space's Cloud" : "My Computer";
+  const here = p.info.runsOn === "mac" ? "This computer" : "The server";
+  const there = p.info.runsOn === "mac" ? "the server" : "this computer";
   const proj = p.project.current && p.project.current.slug !== "general" ? p.project.current : null;
   // Details, Library and Computer: one tap on the header opens this panel, these are its three parts.
   const router = useRouter();
@@ -252,9 +253,9 @@ export function ChatPanel(p: ChatPanelProps) {
     return (
       <View style={{ gap: 16 }}>
         {backRow}
-        <View style={{ alignItems: "center", gap: 6 }}><Face name={name} family="assistant" size={56} id={who?.id ?? name} /><Text size="title" medium>{name}</Text></View>
+        <View style={{ alignItems: "center", gap: 6 }}><Face name={name} family="assistant" size={56} id={who?.id ?? name} /><Text size="title" medium>{agentWords(name)}</Text></View>
         <Tabs items={[["threads", "Threads"], ["computer", "Computer"], ["details", "Details"]]} value={drillTab} onChange={setDrillTab} />
-        {drillTab === "threads" ? threadsOf(name) : drillTab === "computer" ? <ComputerTab agents={[name]} onLeave={p.onClose} /> : <Row dense title={`Open ${name}`} sub="Model, effort, what it can see and use" chevron onPress={() => { p.onClose(); router.push(`/u/assistants/${encodeURIComponent(name)}` as never); }} />}
+        {drillTab === "threads" ? threadsOf(name) : drillTab === "computer" ? <ComputerTab agents={[name]} onLeave={p.onClose} /> : <Row dense title={`Open ${agentWords(name)}`} sub="Model, effort, what it can see and use" chevron onPress={() => { p.onClose(); router.push(`/u/assistants/${encodeURIComponent(name)}` as never); }} />}
       </View>
     );
   };
@@ -293,13 +294,12 @@ export function ChatPanel(p: ChatPanelProps) {
       {others.length === 1
         ? <Avatar of={markRef(others[0].family === "assistant" ? "agent" : "person", others[0].name, others[0].id)} size={56} />
         : others.length ? <AvatarStack of={others.map((x) => markRef(x.family === "assistant" ? "agent" : "person", x.name, x.id))} size={40} max={4} /> : null}
-      <Text size="title" medium numberOfLines={2} style={{ textAlign: "center" }}>{kind === "agent" && agents[0] ? agents[0].name : p.title}</Text>
+      <Text size="title" medium numberOfLines={2} style={{ textAlign: "center" }}>{kind === "agent" && agents[0] ? agentWords(agents[0].name) : p.title}</Text>
       <ChatTags chat={p.chat} thread={p.thread} />
-      {/* the four quick actions under the name: Pinned, Find, Threads (when this chat has them), Mute */}
+      {/* the quick actions under the name: Pin, Find, Mute. Threads is the tab below, never a second button. */}
       <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: 4 }}>
         <Button kind={p.pinned ? "secondary" : "ghost"} size="sm" label={p.pinned ? "Pinned" : "Pin"} onPress={() => p.onPin(!p.pinned)} />
         {p.onFind ? <Button kind="ghost" size="sm" label="Find" onPress={() => { p.onClose(); p.onFind?.(); }} /> : null}
-        {threadsTab(kind, agents.map((x) => x.name), cur) ? <Button kind="ghost" size="sm" label={kind === "flow" ? "Runs" : "Threads"} onPress={() => setTab(threadsTab(kind, agents.map((x) => x.name), cur) as string)} /> : null}
         <Button kind={p.muted ? "secondary" : "ghost"} size="sm" label={p.muted ? "Muted" : "Mute"} onPress={() => p.onMute(!p.muted)} />
       </View>
     </View>

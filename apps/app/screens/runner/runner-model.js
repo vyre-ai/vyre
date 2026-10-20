@@ -1,14 +1,14 @@
 // @ts-check
-// "Run on this computer": the words and rules for the UX half of R031-95, without a screen. A session runs on this Mac or on the server, and the person is told where and, when it moved, why.
+// "Run on this computer": the words and rules for the UX half of R031-95, without a screen. A session runs on this computer or on the server, and the person is told where and, when it moved, why.
 // The box (session-transfer's runner) answers with a placement { where, computer, reason, since }, settings, and the sessions running here; this turns them into the chip, the chat line, the
 // Settings page's limits and the list. Pure, so Node tests it.
 import { spaceTitle } from "../devices/device-model.js";
 
 /** Why a session is on the server, in the words a person uses. A code the app does not know is shown plainly, never as the code. */
 export const REASON_WORDS = /** @type {Record<string, string>} */ ({
-  "lid-closed": "lid closed", asleep: "this Mac went to sleep", unplugged: "this Mac is on battery", "cpu-cap": "it used more processor than you allow", "mem-cap": "it used more memory than you allow",
-  "switched-off": "running on this Mac is switched off", offline: "this Mac is offline", crash: "it stopped unexpectedly, and was resumed from its last step", you: "you moved it",
-  "lease-expired": "this Mac stopped checking in", "version-skew": "this Mac runs an older Vyre", "another-person": "someone else wrote in this chat, and a chat only ever runs on the computer of the person who writes in it", folder: "this chat works in a folder on your Mac",
+  "lid-closed": "lid closed", asleep: "this computer went to sleep", unplugged: "this computer is on battery", "cpu-cap": "it used more processor than you allow", "mem-cap": "it used more memory than you allow",
+  "switched-off": "running on this computer is switched off", offline: "this computer is offline", crash: "it stopped unexpectedly, and was resumed from its last step", you: "you moved it",
+  "lease-expired": "this computer stopped checking in", "version-skew": "this computer runs an older Vyre", "another-person": "someone else wrote in this chat, and a chat only ever runs on the computer of the person who writes in it", folder: "this chat works in a folder on your computer",
 });
 /** The reason in words; a code this app does not know says nothing (the line stays "Moved to the server."), never the code. */
 const why = (/** @type {string | null | undefined} */ r) => (r ? REASON_WORDS[r] || "" : "");
@@ -26,14 +26,29 @@ export function chipOf(p) {
   const name = (p.computer || "").trim();
   const fixed = (/** @type {string} */ label, /** @type {"ok" | "plain"} */ tone = "plain") => ({ label, tone, moveTo: /** @type {"mac" | "server" | null} */ (null), moveLabel: "", why: "" });
   // A session kept where it is (contracts/runner.md: pinned, read only in v1) offers no move; the chip says it stays.
-  if (p.pinned && p.state !== "moving") return { ...fixed(mac ? (name ? `On ${name}` : "On this Mac") : "On the server", mac ? "ok" : "plain"), why: mac ? "it is kept on this Mac" : "it is kept on the server" };
+  if (p.pinned && p.state !== "moving") return { ...fixed(mac ? (name ? `On ${name}` : "On this computer") : "On the server", mac ? "ok" : "plain"), why: mac ? "it is kept on this computer" : "it is kept on the server" };
   if (p.state === "moving") return fixed("Moving");
   if (p.state === "locked") return fixed("Locked");
-  if (p.state === "updating") return fixed("This Mac is updating");
-  if (p.state === "paused") return fixed("Paused on this Mac", "ok");
-  if (!mac && p.offer === "mac") return { label: "Bring back to this Mac?", tone: /** @type {"ok" | "plain"} */ ("plain"), moveTo: /** @type {"mac" | "server" | null} */ ("mac"), moveLabel: "Bring it back to this Mac", why: why(p.reason) };
-  return { label: mac ? (name ? `On ${name}` : "On this Mac") : "On the server", tone: /** @type {"ok" | "plain"} */ (mac ? "ok" : "plain"), moveTo: /** @type {"mac" | "server" | null} */ (mac ? "server" : "mac"),
-    moveLabel: mac ? "Move to the server" : "Move to this Mac", why: mac ? "" : why(p.reason) };
+  if (p.state === "updating") return fixed("This computer is updating");
+  if (p.state === "paused") return fixed("Paused on this computer", "ok");
+  if (!mac && p.offer === "mac") return { label: "Bring back to this computer?", tone: /** @type {"ok" | "plain"} */ ("plain"), moveTo: /** @type {"mac" | "server" | null} */ ("mac"), moveLabel: "Bring it back to this computer", why: why(p.reason) };
+  return { label: mac ? (name ? `On ${name}` : "On this computer") : "On the server", tone: /** @type {"ok" | "plain"} */ (mac ? "ok" : "plain"), moveTo: /** @type {"mac" | "server" | null} */ (mac ? "server" : "mac"),
+    moveLabel: mac ? "Move to the server" : "Move to this computer", why: mac ? "" : why(p.reason) };
+}
+
+/**
+ * The chat header's "Runs on" switch: the short word on it (Server, This computer or the computer's own name, or the state while it is moving, locked, updating or paused) and the one line
+ * its menu says about why it is there. Same rules as chipOf.
+ * @param {Placement | null | undefined} p
+ */
+export function runsOnWords(p) {
+  const c = chipOf(p);
+  if (!c || !p) return { short: "", why: "" };
+  const name = (p.computer || "").trim();
+  const st = p.state;
+  const short = st === "moving" ? "Moving" : st === "locked" ? "Locked" : st === "updating" ? "Updating" : st === "paused" ? "Paused" : p.where === "mac" ? name || "This computer" : "Server";
+  const line = p.where !== "mac" && p.offer === "mac" ? "It can come back to this computer." : p.pinned ? `${c.why.charAt(0).toUpperCase()}${c.why.slice(1)}.` : c.why ? `On the server: ${c.why}.` : "";
+  return { short, why: line };
 }
 
 /** Whether an update from the box is newer than what is shown: a higher epoch wins, and an update with none is taken. @param {number | undefined} have @param {number | undefined} incoming */
@@ -41,8 +56,8 @@ export const fresher = (have, incoming) => incoming === undefined || have === un
 
 /** The one line in the chat when a session moves (or, for a session pinned to a folder, pauses). @param {{ to: string, reason?: string | null }} e */
 export function movedLine(e) {
-  if (e.reason === "folder" && e.to === "paused") return "Paused: this chat works in a folder on your Mac.";
-  const where = e.to === "mac" ? "this Mac" : "the server";
+  if (e.reason === "folder" && e.to === "paused") return "Paused: this chat works in a folder on your computer.";
+  const where = e.to === "mac" ? "this computer" : "the server";
   const w = why(e.reason);
   return `Moved to ${where}${w ? `: ${w}` : ""}.`;
 }
@@ -92,9 +107,9 @@ export function parseLimit(key, text) {
 
 /** The sentence under the switch; `shared` names the spaces this computer is lent to. @param {MacSettings} s @param {string[]} [shared] */
 export function switchNote(s, shared = []) {
-  if (!s.enabled) return "Sessions run on the server. Turn this on to let them run on this Mac too. You approve once. Turn it off any time and they go back to the server.";
+  if (!s.enabled) return "Sessions run on the server. Turn this on to let them run on this computer too. You approve once. Turn it off any time and they go back to the server.";
   const names = shared.length > 1 ? `${shared.slice(0, -1).join(", ")} and ${shared[shared.length - 1]}` : shared[0] || "";
-  return `Sessions may run on this Mac${s.pluggedInOnly ? " while it is plugged in" : ""}, up to ${s.cpuPercent}% of the processor and ${s.memoryMb >= 1024 ? `${Math.round(s.memoryMb / 102.4) / 10} GB` : `${s.memoryMb} MB`} of memory. Past a limit, a session moves to the server and carries on.${names ? ` Shared with ${names}.` : ""}`;
+  return `Sessions may run on this computer${s.pluggedInOnly ? " while it is plugged in" : ""}, up to ${s.cpuPercent}% of the processor and ${s.memoryMb >= 1024 ? `${Math.round(s.memoryMb / 102.4) / 10} GB` : `${s.memoryMb} MB`} of memory. Past a limit, a session moves to the server and carries on.${names ? ` Shared with ${names}.` : ""}`;
 }
 
 /** What turning the switch on or off has to do, from spaces.devices.list for this computer: the spaces to lend it to and the ones it is lent to now. A space it was removed from is left alone. @param {any} d */
@@ -129,11 +144,11 @@ export function hereLine(s) {
 }
 
 /** The line for a session that did not run here. @param {string | null | undefined} code */
-export const whyNotLine = (code) => (code ? `It did not run on this Mac because ${why(code)}.` : "It ran where it was meant to.");
+export const whyNotLine = (code) => (code ? `It did not run on this computer because ${why(code)}.` : "It ran where it was meant to.");
 
 const STATES = ["here", "moving", "server", "locked", "updating", "paused"];
 
-/** A placement as the box sent it, kept to what is known; anything that is not on this Mac or the server is no placement. @param {any} d @returns {Placement | null} */
+/** A placement as the box sent it, kept to what is known; anything that is not on this computer or the server is no placement. @param {any} d @returns {Placement | null} */
 export function pickPlacement(d) {
   if (!d || (d.where !== "mac" && d.where !== "server")) return null;
   return { where: d.where, ...(typeof d.computer === "string" && d.computer ? { computer: d.computer } : {}), reason: typeof d.reason === "string" ? d.reason : null, since: typeof d.since === "number" ? d.since : null,
@@ -164,4 +179,27 @@ export function statusLine(choice, x = {}) {
     ? "New chats start on this computer. A session that left comes back at your next message once this computer has been ready for a minute."
     : "A session runs on this computer when you put it here from its chat.";
   return `${base}${who ? ` Shared with ${who}.` : ""} ${n ? `${n === 1 ? "1 session is" : `${n} sessions are`} running here now.` : "Nothing is running here now."}`;
+}
+
+/** The one switch in Settings, This computer: its title, used by the page and by every message that points to it. */
+export const RUN_SWITCH_TITLE = "Run my chats on this computer";
+/** Where that switch lives, for a link from a refusal. */
+export const RUN_SWITCH_ROUTE = "/u/settings/system";
+
+/**
+ * Whether to turn the switch on by itself, once: in the owner's own desktop app (the one that can lend itself), where a Space allows it, when it is off and the person has never chosen.
+ * A choice the person made (on or off) is never overridden.
+ * @param {{ desktop: boolean, owner: boolean, allowed: boolean, enabled: boolean, chosen: boolean }} x
+ */
+export const turnOnByDefault = (x) => x.desktop && x.owner && x.allowed && !x.enabled && !x.chosen;
+
+/**
+ * A refusal to run a chat on this computer, as one short sentence and the next step: the switch when the person may turn it on, their admin when no Space of theirs allows it.
+ * @param {{ code?: string, message?: string } | null | undefined} e @param {{ allowed: boolean | null }} rule whether a Space this person is in allows it (null: not known)
+ * @returns {{ line: string, action: { label: string, route: string } | null } | null} null when it is some other refusal
+ */
+export function runRefusal(e, rule) {
+  if (!e || e.code !== "no_lease") return null;
+  if (rule.allowed === false) return { line: "Your Space keeps chats on its server. Ask your Space's admin to allow this.", action: null };
+  return { line: "This computer is not set up to run chats yet.", action: { label: "Turn it on", route: RUN_SWITCH_ROUTE } };
 }

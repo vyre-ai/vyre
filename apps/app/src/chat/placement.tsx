@@ -1,14 +1,16 @@
-// Where a session runs (R031-95 UX): the chip beside the state line, and the one line in the chat when it moves. The words and rules are screens/runner/runner-model.js; the box is the runner
-// (session-transfer). A box without the runner has no placement, so there is no chip and no line.
+// Where a session runs (R031-95 UX): a compact "Runs on" switch in the chat header, beside the "..." menu, and the one line in the chat when it moves. The words and rules are
+// screens/runner/runner-model.js; the box is the runner (session-transfer). A box without the runner has no placement, so there is no switch and no line.
 import { useCallback, useEffect, useState } from "react";
-import { View } from "react-native";
-import { Chip, Menu, Text, showToast } from "@vyre/ui";
+import { Pressable, View } from "react-native";
+import { useRouter } from "expo-router";
+import { Icon, Menu, Text, showToast, useUiTheme } from "@vyre/ui";
 import { listen } from "../api/box";
 import { runner } from "../../screens/runner/runner";
-import { chipOf, fresher, leaseLine, movedLine, placingLine, placingWords, type Placement } from "../../screens/runner/runner-model.js";
+import { chipOf, fresher, leaseLine, movedLine, placingLine, placingWords, runRefusal, runsOnWords, type Placement } from "../../screens/runner/runner-model.js";
 
 /** The session's placement, kept current by the box's own move events. */
 export function usePlacement(thread: string, real: boolean) {
+  const router = useRouter();
   const [p, setP] = useState<Placement | null>(null);
   const [lines, setLines] = useState<{ at: number; text: string }[]>([]);
   // While the process starts on a computer the status line says so (thread.placing); it is gone once it is up or has fallen back to the server.
@@ -16,7 +18,7 @@ export function usePlacement(thread: string, real: boolean) {
   // The same fact can arrive twice: a line is never put twice in a row.
   const say = useCallback((at: number, text: string) => setLines((l) => (l.length && l[l.length - 1].text === text ? l : [...l.slice(-4), { at, text }])), []);
   // The screen only shows where the session runs. The home alone takes a session from a computer that stopped answering (its sweep, one move, with the reason); no screen moves a session on a timer, so a computer that
-  // comes and goes cannot bounce one back and forth, and only the session's own person moves it (the chip's tap).
+  // comes and goes cannot bounce one back and forth, and only the session's own person moves it (the switch in the header).
   useEffect(() => {
     if (!real) return;
     let live = true;
@@ -39,26 +41,53 @@ export function usePlacement(thread: string, real: boolean) {
       setStarting("");
       const to = e.payload.to === "mac" ? "mac" : e.payload.to === "paused" ? "paused" : "server";
       const epoch = Number.isInteger(e.payload.epoch) ? e.payload.epoch : undefined;
-      // A higher epoch wins: an update that arrives late never moves the chip back.
+      // A higher epoch wins: an update that arrives late never moves the switch back.
       setP((cur) => (fresher(cur?.epoch, epoch) ? { where: to === "mac" ? "mac" : "server", computer: e.payload.computer, reason: e.payload.reason ?? null, since: e.payload.at ?? Date.now(), ...(to === "paused" ? { state: "paused" as const } : {}), ...(epoch !== undefined ? { epoch } : {}) } : cur));
       say(Number(e.payload.at ?? Date.now()), movedLine({ to, reason: e.payload.reason }));
     });
     return () => { live = false; off?.(); };
   }, [thread, real, say]);
   const move = useCallback(async (to: "mac" | "server") => {
-    try { const x = await runner.move(thread, to); if (x) setP(x); } catch (e) { showToast(e instanceof Error ? e.message : "That did not go through."); }
-  }, [thread]);
+    try { const x = await runner.move(thread, to); if (x) setP(x); } catch (e) {
+      // This computer is not set up: one short line, and the switch in Settings as the next step (or the admin, where no Space allows it).
+      const rules = await runner.spaceRules().catch(() => []);
+      const r = runRefusal(e as { code?: string }, { allowed: rules.length ? rules.some((x) => x.allowed) : null });
+      if (r) { showToast(r.line, r.action ? { label: r.action.label, run: () => router.push(r.action!.route as never) } : undefined); return; }
+      showToast(e instanceof Error && e.message ? e.message : "That did not go through.");
+    }
+  }, [thread, router]);
   return { placement: p, lines, move, starting };
 }
 
-/** The chip: where it runs; tap to see why, or move it to the other place. */
-export function PlacementChip({ placement, onMove }: { placement: Placement | null; onMove: (to: "mac" | "server") => void }) {
+/** The header's switch: "Runs on" and where, compact; its menu picks Server or This computer, with why it is where it is. A placement that cannot move shows where and nothing to press. */
+export function PlacementSwitch({ placement, onMove }: { placement: Placement | null; onMove: (to: "mac" | "server") => void }) {
+  const { color } = useUiTheme();
   const c = chipOf(placement);
-  if (!c) return null;
-  if (!c.moveTo) return <View accessibilityLabel={c.label} style={{ minHeight: 44, justifyContent: "center" }}><Chip tone={c.tone}>{c.label}</Chip></View>;
-  const moveTo = c.moveTo;
-  const items = [...(c.why ? [{ label: `On the server because ${c.why}`, onPress: () => {} }] : []), { label: c.moveLabel, onPress: () => onMove(moveTo) }];
-  return <Menu trigger={<View accessibilityRole="button" accessibilityLabel={`${c.label}. Tap to change.`} style={{ minHeight: 44, justifyContent: "center" }}><Chip tone={c.tone} icon={placement?.where === "mac" ? "laptop" : "server"}>{c.label}</Chip></View>} items={items} />;
+  if (!c || !placement) return null;
+  const w = runsOnWords(placement);
+  const face = (
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 6, minHeight: 32, paddingHorizontal: 10, borderRadius: 16, backgroundColor: color["surface-3"] }}>
+      <Icon name={placement.where === "mac" ? "laptop" : "server"} size={14} tone="label" />
+      <Text size="caption" tone="label" numberOfLines={1}>{w.short}</Text>
+    </View>
+  );
+  if (!c.moveTo) return <View accessibilityLabel={`Runs on: ${w.short}`} style={{ minHeight: 44, justifyContent: "center" }}>{face}</View>;
+  const here = placement.where;
+  const items = [
+    { label: "Server", selected: here === "server", onPress: () => { if (here !== "server") onMove("server"); } },
+    { label: "This computer", selected: here === "mac", onPress: () => { if (here !== "mac") onMove("mac"); } },
+  ];
+  const header = (
+    <View style={{ paddingHorizontal: 12, paddingTop: 8, paddingBottom: 4, gap: 2, maxWidth: 280 }}>
+      <Text size="caption" tone="label" medium>Runs on</Text>
+      {w.why ? <Text size="caption" tone="label">{w.why}</Text> : null}
+    </View>
+  );
+  return (
+    <Menu align="end" header={header} items={items} trigger={
+      <Pressable accessibilityRole="button" accessibilityLabel={`Runs on: ${w.short}. Change where this chat runs`} style={{ minHeight: 44, justifyContent: "center" }}>{face}</Pressable>
+    } />
+  );
 }
 
 /** The "Moved to the server: lid closed." lines, quiet, under the transcript. */

@@ -112,8 +112,8 @@ export function fileHits(d: unknown): { rows: Row[]; notes: string[] } {
   const o = (d && typeof d === "object" ? d : {}) as { results?: unknown; sources?: unknown };
   const results = arr(o.results);
   const sources = arr(o.sources);
-  const notes = sources.filter((s) => s.ok === false).map((s) => `The ${s.source === "mac" ? "Mac" : s.source || "other machine"} did not answer${s.error ? `: ${s.error}` : "."}`);
-  if (!sources.some((s) => s.source === "mac" && s.ok !== false) && !results.some((f) => f.source === "mac")) notes.push("Files on your Mac are not searched from here.");
+  const notes = sources.filter((s) => s.ok === false).map((s) => `${s.source === "mac" ? "Your computer" : `The ${s.source || "other machine"}`} did not answer${s.error ? `: ${s.error}` : "."}`);
+  if (!sources.some((s) => s.source === "mac" && s.ok !== false) && !results.some((f) => f.source === "mac")) notes.push("Files on your computer are not searched from here.");
   return { rows: results.filter((f) => typeof f.path === "string").map((f) => ({ key: `f:${f.path}`, kind: "file", title: str(f.name) || String(f.path).split("/").pop() || "", sub: shortDir(f.path), right: f.source === "mac" ? "mac" : "box", file: { name: str(f.name), path: f.path as string, kind: str(f.kind), source: str(f.source) } })), notes };
 }
 export const factHits = (d: unknown): Row[] => arr(d).filter((f) => f.text).map((f, i) => ({ key: `m:${i}:${String(f.text).slice(0, 20)}`, kind: "memory", title: String(f.text), sub: str(f.ref?.name) || str(f.source), href: "/u/memory", fact: true }));
