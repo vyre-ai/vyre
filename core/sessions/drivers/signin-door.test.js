@@ -12,6 +12,7 @@ import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { signinDoorDrivers, accountGate, plainFailure } from "./signin-door.js";
 import { jsonAnswer, labelAnswer, answerReads } from "../../../lib/model-answer.js";
+import { openrouterDoorDriver } from "./openrouter.js";
 
 const FAKE = fileURLToPath(new URL("../testing/fake-signin.js", import.meta.url));
 const sha = (/** @type {string} */ v) => crypto.createHash("sha256").update(v).digest("hex");
@@ -23,9 +24,10 @@ function world(t, o = {}) {
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const logFile = path.join(dir, "log.jsonl");
   const tmp = path.join(dir, "tmp"); fs.mkdirSync(tmp);
-  const saved = process.env.FAKE_SIGNIN_LOG; process.env.FAKE_SIGNIN_LOG = logFile;
-  t.after(() => { if (saved === undefined) delete process.env.FAKE_SIGNIN_LOG; else process.env.FAKE_SIGNIN_LOG = saved; });
-  const d = signinDoorDrivers({ bins: { claude: FAKE, codex: FAKE, grok: FAKE }, spawner: () => false, tmp, ...o });
+  // the driver gives its child an environment of its own making, so the fake learns where to note its launches from a wrapper, never from vyred's environment
+  const bin = path.join(dir, "fake-cli");
+  fs.writeFileSync(bin, `#!/bin/sh\nFAKE_SIGNIN_LOG='${logFile}' exec '${process.execPath}' '${FAKE}' "$@"\n`, { mode: 0o755 });
+  const d = signinDoorDrivers({ bins: { claude: bin, codex: bin, grok: bin }, spawner: () => false, tmp, ...o });
   const log = () => (fs.existsSync(logFile) ? fs.readFileSync(logFile, "utf8").trim().split("\n").filter(Boolean).map(l => JSON.parse(l)) : []);
   return { d, dir, tmp, log };
 }
@@ -80,7 +82,7 @@ test("Claude: an answer that does not read is asked for once more, and only once
 test("an expired sign-in, a refused key, a missing CLI and a slow one are said in plain words, with nothing else tried", async t => {
   const w = world(t, { timeoutMs: 1500 });
   const tokenCall = (/** @type {string} */ text, kind = "setup-token") => w.d.claude.call({ ...classify(text), credential: { account: acct("claude", kind), env: kind === "api-key" ? { ANTHROPIC_API_KEY: "sk-ant-api03-" + "x".repeat(40) } : { CLAUDE_CODE_OAUTH_TOKEN: BEN_TOKEN } } });
-  await assert.rejects(tokenCall("MARK-e1 EXPIRED"), (e) => { assert.equal(/** @type {any} */ (e).code, "signin_expired"); assert.equal(/** @type {any} */ (e).message, EXPIRED_WORDS); return true; });
+  await assert.rejects(tokenCall("MARK-e1 EXPIRED"), (e) => { assert.equal(/** @type {any} */ (e).code, "signin_expired"); assert.equal(/** @type {any} */ (e).aiClass, "auth"); assert.equal(/** @type {any} */ (e).message, EXPIRED_WORDS); return true; });
   await assert.rejects(tokenCall("MARK-e2 EXPIRED", "api-key"), /Your Claude key was refused\. Add it again in Settings, AI accounts\./);
   assert.equal(w.log().filter(x => x.marker === "MARK-e1").length, 1, "one launch: an expired sign-in is not asked again");
   await assert.rejects(tokenCall("MARK-e3 SLOW"), (e) => { assert.equal(/** @type {any} */ (e).code, "timeout"); assert.match(String(/** @type {any} */ (e).message), /^Your Claude account took longer than 2 seconds to answer, so this step stopped\. Nothing else was tried\.$/); return true; });
@@ -88,7 +90,17 @@ test("an expired sign-in, a refused key, a missing CLI and a slow one are said i
   await assert.rejects(none.claude.call({ ...classify("x"), credential: { account: acct("claude", "setup-token"), env: { CLAUDE_CODE_OAUTH_TOKEN: BEN_TOKEN } } }), (e) => /** @type {any} */ (e).code === "unavailable" && /Claude is not installed on this computer/.test(String(/** @type {any} */ (e).message)));
   // the words never carry what the CLI printed, nor the token
   for (const said of ["401 " + BEN_TOKEN, "rate limit for " + BEN_TOKEN, "weird " + BEN_TOKEN]) assert.ok(!plainFailure("claude", { kind: "setup-token" }, { said, exit: 1 }).message.includes(BEN_TOKEN));
-  assert.equal(plainFailure("codex", { kind: "login" }, { said: "429 Too Many Requests", exit: 1 }).code, "rate_limited");
+  // each failure carries the shared class (lib/ai-errors.js) a fallback decides on
+  const cls = (/** @type {string} */ p, /** @type {string} */ kind, /** @type {any} */ f) => { const e = /** @type {any} */ (plainFailure(p, { kind }, f)); return [e.aiClass, e.code]; };
+  assert.deepEqual(cls("codex", "login", { said: "429 Too Many Requests", exit: 1 }), ["rate_limit", "rate_limited"]);
+  assert.deepEqual(cls("codex", "login", { said: "You've hit your usage limit. Upgrade to Pro or try again in 2 days.", exit: 1 }), ["rate_limit", "rate_limited"]);
+  assert.deepEqual(cls("claude", "api-key", { said: "API Error: 400 Your credit balance is too low to access the Anthropic API.", exit: 1 }), ["credits", "credits"]);
+  assert.deepEqual(cls("grok", "api-key", { said: "Your team has either used all available credits or reached its monthly spending limit.", exit: 1 }), ["credits", "credits"]);
+  assert.deepEqual(cls("claude", "setup-token", { said: "API Error: 529 Overloaded", exit: 1 }), ["unavailable", "model_failed"]);
+  assert.deepEqual(cls("codex", "api-key", { said: "Your request was rejected as a result of our safety system.", exit: 1 }), ["refused", "refused"]);
+  assert.deepEqual(cls("claude", "setup-token", { said: "API Error: 400 prompt is too long: 220000 tokens > 200000 maximum", exit: 1 }), ["bad_request", "bad_request"]);
+  assert.deepEqual(cls("grok", "login", { timedOut: true }), ["unavailable", "timeout"]);
+  assert.deepEqual(cls("grok", "login", { notFound: true }), ["unavailable", "unavailable"]);
 });
 
 test("no account, another provider's account, or a key account with no key: nothing runs and nothing else is tried", async t => {
@@ -160,4 +172,18 @@ test("Grok: ACP with no files, terminals or MCP; a login by its HOME, a key by x
   assert.deepEqual(w.log().filter(x => x.marker === "MARK-g2").map(x => x.got), [sha(key), sha(key)]);
   fs.writeFileSync(path.join(home, ".grok", "auth.json"), "expired");
   await assert.rejects(w.d.grok.call({ ...classify("MARK-g3"), credential: { account: acct("grok", "login"), env: {}, home } }), (e) => /** @type {any} */ (e).code === "signin_expired" && /** @type {any} */ (e).message === "Your Grok sign-in has expired. Sign in again in Settings, AI accounts.");
+});
+
+test("the key driver names its failures with the same classes", async () => {
+  const at = (/** @type {number} */ status, /** @type {string} */ body) => openrouterDoorDriver({ fetch: /** @type {any} */ (async () => ({ ok: false, status, text: async () => body })), baseUrl: "http://127.0.0.1:9" });
+  const cls = async (/** @type {any} */ d) => { try { await d.call({ model: "m", messages: [{ role: "user", content: "x" }], credential: { key: "sk-or-v1-test" } }); return null; } catch (e) { return /** @type {any} */ (e).aiClass; } };
+  assert.equal(await cls(at(402, '{"error":{"message":"Insufficient credits","code":402}}')), "credits");
+  assert.equal(await cls(at(401, '{"error":{"message":"No auth credentials found","code":401}}')), "auth");
+  assert.equal(await cls(at(429, '{"error":{"message":"Rate limit exceeded","code":429}}')), "rate_limit");
+  assert.equal(await cls(at(503, "Service Unavailable")), "unavailable");
+  assert.equal(await cls(at(400, '{"error":{"message":"invalid request","code":400}}')), "bad_request");
+  assert.equal(await cls(at(403, '{"error":{"message":"Input flagged by moderation","code":403}}')), "refused");
+  const down = openrouterDoorDriver({ fetch: /** @type {any} */ (async () => { throw Object.assign(new Error("connect ECONNREFUSED"), { code: "ECONNREFUSED" }); }), baseUrl: "http://127.0.0.1:9" });
+  assert.equal(await cls(down), "unavailable");
+  assert.equal(await cls(openrouterDoorDriver({ fetch: /** @type {any} */ (async () => ({ ok: true, json: async () => ({ error: { code: 402, message: "This request requires more credits" } }) })), baseUrl: "http://127.0.0.1:9" })), "credits");
 });

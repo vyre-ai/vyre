@@ -34,7 +34,10 @@ test("a Flow's AI step runs on a member's own Claude sign-in, with her token in 
   const root = tempHome(t);
   const logFile = path.join(root, "fake-signin.jsonl");
   const saved = { url: process.env.VYRE_OPENROUTER_URL, bin: process.env.VYRE_CLAUDE_BIN, log: process.env.FAKE_SIGNIN_LOG };
-  Object.assign(process.env, { VYRE_OPENROUTER_URL: `http://127.0.0.1:${/** @type {any} */ (srv.address()).port}`, VYRE_CLAUDE_BIN: FAKE, FAKE_SIGNIN_LOG: logFile });
+  // the door's driver hands its child an environment of its own making: the fake learns where to note its launches from a wrapper
+  const bin = path.join(root, "fake-claude");
+  fs.writeFileSync(bin, `#!/bin/sh\nFAKE_SIGNIN_LOG='${logFile}' exec '${process.execPath}' '${FAKE}' "$@"\n`, { mode: 0o755 });
+  Object.assign(process.env, { VYRE_OPENROUTER_URL: `http://127.0.0.1:${/** @type {any} */ (srv.address()).port}`, VYRE_CLAUDE_BIN: bin, FAKE_SIGNIN_LOG: logFile });
   const launches = (/** @type {string} */ marker) => (fs.existsSync(logFile) ? fs.readFileSync(logFile, "utf8").trim().split("\n").filter(Boolean).map(l => JSON.parse(l)) : []).filter(l => l.marker === marker);
   /** @type {{ person: string|null, text: string }[]} */ const scans = [];
   const real = startSealer({ dir: path.join(homeIdentity(root).dir, "seal"), dev: true, ...(process.env.VYRE_SEAL_SOFTWARE === "1" ? { software: true } : {}) });

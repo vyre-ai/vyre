@@ -17,6 +17,7 @@ import { route, doorMessage, isRefusal } from "../../../lib/door-bridge.js";
 import { scrub as scrubText } from "../../../lib/scrub.js";
 import { redact as redactCredentials } from "../../../lib/sanitize.js";
 import { OPENROUTER_DEFAULT_MODEL } from "../account-model.js";
+import { aiError, classifyAiError } from "../../../lib/ai-errors.js";
 
 const BASE = "https://openrouter.ai/api/v1";
 const MAX_HISTORY = 60;
@@ -39,19 +40,23 @@ export function openrouterDoorDriver(entry = {}) {
     async call(input) {
       const key = String((input.credential && input.credential.key) || "");
       const base = String((input.credential && input.credential.base) || entry.baseUrl || BASE).replace(/\/+$/, "");
-      const fail = (/** @type {string} */ m) => new Error(scrubText(m, [key], { marker: "[key]", min: 1 }));
+      // every failure carries its class (lib/ai-errors.js), so a caller with a fallback account knows whether another account could answer; the words are as before, the key never in them
+      const fail = (/** @type {string} */ m, /** @type {import("../../../lib/ai-errors.js").AiErrorClass} */ cls = "bad_request") => aiError(cls, scrubText(m, [key], { marker: "[key]", min: 1 }));
       if (!okBase(base)) throw fail("the OpenRouter address must be https");
       const pin = entry.fetch && !entry.lookup ? null : await resolveSafe(base, entry.lookup);
       if (!(entry.fetch && !entry.lookup) && !pin) throw fail("that address is not a place a key may be sent");
-      if (!key) throw fail("no OpenRouter key on this account");
+      if (!key) throw fail("no OpenRouter key on this account", "auth");
       if (!input.model) throw fail("choose a model for OpenRouter (in the routing list, or when the session starts)");
       const doFetch = entry.fetch || globalThis.fetch;
-      const res = await (pin && !entry.fetch ? (/** @type {any} */ u, /** @type {any} */ i) => pinnedFetch(u, i, pin) : doFetch)(`${base}/chat/completions`, { method: "POST", signal: AbortSignal.timeout((Number(entry.idleMs) || IDLE_MS) * 4),
-        headers: { "content-type": "application/json", authorization: `Bearer ${key}`, "x-title": "Vyre" },
-        body: JSON.stringify({ model: input.model, messages: input.messages, stream: false, usage: { include: true }, provider: { data_collection: "deny" }, ...(input.max_output_tokens ? { max_tokens: input.max_output_tokens } : {}) }) });
-      if (!res.ok) throw fail(`OpenRouter answered ${res.status}: ${String(await res.text().catch(() => "")).slice(0, 200)}`);
+      let res;
+      try {
+        res = await (pin && !entry.fetch ? (/** @type {any} */ u, /** @type {any} */ i) => pinnedFetch(u, i, pin) : doFetch)(`${base}/chat/completions`, { method: "POST", signal: AbortSignal.timeout((Number(entry.idleMs) || IDLE_MS) * 4),
+          headers: { "content-type": "application/json", authorization: `Bearer ${key}`, "x-title": "Vyre" },
+          body: JSON.stringify({ model: input.model, messages: input.messages, stream: false, usage: { include: true }, provider: { data_collection: "deny" }, ...(input.max_output_tokens ? { max_tokens: input.max_output_tokens } : {}) }) });
+      } catch (e) { throw fail(`OpenRouter could not be reached: ${e instanceof Error ? e.message : String(e)}`.slice(0, 200), "unavailable"); }
+      if (!res.ok) { const body = String(await res.text().catch(() => "")).slice(0, 200); throw fail(`OpenRouter answered ${res.status}: ${body}`, classifyAiError({ status: res.status, text: body })); }
       const j = /** @type {any} */ (await res.json());
-      if (j.error) throw fail(String(j.error.message || "the model refused"));
+      if (j.error) throw fail(String(j.error.message || "the model refused"), classifyAiError({ status: j.error.code, text: String(j.error.message || "") }));
       const content = String((j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || "");
       const u = j.usage;
       return { content, ...(u ? { usage: { input_tokens: u.prompt_tokens || 0, output_tokens: u.completion_tokens || 0, cost_usd: Number(u.cost) || 0 } } : {}) };

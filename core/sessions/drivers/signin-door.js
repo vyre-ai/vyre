@@ -28,6 +28,7 @@ import path from "node:path";
 import { spawnSession, killGroup, usesSpawner } from "../spawn.js";
 import { promptTokens } from "./acp.js";
 import { answerReads, answerRule } from "../../../lib/model-answer.js";
+import { aiError, classifyAiError } from "../../../lib/ai-errors.js";
 
 /** The providers a sign-in driver serves. */
 export const SIGNIN_DOOR_PROVIDERS = Object.freeze(["claude", "codex", "grok"]);
@@ -39,24 +40,25 @@ const MAX_OUT = 4_000_000;
 const AUTH_MS = 20_000;
 const MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,99}$/;
 
-const fail = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
-
-// What a CLI says when its sign-in or key no longer works, and when its plan's limit is reached (read, never repeated).
-const EXPIRED = /\b401\b|\b403\b|unauthori[sz]ed|authentication[_ ](error|failed|required)|invalid[_ ](api[_ ]?key|x-api-key|bearer|token|grant|credentials?)|(token|session|credential|login)s? (has |have )?(expired|been revoked)|expired (oauth )?(token|session|credential|login)|refresh[_ ]token|log ?in again|sign ?in again|run \/login|not (logged|signed) in|login required|please (log|sign) ?in/i;
-const LIMIT = /\b429\b|rate.?limit|usage limit|limit (reached|exceeded)|quota|too many requests|out of credits|credit balance/i;
+// a call that cannot start (no account, a credential missing): the class is the account's sign-in, or a bad request
+const fail = (/** @type {string} */ code, /** @type {string} */ message) => aiError(code === "bad_input" ? "bad_request" : "auth", message, { code });
 
 /**
- * A CLI's failure in plain words. `said` is what it printed, only read here. @param {string} provider @param {{ kind?: string }} account
+ * A CLI's failure in plain words, with its class (lib/ai-errors.js) and the step's code. `said` is what it printed: only read here to pick the class, never repeated.
+ * @param {string} provider @param {{ kind?: string }} account
  * @param {{ said?: string, timedOut?: boolean, notFound?: boolean, exit?: number | null, timeoutMs?: number }} f @returns {Error}
  */
 export function plainFailure(provider, account, f) {
-  const n = NAME[provider] || provider, key = account && account.kind === "api-key";
-  if (f.notFound) return fail("unavailable", `${n} is not installed on this computer, so this step could not run on your ${n} account. Nothing else was tried.`);
-  if (f.timedOut) return fail("timeout", `Your ${n} account took longer than ${Math.round((f.timeoutMs || TIMEOUT_MS) / 1000)} seconds to answer, so this step stopped. Nothing else was tried.`);
-  const said = String(f.said || "");
-  if (EXPIRED.test(said)) return fail("signin_expired", key ? `Your ${n} key was refused. Add it again in Settings, AI accounts.` : `Your ${n} sign-in has expired. Sign in again in Settings, AI accounts.`);
-  if (LIMIT.test(said)) return fail("rate_limited", `Your ${n} ${key ? "key" : "plan"} has reached its usage limit for now. Try again later, or pick another account of your own under Runs on.`);
-  return fail("model_failed", `Your ${n} account could not answer this step${f.exit != null ? ` (it stopped with code ${f.exit})` : ""}. Nothing else was tried.`);
+  const n = NAME[provider] || provider, key = account && account.kind === "api-key", what = key ? "key" : "plan";
+  if (f.notFound) return aiError("unavailable", `${n} is not installed on this computer, so this step could not run on your ${n} account. Nothing else was tried.`, { code: "unavailable", provider });
+  if (f.timedOut) return aiError("unavailable", `Your ${n} account took longer than ${Math.round((f.timeoutMs || TIMEOUT_MS) / 1000)} seconds to answer, so this step stopped. Nothing else was tried.`, { code: "timeout", provider });
+  const cls = classifyAiError({ text: f.said });
+  if (cls === "auth") return aiError(cls, key ? `Your ${n} key was refused. Add it again in Settings, AI accounts.` : `Your ${n} sign-in has expired. Sign in again in Settings, AI accounts.`, { code: "signin_expired", provider });
+  if (cls === "credits") return aiError(cls, `Your ${n} ${what} is out of credits. Add credits with ${n}, or pick another account of your own under Runs on.`, { code: "credits", provider });
+  if (cls === "rate_limit") return aiError(cls, `Your ${n} ${what} has reached its usage limit for now. Try again later, or pick another account of your own under Runs on.`, { code: "rate_limited", provider });
+  if (cls === "refused") return aiError(cls, `Your ${n} account declined to answer this step's text. Nothing else was tried.`, { code: "refused", provider });
+  if (cls === "bad_request") return aiError(cls, `Your ${n} account could not take this step's request (it may be too long, or name a model it does not have). Nothing else was tried.`, { code: "bad_request", provider });
+  return aiError("unavailable", `Your ${n} account could not answer this step${f.exit != null ? ` (it stopped with code ${f.exit})` : ""}. Nothing else was tried.`, { code: "model_failed", provider });
 }
 
 /** At most `cap` calls of one account at once; a further one waits its turn, and past QUEUE_MAX it is refused. @param {number} cap */
@@ -68,7 +70,7 @@ export function accountGate(cap) {
       let s = busy.get(id);
       if (!s) { s = { n: 0, q: [] }; busy.set(id, s); }
       if (s.n >= cap) {
-        if (s.q.length >= QUEUE_MAX) throw fail("busy", `Your ${NAME[provider] || provider} account is busy with other AI steps right now, so this one did not run. Nothing else was tried.`);
+        if (s.q.length >= QUEUE_MAX) throw aiError("rate_limit", `Your ${NAME[provider] || provider} account is busy with other AI steps right now, so this one did not run. Nothing else was tried.`, { code: "busy", provider });
         await new Promise(r => /** @type {any} */ (s).q.push(r));   // the slot is handed over, never counted twice
       } else s.n++;
       try { return await fn(); }
