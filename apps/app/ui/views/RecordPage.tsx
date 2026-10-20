@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Platform, Pressable, View } from "react-native";
 import { Text } from "../components/Text";
+import { isTemplateField, templateLabel } from "../records/template-names.js";
 import { ID_NOTE, isRecordIdField, recordIdOf } from "../records/record-id.js";
 import { Card, Divider } from "../components/Card";
 import { GroupedList } from "../components/GroupedList";
@@ -125,7 +126,7 @@ export function RecordPage({ def, rec, world, events, env, onOpen, story, onNew,
     // A field Vyre keeps (the kernel's own, computed, read-only, an ID, a weighted value) is shown, never edited, and never offered to be sealed (isLockedField includes isKeptField).
     const locked = isLockedField(f);
     const plainEditable = !ai && !locked && f.kind !== "sealed" && f.kind !== "link" && f.kind !== "ref" && f.kind !== "file";
-    const shown = renderField({ kind: f.kind, definition: f, value, mode: "view", read_only: true, reveal: ai ? undefined : revealFor(f) }, env);
+    const shown = renderField({ kind: f.kind, definition: f, value: isTemplateField(rec, f) ? templateLabel(value) : value, mode: "view", read_only: true, reveal: ai ? undefined : revealFor(f) }, env);
     const items = locked ? [] : [
       { label: "Edit", onPress: () => { setEditing(f.name); setDraft(undefined); } },
       ...(sealed || !canSeal || !canSealField(f) ? [] : [{ label: `Seal this field for all ${vd.plural.toLowerCase()}`, onPress: () => setConfirm({ f }) }]),

@@ -2,6 +2,7 @@ import { View } from "react-native";
 import { Text } from "../components/Text";
 import { Avatar } from "../components/Avatar";
 import { renderField } from "../fields/registry";
+import { isTemplateField, templateLabel } from "../records/template-names.js";
 import type { FieldEnv } from "../fields/types";
 import { titleOf, val, viewDefOf } from "./logic.js";
 
@@ -13,7 +14,8 @@ export type RecordsWorld = { types: any[]; byType: Record<string, any[]>; actors
 
 /** One field of one record, drawn by the kind's renderer in its compact form: what lists, boards and agendas show. */
 export function fieldNode(f: any, rec: any, env: FieldEnv) {
-  return renderField({ kind: f.kind, definition: f, value: val(rec, f.name), mode: "compact", read_only: true }, env);
+  const v = val(rec, f.name);
+  return renderField({ kind: f.kind, definition: f, value: isTemplateField(rec, f) ? templateLabel(v) : v, mode: "compact", read_only: true }, env);
 }
 
 /** The title of a row, with a tile of initials before it for a person-like type. */

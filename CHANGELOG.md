@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6.5
 
+- fix(records): a project's Template shows the template's name (read once from the project templates and kept), or words made from its id until the name arrives, in lists and on the record page; never `tpl_...`.
 - perf(flows): the Flows store keeps the reads the host asks for again and again at start (the runs in one state, the active and the paused Flows) for 2 s and shares them between callers that ask together; every write through the store drops them. At start the recover, the timer's first look and the first tick each read the same rows (`Q_flowStates` and `Q_flowRuns`, 5 to 14 s on the owner's server).
 - perf(records): the whole-world read takes four types at a time, so the first page a screen asked for is not queued behind a dozen full reads.
 - feat(files): the preview pane resizes with the shared handle (260 to 560, kept on this device).
