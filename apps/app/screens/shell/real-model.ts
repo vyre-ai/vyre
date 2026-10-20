@@ -16,15 +16,12 @@ import { spaceName, isPersonal, placeTag } from "../../src/state/space-name.js";
 /** The line under a space in the switcher: the person's role there (a Cloud space says so in its own name), or that it is still being set up. */
 export const spaceSub = (s: SpaceRow): string => (s.status && s.status !== "done" ? "Setting up" : roleWord(s.role));
 
-export const ALL: ShellSpace = { id: "all", name: "All spaces", sub: "One list, everything" };
-
-/** The switcher's rows: All spaces first (only when there is more than one), then each space the person belongs to. */
 /** A space whose creation failed or was cancelled never got a home, so it is not listed (DESIGN-spaces-first.md, "A server step that fails"). */
 export const isListed = (s: SpaceRow): boolean => s.status !== "failed" && s.status !== "cancelled";
 
 export function spacesFrom(rows: SpaceRow[]): ShellSpace[] {
-  const own = rows.filter(isListed).map((s) => ({ id: s.id, name: spaceName(s), tag: placeTag(s), sub: spaceSub(s), ...(isBasicRow(s) ? { basic: true } : {}), ...(!isBasicRow(s) && typeof s.time_zone === "string" && s.time_zone ? { zone: s.time_zone } : {}) }));
-  return own.length > 1 ? [ALL, ...own] : own.length ? own : [ALL];
+  const own = rows.filter(isListed).map((s) => ({ id: s.id, name: spaceName(s), tag: placeTag(s), sub: spaceSub(s), ...(/\.vyre\.run$/i.test(String(s.name)) ? { address: String(s.name) } : {}), ...(isBasicRow(s) ? { basic: true } : {}), ...(!isBasicRow(s) && typeof s.time_zone === "string" && s.time_zone ? { zone: s.time_zone } : {}) }));
+  return own;
 }
 
 /** The person's name and address, from their identity on this box. A name is capitalised for reading ("devbox" is "Devbox"). */
@@ -40,11 +37,11 @@ export const pickIdentity = (box: IdentityRow | null | undefined, host: Identity
 
 export const shellFrom = (rows: SpaceRow[], i: IdentityRow | null | undefined): ShellData => ({ me: meFrom(i), spaces: spacesFrom(rows) });
 
-/** The space the shell opens on: All spaces when there is more than one, else the only space. */
-export const startSpace = (d: ShellData): string => d.spaces[0]?.id ?? "all";
+/** The Space the shell opens on when none was used before: the first one (a person is always in exactly one Space). A Space the person used last, still in the list, wins. */
+export const startSpace = (d: ShellData, last = ""): string => (last && d.spaces.some((s) => s.id === last) ? last : d.spaces[0]?.id ?? "");
 
 /** The showing space's name for a heading: the one picked, else the only one, else "Space". */
 export function showingName(d: ShellData, showing: string): string {
-  const real = d.spaces.filter((s) => s.id !== "all");
+  const real = d.spaces;
   return real.find((s) => s.id === showing)?.name ?? real[0]?.name ?? "Space";
 }

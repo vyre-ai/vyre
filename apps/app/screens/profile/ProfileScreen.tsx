@@ -30,7 +30,7 @@ export function ProfileScreen() {
   const retryLeftover = useProfiles((s) => s.retryLeftover);
   const deviceLook = useMyLook((s) => s.look);
   const mock = allowsMock();
-  const one = Boolean(showing) && space !== "all";
+  const one = Boolean(showing) && Boolean(space);
   useEffect(() => { if (one && !mock) void load(space, true); }, [one, mock, space, load]);
   const mine = entry && entry.me ? entry.byPerson[entry.me] ?? null : null;
   const { name, handle } = accountHeader({ name: data.me.name, sub: data.me.vyreName });

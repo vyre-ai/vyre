@@ -3,7 +3,7 @@
 
 export const RAIL = Object.freeze({
   /** The left sidebar, the same in every section: default, least and most width. */
-  width: 300, minWidth: 240, maxWidth: 420,
+  width: 300, minWidth: 180, maxWidth: 420,
   /** The one left gutter every edge of content aligns to (the space mark, the search, the row faces, the section labels, the foot's face); rows are inset half of it and pad the other half. */
   gutter: 16, rowInset: 8,
   topH: 56, footH: 56, searchH: 36,

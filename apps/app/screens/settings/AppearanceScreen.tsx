@@ -41,7 +41,7 @@ export function AppearanceScreen() {
     if (real) setScheme(v).then(() => setSource("account")).catch((e) => showToast(appearanceRefusal((e as { code?: string }).code, e instanceof Error ? e.message : "")));
   };
   const look = scope === "me" ? null : looks[scope] ?? DEFAULT_LOOKS.mine;
-  const showing = space === "all" ? own[0]?.id ?? "mine" : space;
+  const showing = space || own[0]?.id || "mine";
   const set = (patch: Record<string, string | undefined>) => look && setLook(scope, patch as any);
   const ownLook = resolved.own.length > 0;
   return (

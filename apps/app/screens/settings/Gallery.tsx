@@ -20,7 +20,7 @@ export function ComponentGallery() {
   const [on, setOn] = useState(true);
   const [tab, setTab] = useState("matters");
   const [sheet, setSheet] = useState(false);
-  const [scope, setScope] = useState("all");
+  const [scope, setScope] = useState("mine");
   const [items, setItems] = useState(MATTERS);
   return (
     <View className="gap-s6">
@@ -64,7 +64,7 @@ export function ComponentGallery() {
           <IconTile name="kits" size={44} />
         </View>
       ))}
-      {block("Space switcher", <SpaceSwitcherTitle spaces={[{ id: "all", name: "All spaces" }, { id: "mine", name: "Mine" }, { id: "juniper", name: "Juniper Studio" }]} space="juniper" onSpace={(id) => showToast(`Switched to ${id}`)} />)}
+      {block("Space switcher", <SpaceSwitcherTitle spaces={[{ id: "mine", name: "Mine" }, { id: "juniper", name: "Juniper Studio" }]} space="juniper" onSpace={(id) => showToast(`Switched to ${id}`)} />)}
       {block(`Icons, ${ICON_NAMES.length} in one family`, (
         <View className="flex-row flex-wrap gap-s3">{ICON_NAMES.map((n) => <View key={n} className="w-s12 items-center gap-s1"><Icon name={n} size={24} tone="text" /><Text size="caption" tone="label" numberOfLines={1}>{n}</Text></View>)}</View>
       ))}
@@ -75,7 +75,7 @@ export function ComponentGallery() {
           <Row lead={<Avatar of={markRef("project", "Northwind Bakery")} />} title="Northwind Bakery" sub="Customer" onPress={() => {}} />
         </Card>
       ))}
-      {block("Scope control", <Segmented label="Space" value={scope} onChange={setScope} options={[["all", "All spaces"], ["mine", "Mine"], ["juniper", "Juniper Studio"]]} />)}
+      {block("Scope control", <Segmented label="Space" value={scope} onChange={setScope} options={[["mine", "Mine"], ["juniper", "Juniper Studio"]]} />)}
       {block("Card, and the Ask hero card", (
         <View className="gap-s3">
           <Card><Text strong size="headline">A standard card</Text><Text size="secondary" tone="label">Surface two on the ground, one step up, level-one shadow, no coloured edge.</Text></Card>

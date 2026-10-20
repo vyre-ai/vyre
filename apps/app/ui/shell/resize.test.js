@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { clampWidth, readWidth, writeWidth, keyStep, dragWidth } from "./resize.js";
+import { clampWidth, readWidth, writeWidth, keyStep, dragWidth, snapsShut, rawWidth, OPEN_AFTER, SNAP_SLACK } from "./resize.js";
 
 const mem = () => { const m = new Map(); return { getItem: (k) => m.get(k) ?? null, setItem: (k, v) => m.set(k, v) }; };
 
@@ -45,4 +45,12 @@ test("dragging an edge on the right grows with the pointer; on the left it shrin
   assert.equal(dragWidth(300, 10, "right", o), 310);
   assert.equal(dragWidth(300, 10, "left", o), 290);
   assert.equal(dragWidth(300, 500, "right", o), 480);
+});
+
+test("a drag past the least width snaps a foldable pane shut; a drag out of a folded edge opens it", () => {
+  assert.equal(snapsShut(170, 180), false, "a little under the least is still the least");
+  assert.equal(snapsShut(180 - SNAP_SLACK - 1, 180), true);
+  assert.equal(rawWidth(300, -200, "right"), 100);
+  assert.equal(rawWidth(300, 50, "left"), 250);
+  assert.ok(OPEN_AFTER > 0 && OPEN_AFTER < 100);
 });

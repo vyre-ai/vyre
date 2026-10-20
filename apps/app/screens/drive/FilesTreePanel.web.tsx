@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "expo-router";
 import { useWindowDimensions } from "react-native";
 import { Tree, type NodeRendererProps } from "react-arborist";
-import { Chip, Icon, Text, showToast } from "@vyre/ui";
+import { Chip, Icon, RAIL, Text, showToast } from "@vyre/ui";
 import { rootsOf, parsePlace, type TreeNode } from "./files-model.ts";
 import { linked } from "./real";
 import { tool } from "../../src/real/box";
@@ -39,21 +39,21 @@ function Places() {
     <div style={{ display: "flex", flexDirection: "column", gap: 2, paddingBottom: 8 }}>
       {groups.map((g) => (
         <div key={g.id} style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-          {g.heading ? <div style={{ padding: "10px 8px 4px" }}><Text size="caption" tone="label">{g.heading}</Text></div> : null}
+          {g.heading ? <div style={{ padding: `${RAIL.sectionLabelAbove}px ${RAIL.gutter}px 4px` }}><Text tone="label" style={{ fontSize: RAIL.sectionLabelSize, lineHeight: 16 }}>{g.heading}</Text></div> : null}
           {g.places.map((p) => {
             const on = p.kind !== "newsite" && place === target(p.id);
             return (
               <div key={p.id} role="button" onClick={() => { if (p.kind === "newsite") void startThread(router, "engineer", "Build me a new site: ", "New site"); else go(target(p.id)); }}
-                style={{ display: "flex", alignItems: "center", gap: 8, height: 32, padding: "0 8px", borderRadius: 10, cursor: "pointer", background: on ? "var(--surface-3)" : "transparent" }}>
-                <Icon name={(p.kind === "all" ? "drive" : p.kind === "recent" ? "clock" : p.kind === "shared" ? "users" : p.kind === "newsite" ? "plus" : p.kind === "project" ? "projects" : p.kind === "agent" ? "agents" : "globe") as never} size={16 as never} tone={on ? "text" : "text-2"} />
-                <div style={{ minWidth: 0, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}><Text size="caption" strong={on}>{p.label}</Text></div>
+                style={{ display: "flex", alignItems: "center", gap: RAIL.iconGap, height: RAIL.navRowH, margin: `0 ${RAIL.rowInset}px`, padding: `0 ${RAIL.gutter - RAIL.rowInset}px`, borderRadius: RAIL.rowRadius, cursor: "pointer", background: on ? "var(--selected, var(--surface-3))" : "transparent" }}>
+                <Icon name={(p.kind === "all" ? "drive" : p.kind === "recent" ? "clock" : p.kind === "shared" ? "users" : p.kind === "newsite" ? "plus" : p.kind === "project" ? "projects" : p.kind === "agent" ? "agents" : "globe") as never} size={RAIL.iconSize as never} tone={on ? "text" : "text-2"} />
+                <div style={{ minWidth: 0, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}><Text medium={on} style={{ fontSize: RAIL.labelSize, lineHeight: RAIL.labelLine }}>{p.label}</Text></div>
                 {p.live ? <Chip tone="ok">Live</Chip> : p.draft ? <Text size="caption" tone="faint">draft</Text> : null}
               </div>
             );
           })}
         </div>
       ))}
-      <div style={{ padding: "10px 8px 4px" }}><Text size="caption" tone="label">Folders</Text></div>
+      <div style={{ padding: `${RAIL.sectionLabelAbove}px ${RAIL.gutter}px 4px` }}><Text tone="label" style={{ fontSize: RAIL.sectionLabelSize, lineHeight: 16 }}>Folders</Text></div>
     </div>
   );
 }
@@ -99,10 +99,10 @@ export function FilesTreePanel() {
 function TreeRow({ node, style, dragHandle }: NodeRendererProps<TreeNode>) {
   const top = !node.id.includes(":") && ROOT_ICON[node.id];
   return (
-    <div ref={dragHandle} style={{ ...style, display: "flex", alignItems: "center", gap: 8, paddingRight: 8, background: node.isSelected ? "var(--surface-3)" : "transparent", borderRadius: 10, cursor: "pointer" }}>
+    <div ref={dragHandle} style={{ ...style, display: "flex", alignItems: "center", gap: 8, marginLeft: RAIL.rowInset, width: `calc(100% - ${RAIL.rowInset * 2}px)`, paddingLeft: ((style as { paddingLeft?: number }).paddingLeft ?? 0) + (RAIL.gutter - RAIL.rowInset), paddingRight: 8, background: node.isSelected ? "var(--surface-3)" : "transparent", borderRadius: RAIL.rowRadius, cursor: "pointer" }}>
       <span onClick={(e) => { e.stopPropagation(); node.toggle(); }} style={{ width: 16, display: "inline-flex", justifyContent: "center", opacity: node.isLeaf && !node.data.kids ? 0 : 0.7 }}><Icon name={(node.isOpen ? "chevron-down" : "chevron") as never} size={14 as never} tone="label" /></span>
       <Icon name={(top ? ROOT_ICON[node.id] : "folder") as never} size={16 as never} tone={node.isSelected ? "text" : "text-2"} />
-      <div style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}><Text size="caption" strong={node.isSelected || !!top}>{node.data.label}</Text></div>
+      <div style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}><Text medium={node.isSelected || !!top} style={{ fontSize: RAIL.labelSize, lineHeight: RAIL.labelLine }}>{node.data.label}</Text></div>
     </div>
   );
 }

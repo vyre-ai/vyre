@@ -7,7 +7,8 @@ import fs from "node:fs";
 // Radix's dropdown Portal slots onto ONE child (asChild). Two siblings blank the page on the web ("Primitive.div failed to slot onto its children"). The browser walk
 // (scripts/ux-shots.mjs, "Rail menus that did not open cleanly") opens each rail menu for real; this keeps the shape from coming back.
 const src = fs.readFileSync(new URL("./Menu.tsx", import.meta.url), "utf8");
-const portal = src.slice(src.indexOf("<P.Portal>"), src.indexOf("</P.Portal>"));
+// (the last portal is the menu's own; a submenu has its own inside Choice)
+const portal = src.slice(src.lastIndexOf("<P.Portal>"), src.lastIndexOf("</P.Portal>"));
 
 test("the menu's portal has one child on the web: the content, with no overlay beside it", () => {
   assert.ok(portal.includes('Platform.OS === "web" ? content :'), "the web branch is the content alone");

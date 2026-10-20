@@ -65,7 +65,7 @@ const SETTINGS = (labs: boolean) => settingsItems(labs) as unknown as PanelItem[
 const SEARCH_SCOPE: Record<string, import("../find/model").Scope> = { projects: "projects", chats: "chats", settings: "settings" };
 const META: Record<string, { title: string; icon: PanelDef["icon"]; search?: string; empty: string }> = {
   projects: { title: "Projects", icon: "projects", search: "Search projects", empty: "No projects yet." },
-  chats: { title: "Chats", icon: "chat", empty: "" },
+  chats: { title: "Chats", icon: "chat", search: "Search chats", empty: "" },
   records: { title: "Records", icon: "records", empty: "" },
   flows: { title: "Flows", icon: "flows", search: "Search flows", empty: "No flows yet." },
   settings: { title: "Settings", icon: "settings", search: "Search settings", empty: "" },

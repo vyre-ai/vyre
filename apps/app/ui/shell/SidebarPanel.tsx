@@ -50,7 +50,8 @@ export function SidebarPanel({ panel, folded, onOpen }: { panel: PanelDef; folde
   }
   return (
     <View style={{ flex: 1, gap: 8, minHeight: 0 }}>
-      {panel.onSearch ? <PanelSearchButton label={panel.search ?? "Search"} onPress={panel.onSearch} end={panel.filter} />
+      {/* A section whose search is the main search has it in the sidebar's top bar (Shell.tsx RailTop); one with a box of its own keeps it here. */}
+      {panel.onSearch ? null
         : panel.search ? <SidebarSearch value={q} onChange={panel.onQuery ?? setOwn} placeholder={panel.search} end={panel.filter} /> : null}
       <ArrowNav>
         <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: RAIL.rowGap }}>
@@ -67,21 +68,6 @@ export function SidebarPanel({ panel, folded, onOpen }: { panel: PanelDef; folde
           {panel.after}
         </ScrollView>
       </ArrowNav>
-    </View>
-  );
-}
-
-/** Where a panel's search box used to be: a button that opens the main search on this section's scope (Cmd K opens it on everything). */
-function PanelSearchButton({ label, onPress, end }: { label: string; onPress: () => void; end?: React.ReactNode }) {
-  const { color } = useUiTheme();
-  return (
-    <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginHorizontal: RAIL.gutter }}>
-      <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} style={({ hovered, focused }: any) => [{ flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 8, height: RAIL.searchH, paddingHorizontal: 12, borderRadius: RAIL.rowRadius, backgroundColor: hovered || focused ? color.hover : color["surface-2"] }]}>
-        <Icon name="search" tone="label" size={RAIL.iconSize} />
-        <Text tone="label" style={{ flex: 1, fontSize: RAIL.labelSize, lineHeight: RAIL.labelLine }} numberOfLines={1}>{label}</Text>
-        <Text size="caption" tone="faint">Cmd K</Text>
-      </Pressable>
-      {end}
     </View>
   );
 }

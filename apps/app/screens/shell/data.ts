@@ -8,7 +8,6 @@ export function loadShell(): ShellData {
   return {
     me: { name: "Alex Rivera", sub: "alex.vyre.run", vyreName: "alex.vyre.run" },
     spaces: [
-      { id: "all", name: "All spaces", sub: "One list, everything" },
       { id: "mine", name: "Mine", sub: "Personal space" },
       { id: "juniper", name: "Juniper Studio", sub: "Design studio" },
     ],

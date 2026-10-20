@@ -12,7 +12,7 @@ type Props = { world: World; onAction: (task: any, id: string, input?: string, e
 
 /** The page "5 more waiting" pushes on a phone: every Needs you card past the two hero cards, as standard cards. */
 export function NeedsPage({ world, onAction, onOpen, onBack }: Props) {
-  const { scope } = useNowScope();
+  const { scope } = useNowScope(world);
   const later = useSnoozed(world.now);
   const m = nowModel(world, scope, later);
   const rest = m.needs.slice(2);
@@ -28,7 +28,7 @@ export function NeedsPage({ world, onAction, onOpen, onBack }: Props) {
 
 /** The page "9 running" pushes on a phone: every running task as a row. */
 export function DoingPage({ world, onOpen, onBack }: Omit<Props, "onAction">) {
-  const { scope } = useNowScope();
+  const { scope } = useNowScope(world);
   const m = nowModel(world, scope);
   const swipe = (t: any): SwipeSet => ({ trailing: [{ id: "open", label: "Open", icon: "chev-r", tone: "plain", haptic: "selection", onPress: () => onOpen(t) }] });
   return (
