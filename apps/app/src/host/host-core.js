@@ -487,7 +487,7 @@ export function createHost(o) {
         const label = st && typeof st.name === "string" ? st.name.toLowerCase().replace(/\.vyre\.run$/, "") : "";
         if (!SPACE_LABEL.test(label)) continue;
         const row = (k.spaces || []).find((s) => s && s.name === label);
-        if (row && row.paired) continue;
+        if (row) continue; // a row kept without its pairing is found its server by ensureServers
         if (!(await ownsOnDirectory(label, k))) continue;
         await adoptOwned(label, { it, ports: p }, false);
       }
