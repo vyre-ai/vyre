@@ -20,13 +20,18 @@ type Share = {
   users(): number;
 };
 
-/** Every type the views show, every record of each, the people and who "me" is. The people and "me" do not wait on the types, and every type's list starts at once. */
+/** Every type the views show, every record of each, the people and who "me" is. The people and "me" do not wait on the types, and the lists are read four at a time. */
 async function readAll(s: Store, filters: Filters): Promise<RecordsWorld> {
   const actorsP = Promise.resolve(s.actors());
   const meP = Promise.resolve((s as { me?: () => Promise<string> }).me?.()).catch(() => "");
   actorsP.catch(() => undefined);
   const types = (await s.types()).filter((t: any) => !isHiddenType(t));
-  const lists = await Promise.all(types.map((t: any) => s.list(t.name, listQuery(t.name, filters))));
+  // At most four types are read at a time: every type at once put a dozen full reads on the box together, and the first page the screen asked for beside them waited behind all of them.
+  const lists: any[][] = new Array(types.length);
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(4, types.length) }, async () => {
+    while (next < types.length) { const i = next++; lists[i] = await s.list(types[i].name, listQuery(types[i].name, filters)); }
+  }));
   return { types: types as any[], byType: Object.fromEntries(types.map((t: any, i: number) => [t.name, lists[i]])) as Record<string, any[]>, actors: (await actorsP) as any[], me: (await meP) ?? "" };
 }
 

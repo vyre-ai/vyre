@@ -6,7 +6,7 @@ import { openFind } from "../find/FindHost";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useWindowDimensions, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { Banner, Button, Card, Divider, EmptyState, ErrorState, Field, IconTile, ListHeader, LoadingState, Row, Segmented, Sheet, Text, listRows, showToast, type FilterChip, FileViewer, useVirtualRows, Icon, IconButton } from "@vyre/ui";
+import { Banner, Button, Card, Divider, EmptyState, ErrorState, Field, IconTile, ListHeader, LoadingState, Row, Segmented, Sheet, Text, listRows, showToast, type FilterChip, FileViewer, useVirtualRows, Icon, IconButton, ResizeHandle, useStoredWidth } from "@vyre/ui";
 import { Frame } from "../places/Frame";
 import RealDrive from "./RealDrive";
 import { SharedLinks } from "./SharedLinks";
@@ -312,6 +312,8 @@ function Manager({ wide }: { wide: boolean }) {
   const uploadButton = ability.upload && canOpenFolder ? <Button kind="primary" size="sm" icon="upload" label="Upload" onPress={pickUpload} /> : null;
   const folderButton = canMakeFolder ? <Button kind="secondary" size="sm" icon="plus" label="New folder" onPress={() => setNewName("")} /> : null;
   // With the detail panel open the middle is narrower, so Kind (which the panel shows) steps aside and the rest keep their widths.
+  // the preview pane keeps the width it was dragged to (260 to 560), on this device
+  const pane = useStoredWidth("files-detail", 320, 260, 560);
   const showDetail = !!one && (one.root === "space" || one.root === "linked" || one.root === "box");
   const GRID_COLS = showDetail ? "minmax(140px, 1fr) 104px 72px 36px" : "minmax(240px, 1fr) 120px 140px 80px 36px";
   // Moving by dragging: a file or folder (or the whole selection) dropped on a folder row, a folder tile or a crumb of the path moves into it (the same move the "Move to..." picker makes).
@@ -398,7 +400,7 @@ function Manager({ wide }: { wide: boolean }) {
   const BIG = 200;
   const emptyState = (
     <View className="gap-s3">
-    <Card flush><EmptyState title={q || chips.length ? "Nothing matches" : "This folder is empty"} body={q || chips.length ? "Nothing in this folder fits the search." : ability.upload ? "Add a file, or drop one here." : "Nothing is here, or everything in it is kept away from you."}
+    <Card flush><EmptyState title={q || chips.length ? "Nothing matches" : "This folder is empty"} body={q || chips.length ? "Nothing in this folder fits the search." : ability.upload ? "Drop a file anywhere on this page, or upload one to start." : "Nothing is here, or everything in it is kept away from you."}
       action={!q && !chips.length && uploadButton ? { label: "Upload", onPress: pickUpload } : undefined} /></Card>
     {!q && !chips.length && folderButton ? <View className="flex-row">{folderButton}</View> : null}
     </View>
@@ -478,7 +480,7 @@ function Manager({ wide }: { wide: boolean }) {
             </div>
           </View>
         </div>
-        {showDetail ? <div style={{ width: 320, flex: "none", maxHeight: 640, overflow: "auto" }}><Detail row={one} ability={ability} onChanged={() => load(place)} /></div> : null}
+        {showDetail ? <div style={{ width: pane.width, flex: "none", position: "relative" }}><ResizeHandle edge="left" label="Resize the preview" width={pane.width} onChange={pane.set} onReset={pane.reset} min={260} max={560} def={320} /><div style={{ maxHeight: 640, overflow: "auto" }}><Detail row={one} ability={ability} onChanged={() => load(place)} /></div></div> : null}
       </div>
       <Sheet open={publishing !== null} onClose={() => setPublishing(null)} title="Publish this folder as a site">
         {publishing ? (
