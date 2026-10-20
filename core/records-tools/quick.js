@@ -97,6 +97,8 @@ export function registerQuick({ tool, obj, str, refuse, addLink }) {
       const q = (await quickRows(d, type)).find((r) => r.data.name === name);
       if (!q) throw refuse(`${type} has no fast field called ${name}. Pick one of the fields shown on its page.`, "not_found");
       const f = { name, label: q.data.label, kind: q.data.kind, options: JSON.parse(q.data.options || "[]") };
+      // the row the store gave is frozen: its version is kept here (a promote had never run, so writing it onto the row went unnoticed)
+      let version = q.version;
       if (q.data.state === "bag") {
         const t = ((await d.gateway.definitions(d.chain)) || []).find((/** @type {any} */ x) => x.name === type);
         if (!t) throw refuse(`There is no record type called ${type}. Pick one of the types shown in Records.`, "not_found");
@@ -104,7 +106,7 @@ export function registerQuick({ tool, obj, str, refuse, addLink }) {
           const real = { name, kind: f.kind, label: f.label, ...(f.kind === "choice" ? { options: f.options } : {}) };
           await d.gateway.records.define(d.chain, { change_types: [{ ...t, fields: [...t.fields, real] }] });
         }
-        q.version = (await d.gateway.records.update(d.chain, "quick-field", q.id, { state: "promoting" }, q.version)).version;
+        version = (await d.gateway.records.update(d.chain, "quick-field", q.id, { state: "promoting" }, version)).version;
       }
       let done = 0, failed = 0, total = 0, cursor = undefined;
       for (;;) {
@@ -120,7 +122,7 @@ export function registerQuick({ tool, obj, str, refuse, addLink }) {
         if (!cursor) break;
       }
       const state = failed ? "promoting" : "real";
-      if (!failed) await d.gateway.records.update(d.chain, "quick-field", q.id, { state: "real" }, q.version);
+      if (!failed) await d.gateway.records.update(d.chain, "quick-field", q.id, { state: "real" }, version);
       return { state, done, total, failed };
     });
 }
