@@ -52,7 +52,7 @@ export function RealAccount() {
   const ways = es ? devices(es) : [];
   const cons = es ? contacts(es) : [];
   return (
-    <Page title="Account and recovery" back="/u/settings">
+    <Page title="Sign-in and recovery" back="/u/settings">
       {err ? <Card flush><ErrorState title="Account did not load" reason={err} retry={load} /></Card> : null}
       {chatProblem ? <Banner icon="refresh"><View className="flex-row flex-wrap items-center gap-s3"><View className="min-w-0 flex-1 gap-s1"><Text>Private chats are not finished setting up on this computer.</Text><Text size="caption" tone="label">{chatProblem}</Text></View><Button size="sm" kind="primary" label="Fix it" onPress={() => void retryChatSetup().then((p) => { setChatProblem(p); load(); }).catch((e) => setChatProblem(say(e)))} /></View></Banner> : null}
       {listing ? <Banner icon="refresh"><View className="gap-s2"><Text tone="warn">{listingLine(listing)}</Text><View className="self-start"><Button size="sm" label={listingBusy ? "Trying" : "Retry"} disabled={listingBusy} onPress={() => { setListingBusy(true); void retryListing().then((p) => { setListing(p); if (!p) showToast("Your server is on your Space's address. It goes live within a few minutes."); }).catch((e) => setListing(say(e))).finally(() => setListingBusy(false)); }} /></View></View></Banner> : null}

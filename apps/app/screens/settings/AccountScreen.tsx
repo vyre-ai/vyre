@@ -16,7 +16,7 @@ function SampleAccountScreen() {
   const { newCode, setNewCode, pin, setPin } = useSettings();
   const [face, setFace] = useState<FaceAsk | null>(null);
   return (
-    <Page title="Account and recovery" back="/u/settings">
+    <Page title="Sign-in and recovery" back="/u/settings">
       <Card><Row lead={<Avatar of={markRef("person", A.name)} size={40} />} title={A.name} sub={`${A.vyreName} · ${A.line}`} className="px-0" /></Card>
       <AssistantLookCard person={A.name} />
       <Group title="Ways in" note="Any one signs you in. Any one can add or remove the others.">
