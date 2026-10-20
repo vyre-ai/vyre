@@ -101,13 +101,15 @@ export function sampleConvoChats(now) {
  * What the Chat page shows: its body and, beside the list, the one thing that is missing on this device (a Mac with no phone to approve, a phone with no Vyre). A person who already has chats sees them
  * with the gap above; the gap fills the page only when there is nothing else to show.
  * @param {{ from: string, gap: unknown, rows: unknown[], live: boolean }} i
- * @returns {{ body: "unsupported" | "list" | "gap" | "loading" | "offline" | "empty", banner: boolean }}
+ * The placeholder rows ("loading") show only while the first read is inside its budget with nothing kept; a read that failed or ran past it is "failed" (a note and Try again), never a skeleton that stays.
+ * @returns {{ body: "unsupported" | "list" | "gap" | "loading" | "failed" | "offline" | "empty", banner: boolean }}
  */
 export function chatsView(i) {
   if (i.from === "unsupported") return { body: "unsupported", banner: false };
   if (i.rows.length) return { body: "list", banner: !!i.gap };
   if (i.gap) return { body: "gap", banner: false };
   if (i.from === "none") return { body: i.live ? "loading" : "offline", banner: false };
+  if (i.from === "failed") return { body: i.live ? "failed" : "offline", banner: false };
   return { body: "empty", banner: false };
 }
 

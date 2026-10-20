@@ -209,7 +209,9 @@ function Rail(p: RailProps) {
   const w = useStoredWidth("rail", RAIL.width, RAIL.minWidth, RAIL.maxWidth);
   const enter = reduced ? undefined : (panel ? SlideInRight : SlideInLeft).duration(RAIL.slideMs);
   return (
-    <View role="navigation" accessibilityLabel="Places" style={{ width: railWidth(folded, w.width), flexShrink: 0, flexGrow: 0, borderRightWidth: 1, borderColor: color.edge, backgroundColor: color.bg }}>
+    // zIndex 1: on the web every View is its own stacking layer (react-native-web gives each z-index 0), so without it the main pane, drawn after the rail, covers what the rail draws past its edge:
+    // the folded rail's name tips sat under the page, a white sliver beside the face.
+    <View role="navigation" accessibilityLabel="Places" style={{ width: railWidth(folded, w.width), flexShrink: 0, flexGrow: 0, zIndex: 1, borderRightWidth: 1, borderColor: color.edge, backgroundColor: color.bg }}>
       {/* The top bar: the space switcher on the left, the section's + on the right. */}
       <View style={{ height: RAIL.topH, flexDirection: "row", alignItems: "center", justifyContent: folded ? "center" : "space-between", paddingHorizontal: folded ? 0 : RAIL.gutter }}>
         <RailSwitcher p={p} folded={folded} />
