@@ -286,48 +286,14 @@ jobs:
           echo "config.json has no computers key"
           docker exec -u 1000:1000 "$V" test -s /var/lib/vyre-secrets/docker-api-bearer || { echo "vyred wrote no bearer for docker-api"; exit 1; }
           echo "vyred wrote docker-api's bearer"
-          # The person who presses Wake. A box with no owner refuses a person's acts from docker exec (no terminal, and a software key is not hardware), so this throwaway box gets an
-          # owner the way scripts/rc-update-proof.sh makes one on the same compose file: the CI pack is development-kind, the owner's software key is enrolled while the box is stopped,
-          # the developer switches go in box/vyre.env (compose's env_file), and every call comes from a terminal signed in with that key (scripts/packaged-probes/signin-approve.mjs).
-          docker exec -u 1000:1000 "$V" grep -q '"development"' /opt/vyre/lib/build-kind.js || { echo "the CI pack is not development-kind"; exit 1; }
-          printf 'VYRE_SEAL_DEV=1\nVYRE_SEAL_SOFTWARE=1\n' > box/vyre.env
-          img=$(docker inspect -f '{{.Config.Image}}' "$V")
-          docker compose $F stop vyre
-          docker run --rm -u 1000 --volumes-from "$V" -v "$PWD/scripts/dev-enrol-software-key.mjs:/opt/vyre/scripts/dev-enrol-software-key.mjs:ro" -e VYRE_HOME=/home/vyre/.vyre --entrypoint node "$img" /opt/vyre/scripts/dev-enrol-software-key.mjs --home /home/vyre/.vyre
-          docker compose $F up -d vyre
-          V=$(docker compose $F ps -q vyre); export V
-          health
-          docker exec "$V" mkdir -p /opt/vyre/scripts
-          docker cp scripts/dev-sign-proof.mjs "$V":/opt/vyre/scripts/dev-sign-proof.mjs
-          docker cp scripts/packaged-probes/signin-approve.mjs "$V":/tmp/signin-approve.mjs
-          docker exec -u 1000:1000 "$V" touch /home/vyre/.vyre/dev-presence-stand-in
-          cat > "$RUNNER_TEMP/call.sh" <<'EOF'
-          # call.sh <tool> <json>: one call from a terminal the owner signed in, as uid vyre in the vyre container; prints the answer on one line
-          docker exec -u 1000:1000 -e VYRE_HOME=/home/vyre/.vyre "$V" node /tmp/signin-approve.mjs /opt/vyre "$1" "$2" > "$RUNNER_TEMP/person.out" 2>&1 || true
-          if grep -q '^RESULT:' "$RUNNER_TEMP/person.out"; then sed '1,/^RESULT:/d' "$RUNNER_TEMP/person.out" | tr -d '\n'; else tr -d '\n' < "$RUNNER_TEMP/person.out"; fi
-          EOF
-          a=$(sh "$RUNNER_TEMP/call.sh" agents.create '{"name":"kit","computer":true}'); echo "agents.create: $a"
-          if echo "$a" | grep -Eq '"error"|FAILED'; then exit 1; fi
-          # before anything used a browser: no computer exists, the tab is told this is a first start (no problem, no raw driver words), and Wake makes it
-          st=$(sh "$RUNNER_TEMP/call.sh" computers.agent.status '{"agent":"kit"}'); echo "status before Wake: $st"
-          echo "$st" | grep -q '"firstStart":true' || { echo "status does not say this is the computer's first start"; exit 1; }
-          if echo "$st" | grep -q '"problem"'; then echo "status names a problem before Wake"; exit 1; fi
-          [ -z "$(docker ps -aq --filter label=run.vyre.computers.managed=true)" ] || { echo "a computer exists before Wake"; exit 1; }
-          # one press of Wake (the CLI may stop waiting while the computer is still being made; the server goes on), then the status until it is live
-          w=$(sh "$RUNNER_TEMP/call.sh" computers.agent.wake '{"agent":"kit"}'); echo "wake: $w"
-          for i in $(seq 1 30); do
-            st=$(sh "$RUNNER_TEMP/call.sh" computers.agent.status '{"agent":"kit"}'); echo "status $i: $st"
-            echo "$st" | grep -q '"state":"live"' && break
-            sleep 5
-          done
-          echo "$st" | grep -q '"state":"live"' || { echo "kit's computer did not come up"; exit 1; }
-          if echo "$st" | grep -q '"problem"'; then echo "status still names a problem"; exit 1; fi
-          ps=$(docker ps --filter label=run.vyre.computers.managed=true --format '{{.Names}}|{{.Image}}|{{.Status}}'); echo "$ps"
-          [ "$(echo "$ps" | grep -c .)" = 1 ]
-          echo "$ps" | grep -Eq '^run\.vyre\.computers-computer-browser-shared\|vyre/computer:0\.1\|Up '
+          # Pressing Wake needs a person, and on a box a person is a real login (sshd or login, as `who` lists it): a docker exec never is one, by design. So "a fresh box: Wake makes
+          # the computer" is proved by scripts/computers-proof/space.mjs (security-live, computers-isolation), a vyred with default settings on the real driver and this same proxy.
+          # Here: vyred stays up with docker-api for a minute, and its event stream is not refused.
+          sleep 60
+          [ "$(docker inspect -f '{{.State.Running}}' "$V")" = true ] || { echo "the vyre container stopped"; exit 1; }
           [ "$(docker inspect -f '{{.RestartCount}}' "$api")" = 0 ] || { echo "docker-api was restarted"; exit 1; }
           if docker compose $F logs docker-api 2>&1 | grep -q '"status":429'; then echo "docker-api refused an event stream (429): vyred holds more streams than it should"; exit 1; fi
-          echo "fresh box: one agent computer up through docker-api, no config edit, no restart" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "fresh box: vyred up with docker-api and its bearer, no config edit, no restart, no refused event stream" | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Agent computer logs
         if: failure()
         env:
