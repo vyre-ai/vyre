@@ -80,7 +80,8 @@ async function world(/** @type {import("node:test").TestContext} */ t) {
   const record = (await until(async () => { const r = await call("work.project.ref", { project: project.slug }, { root, caller: "cli", timeout: 20_000 }); return r.error ? null : r.data; }, "the project's record")).id;
   const kit = await tool("team.add", { project: record, role: "billing", brief: "invoices" });
   const launches = () => { try { return fs.readFileSync(log, "utf8").trim().split("\n").filter(Boolean).map(l => JSON.parse(l)); } catch { return []; } };
-  const started = await tool("threads.start", { project: project.slug, name: "juno", prompt: "hello there" });
+  // Rule 2 (no person, no agent work): juno's session is the owner's, so it is started as the owner (the person's own client), and its team.ask then carries that person
+  const started = await asPerson("threads.start", { project: project.slug, name: "juno", prompt: "hello there" });
   const launch = await until(() => launches().find(l => l.argv.includes(started.id)), "juno's session to launch");
   const bound = await tool("threads.bind", { session: started.id, pid: launch.pid }, "harness");
   const junoSession = { id: started.id, key: bound.key };

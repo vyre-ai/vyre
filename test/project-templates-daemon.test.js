@@ -238,7 +238,8 @@ test("an agent is made an actor of its Space when it is made: under its name, on
   const mine = await call("agents.create", { name: "research", kind: "agent", projects: [] });
   assert.equal(mine.note, undefined);
   assert.equal((await ask("After")).tasks_made, 1);
-  // deleting it takes the actor back: a project started now skips the task again
+  // deleting it takes the actor back: a project started now skips the task again. Its first task woke the agent (a running thread, flows-accounts), and a delete is refused while one runs: stop it first.
+  await call("agents.stop", { agent: "research" });
   await call("agents.delete", { agent: "research" });
   const gone = await ask("Gone");
   assert.equal(gone.tasks_made, 0);
