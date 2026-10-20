@@ -240,7 +240,7 @@ function Sample({ name }: { name: string }) {
   }
   if (name === "chat-model-switch") {
     const groups = sampleGroups();
-    return <ModelPickerSheet title="Your model for this chat" groups={groups} current={{ account: groups[1].account, model: groups[1].models[0] }} effort="high" onClose={() => {}} onPick={() => {}} onEffort={() => {}} />;
+    return <ModelPickerSheet title="Your model for this chat" groups={groups} current={{ account: groups[1].account, model: groups[1].models[0] }} effort="high" onClose={() => {}} onPick={() => {}} onEffort={() => {}} inline />;
   }
   if (name === "agent-ai-tab") return <View style={{ maxWidth: 640 }}><AgentAiTab a={{ name: "qi", kind: "assistant", instructions: "Your name is Qi.", model: "sample-claude-deep", model_provider: "claude", effort: "high" }} /></View>;
   if (name === "welcome-model") {

@@ -57,7 +57,7 @@ export function ModelPicker({ groups, value, onChange, effort, onEffort, label =
  * The list on its own, for a screen that opens it from a control of its own (the chat composer's model chip): a search field over every account's models, arrows to move, Enter to pick, Escape to
  * close. Rows sit under their account's name. With `onEffort`, the chosen model's own effort levels sit under the list, only when it takes effort.
  */
-export function ModelPickerSheet({ title, groups, current, onClose, onPick, effort, onEffort }: { title: string; groups: ModelGroup[]; current: ModelPick | null; onClose: () => void; onPick: (p: ModelPick) => void; effort?: string | null; onEffort?: (e: string) => void }) {
+export function ModelPickerSheet({ title, groups, current, onClose, onPick, effort, onEffort, inline }: { title: string; groups: ModelGroup[]; current: ModelPick | null; onClose: () => void; onPick: (p: ModelPick) => void; effort?: string | null; onEffort?: (e: string) => void; /** Drawn in place rather than over the screen (the design gallery's picture). */ inline?: boolean }) {
   const id = useId();
   const [query, setQuery] = useState("");
   const rows = useMemo(() => searchModels(groups, query).flatMap((g) => g.models.map((m) => ({ account: g.account, model: m }))), [groups, query]);
@@ -68,8 +68,8 @@ export function ModelPickerSheet({ title, groups, current, onClose, onPick, effo
   const [active, setActive] = useState(() => Math.max(0, rows.findIndex((r) => current && r.account.id === current.account.id && r.model.key === current.model.key)));
   const at = Math.min(active, Math.max(0, items.length - 1));
   const pick = (i: number) => { const r = rows[i]; if (r) onPick(r); };
-  return (
-    <Sheet open onClose={onClose} title={title} scroll={false}>
+  const body = (
+    <>
       <Field name={`Search ${title}`} placeholder="Search models" value={query} autoFocus
         onChangeText={(q) => { setQuery(q); setActive(0); }}
         onSubmit={() => pick(at)}
@@ -79,6 +79,8 @@ export function ModelPickerSheet({ title, groups, current, onClose, onPick, effo
         }} />
       <PickerList id={`models-${id}`} label={title} items={items} active={at} onActive={setActive} onPick={pick} maxRows={9} empty={groups.some((g) => g.models.length) ? "No model of yours matches" : emptyWords(groups)} />
       {onEffort && current && effortChoices(current.model).length ? <Segmented label={`Effort for ${current.model.name}`} value={effortFor(current.model, effort)} options={effortChoices(current.model)} onChange={(e) => onEffort(e)} /> : null}
-    </Sheet>
+    </>
   );
+  if (inline) return <View style={{ gap: 12 }}><Text strong>{title}</Text>{body}</View>;
+  return <Sheet open onClose={onClose} title={title} scroll={false}>{body}</Sheet>;
 }
