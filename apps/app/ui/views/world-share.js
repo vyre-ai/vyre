@@ -32,6 +32,8 @@ export function createShare(o) {
   function go(what) {
     if (running) { queued = queued ? merge(queued, what) : what; return running; }
     running = (async () => {
+      // yield first: a change with nothing to read would otherwise finish (and clear `running`) before `running` is set, and every later change would wait on it forever
+      await null;
       try {
         if (what === "full" || data === undefined) { reads++; data = await o.readAll(); }
         else {
