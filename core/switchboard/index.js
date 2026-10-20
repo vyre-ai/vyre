@@ -2561,7 +2561,9 @@ export class Switchboard {
     // A terminal session Vyre has not adopted yet has no record; it is adopted by the send that follows.
     const rec = this.record(id) || { project: null };
     this.emit("turn.said", { id: uuid, surface, at: Date.now(), text_hash: textHash(text) }, id, rec.project);
-    if (!(turn && turn.asker && turn.memberTurn)) await this.hearActs(id, text, uuid, pasted, rec.project, turn && turn.asker);   // words in a chat record asks only when the owner wrote them: a member's words never record what the owner asked for
+    // words in a chat record asks only when the owner wrote them: a member's words never record what the owner asked for. A member's words record only her own Routine or Watcher in an agent's chat, which runs for her, on her own account.
+    if (!(turn && turn.asker && turn.memberTurn)) await this.hearActs(id, text, uuid, pasted, rec.project, turn && turn.asker, { agent: rec.agent || null });
+    else if (rec.agent && typeof this.hearOwn === "function") await this.hearOwn(id, text, uuid, pasted, String(turn.asker), String(rec.agent));
     const ownVault = turn && turn.memberTurn && turn.asker ? await memberVaultTags({ call: this.deps.call.bind(this.deps), asker: turn.asker, thread: id, said: uuid, chips, names: mentionsOf(text, pasted), agent: rec.agent || null }) : [];   // a member's own vault, never the owner's
     if (turn && turn.memberTurn) chips = chips.filter(c => c && (c.kind === "record" || c.kind === "account")); const names = turn && turn.memberTurn ? [] : mentionsOf(text, pasted);
     // A picked record is checked by the kernel under the sender's own chain before the model hears of it; the rest go to their providers.
@@ -2581,15 +2583,25 @@ export class Switchboard {
    * out first, so someone else's words never ask.
    * @param {string} id @param {string} text @param {string} uuid @param {string[]} pasted @param {string|null|undefined} project @param {string|null} [asker] the chat turn's asker, kept with each ask this records
    */
-  async hearActs(id, text, uuid, pasted, project, asker = null) {
+  async hearActs(id, text, uuid, pasted, project, asker = null, { agent = null } = {}) {
     // lib/said/hear.js decides what was asked from the person's own words and the facts it reads through `call`
     // (never a fresh watchers.card: the hash is the card as shown); this records what it returns.
     const turnsSince = at => Number(/** @type {any} */ (this.db.prepare("SELECT COUNT(*) AS n FROM threads_turns WHERE thread = ? AND at >= ?").get(id, at)).n) || 0;
-    const intents = await heardActs({ text, pasted, project, thread: id, call: (tool, input) => this.deps.call(tool, input), turnsSince }).catch(() => []);
+    const intents = await heardActs({ text, pasted, project, thread: id, agent, call: (tool, input) => this.deps.call(tool, input), turnsSince }).catch(() => []);
     for (const it of intents) {
       await this.deps.call("vault.said.record", { thread: id, said: uuid, ...(asker ? { asker } : {}), kind: it.kind || "act_out", ...(it.channel === null ? {} : { channel: it.channel || "github" }), to: it.to, what: it.what, standing: false,
         ...(it.when && Number.isInteger(it.when.window_minutes) ? { window_minutes: it.when.window_minutes } : {}) }).catch(() => null);
     }
+  }
+
+  /**
+   * A member's turn in an agent's chat: only her own Routine or Watcher is heard (lib/said/hear.js with member), recorded for her as the asker, so only her turn
+   * in this chat can use it, and what it makes runs for her on her own account. Nothing that acts for the owner or the project is heard from her words.
+   * @param {string} id @param {string} text @param {string} uuid @param {string[]} pasted @param {string} asker @param {string} agent
+   */
+  async hearOwn(id, text, uuid, pasted, asker, agent) {
+    const intents = await heardActs({ text, pasted, project: null, thread: id, agent, member: true, call: (tool, input) => this.deps.call(tool, input), turnsSince: () => 0 }).catch(() => []);
+    for (const it of intents) await this.deps.call("vault.said.record", { thread: id, said: uuid, asker, kind: it.kind || "act_out", channel: it.channel || "watchers", to: it.to, what: it.what, standing: false, ...(it.when && Number.isInteger(it.when.window_minutes) ? { window_minutes: it.when.window_minutes } : {}) }).catch(() => null);
   }
 
   async send(id, text, surface, opts = {}) {
@@ -3433,14 +3445,15 @@ export class Switchboard {
    * @param {{ purpose: string, system?: string|null, prompt: string, model?: string|null, timeoutMs?: number }} o
    * @returns {Promise<{ text: string, ok: boolean, cost_usd: number, warm: boolean, ms: number, thread: string }>}
    */
-  async quick({ purpose, system = null, prompt, model = null, timeoutMs = 60_000, onText = null, ledger = null }) {
+  async quick({ purpose, system = null, prompt, model = null, timeoutMs = 60_000, onText = null, ledger = null, who = null }) {
     const t0 = Date.now();
     const key = `${purpose}\u0000${model || ""}\u0000${crypto.createHash("sha256").update(String(system || "")).digest("hex")}`;
     this.spares = this.spares || new Map();
-    let id = this.spares.get(key);
-    this.spares.delete(key);
+    // A question for a named person runs on their own account in a session of its own: never a warm spare (the home's), and no spare is kept after it.
+    let id = who ? undefined : this.spares.get(key);
+    if (!who) this.spares.delete(key);
     const warm = Boolean(id && this.live.has(id) && !this.live.get(id).turn);
-    if (!warm) id = (await this.spare(purpose, system, model)).id;
+    if (!warm) id = (await this.spare(purpose, system, model, who)).id;
     const st = this.live.get(id);
     if (!st) throw new Error(`the ${purpose} session did not start`);
     const answer = new Promise(resolve => { st.answered = resolve; });
@@ -3450,7 +3463,7 @@ export class Switchboard {
     if (ledger) this.db.prepare("UPDATE threads_runs SET purpose = ? WHERE id = ?").run(ledger, id);
     this.write(id, String(prompt), { askedBy: null });
     // The next question's session starts now, while this one answers.
-    if (!this.closing) {
+    if (!this.closing && !who) {
       const next = this.spare(purpose, system, model)
         .then(r => { if (this.closing || this.spares.has(key)) return this.stop(r.id).catch(() => {}); this.spares.set(key, r.id); })
         .catch(e => this.deps.log(`threads: no spare ${purpose} session (${e.message})`))
@@ -3467,10 +3480,11 @@ export class Switchboard {
   }
 
   /** A lean session for a purpose, started and left waiting for its question. */
-  async spare(purpose, system, model) {
+  async spare(purpose, system, model, who = null) {
     const cwd = path.join(this.deps.root || os.tmpdir(), "quick", purpose.replace(/[^a-z0-9-]/gi, "_"));
     fs.mkdirSync(cwd, { recursive: true });
-    return this.launch({ cwd, lean: true, quick: true, purpose, name: `Vyre ${purpose}`, ...(system ? { append: String(system) } : {}), ...(model ? { model } : {}) });
+    return this.launch({ cwd, lean: true, quick: true, purpose, name: `Vyre ${purpose}`, ...(system ? { append: String(system) } : {}), ...(model ? { model } : {}),
+      ...(who ? { person: who.person, ...(who.account ? { account: who.account } : {}), ...(who.provider ? { provider: who.provider } : {}) } : {}) });
   }
 
   /** A running thread's background tasks (shell commands and subagents), newest last. */
@@ -4889,8 +4903,9 @@ export default {
     // instructions. Internal, so no surface or model can hand a thread an environment.
     ctx.tool("threads.quick", {
       description: "One question to a purpose's warm session (a lean one already started, so no start-up wait): memory (Vyre IQ), planner, helper and the like. A fresh session per question; the system text is fixed per spare, the question's material goes in prompt. Returns { text, ok, cost_usd, warm, ms, thread }.", internal: true,
-      input: { type: "object", required: ["purpose", "prompt"], properties: { purpose: { type: "string", enum: ["memory", "planner", "learn", "helper", "job"] }, spend_purpose: { type: "string", description: "Who this question is for, as a word (for example digest): letters, digits and _ . - up to 50. The cost of this one answer is recorded in the spend ledger under \"<your module>:<word>\" (spend.summary), never under another module's name; absent, under the session's own purpose." }, stream: { type: "boolean", description: "Hand partial text to the calling module as it arrives (ctx.call opts.onPartial); the answer still returns whole." }, prompt: str, system: str, model: str, timeout_ms: { type: "integer", minimum: 1000, maximum: 600000 } } },
+      input: { type: "object", required: ["purpose", "prompt"], properties: { person: { type: "string", description: "The person this question is for: it runs on their own AI account (account names which, provider its provider), in a fresh session of its own, never a warm one or the owner's." }, account: { type: "string" }, provider: { type: "string" }, purpose: { type: "string", enum: ["memory", "planner", "learn", "helper", "job"] }, spend_purpose: { type: "string", description: "Who this question is for, as a word (for example digest): letters, digits and _ . - up to 50. The cost of this one answer is recorded in the spend ledger under \"<your module>:<word>\" (spend.summary), never under another module's name; absent, under the session's own purpose." }, stream: { type: "boolean", description: "Hand partial text to the calling module as it arrives (ctx.call opts.onPartial); the answer still returns whole." }, prompt: str, system: str, model: str, timeout_ms: { type: "integer", minimum: 1000, maximum: 600000 } } },
       run: async (i, meta) => sb.quick({ purpose: i.purpose, prompt: i.prompt, system: i.system || null, model: i.model || null, timeoutMs: i.timeout_ms || 60_000,
+        ...(i.person ? { who: { person: String(i.person), ...(i.account ? { account: String(i.account) } : {}), ...(i.provider ? { provider: String(i.provider) } : {}) } } : {}),
         // The ledger name is always "<the calling module>:<word>": a module books only under its own name (the tool is module-only).
         ledger: ledgerName(/** @type {any} */ (meta).caller, i.spend_purpose),
         onText: i.stream && meta && typeof /** @type {any} */ (meta).partial === "function" ? /** @type {any} */ (meta).partial : null }),

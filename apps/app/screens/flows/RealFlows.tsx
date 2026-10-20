@@ -1,10 +1,9 @@
 // The Flows list from the real vyred (flows.list, with each Flow's trigger line from flows.graph). The switch pauses and resumes a Flow (a person's own call).
 import { useEffect, useState } from "react";
-import { WatchersTab } from "./WatchersTab";
 import { openEngineer } from "../engineer/openEngineer";
 import { View } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
-import { Button, Menu, Card, Chip, Divider, EmptyState, Field, IconTile, Row, Switch, Tabs, Text, showToast, ErrorState, LoadingState } from "@vyre/ui";
+import { useRouter } from "expo-router";
+import { Button, Menu, Card, Chip, Divider, EmptyState, Field, IconTile, Row, Switch, Text, showToast, ErrorState, LoadingState } from "@vyre/ui";
 import { Frame } from "../places/Frame";
 import { usePhone } from "../places/Page";
 import { listReal, setPausedReal, type RealFlow } from "./real";
@@ -16,8 +15,6 @@ import { PlaceTag } from "../../src/real/PlaceTag";
 
 export function RealFlows() {
   const router = useRouter();
-  const q = useLocalSearchParams<{ tab?: string; new?: string }>();
-  const [tab, setTab] = useState<"flows" | "watchers">(q.tab === "watchers" ? "watchers" : "flows");
   const phone = usePhone();
   const [flows, setFlows] = useState<RealFlow[] | null>(null);
   const [err, setErr] = useState("");
@@ -40,9 +37,6 @@ export function RealFlows() {
   return (
     <Frame title="Flows" sub="Jobs Vyre does on its own. When something happens, it follows the steps.">
       <PlaceTag of="showing" />
-      <Tabs items={[["flows", "Flows"], ["watchers", "Watchers"]]} value={tab} onChange={setTab} />
-      {tab === "watchers" ? <WatchersTab startNew={q.new === "1"} /> : (
-      <>
       <View className="gap-s2 pb-s4">
         <Field label="What should happen on its own?" value={wish} onChangeText={setWish} placeholder="For example, when a form comes in, tell me and add it to Records" onSubmit={() => wish.trim() && openEngineer(router, { source: "flow", words: wish.trim() })} />
         <View className="flex-row"><Button kind="primary" size="sm" label="Let Engineer draft it" disabled={!wish.trim()} onPress={() => openEngineer(router, { source: "flow", words: wish.trim() })} /></View>
@@ -87,8 +81,6 @@ export function RealFlows() {
       <View className="flex-row pt-s4">
         <Menu align="start" trigger={<Button kind="primary" size="lg" icon="plus" label="New flow" />} items={[{ label: "Build it here", onPress: () => router.push("/u/flows/new" as never) }, { label: "Ask @Engineer to write it", onPress: () => openEngineer(router, { source: "flow" }) }]} />
       </View>
-      </>
-      )}
     </Frame>
   );
 }

@@ -33,7 +33,8 @@ const THEMES = [{ name: "dark", scheme: "dark" }, { name: "paper", scheme: "ligh
 // a change that only shows in paper is caught on the families that keep both. Dropped, biggest first (size of the paper pictures of the three surfaces together): setup-type-editing 0.46 MB, setup-field-seal 0.33,
 // design-changes 0.33, setup-field-link 0.32, setup-field-choice 0.31, setup-field-errors 0.30, setup-field-access 0.29, record-page 0.26, setup-field-new 0.25, markdown 0.21, assistant-access 0.20 (3.3 MB in all).
 // A family leaves this list only by making room elsewhere. An --update removes the paper references of these families.
-const PAPER_SKIP = new Set(["setup-type-editing", "setup-field-seal", "design-changes", "setup-field-link", "setup-field-choice", "setup-field-errors", "setup-field-access", "record-page", "setup-field-new", "markdown", "assistant-access"]);
+// agent-routines and watcher-card (0.6.4) keep their dark picture only, from the start, for the same budget.
+const PAPER_SKIP = new Set(["agent-routines", "watcher-card", "setup-type-editing", "setup-field-seal", "design-changes", "setup-field-link", "setup-field-choice", "setup-field-errors", "setup-field-access", "record-page", "setup-field-new", "markdown", "assistant-access"]);
 
 const require = createRequire(process.env.PW_FROM || path.join(process.env.HOME, "shots/"));
 const { chromium } = require("playwright");

@@ -1,6 +1,6 @@
 ---
 title: Watchers
-summary: Ask Claude to watch something and file what it finds into a project, see the dry run before it turns on, and look after running watchers from the terminal and the Vyre app.
+summary: Ask an agent to set up a Routine (on a schedule) or a Watcher (when something new appears) for itself, and look after them on the agent's page and in its panel beside a chat.
 audience: users, agents
 owner: docs
 status: stable
@@ -8,35 +8,56 @@ status: stable
 
 # Watchers
 
-A watcher is a small program that checks a source on a schedule (an inbox, an API, a page, a
-feed) and files one item per new thing into a project. Vyre is the runtime, not a set of
-integrations: Claude writes each watcher, and Vyre runs it after the session that wrote it has
-ended. The runtime handles the schedule, credentials from the [Vault](vault.md), the `since`
-cursor, dedupe, retries with backoff, filing items into the project and teaching them to its
-[memory](memory.md), logs, pause and resume.
+An agent can keep working for you after the chat goes quiet, in two ways. Both belong to the
+agent, and you make either one only by asking that agent in its chat.
 
-A watcher belongs to one project. A session or an agent sees only the watchers of its own project (or
-the projects it was given), and you see all of them. Its items are filed into that project's memory
-room and nowhere else.
+- **A Routine runs on a schedule.** "Every weekday at 9, summarise my inbox." At its time it
+  starts the agent with the instructions it was given, and the agent posts the result in the chat.
+- **A Watcher runs when something new appears.** "Tell me when an invoice from Northwind
+  arrives." It checks a source and wakes the agent only when there is something new.
+
+Both run for the person who asked, on that person's own AI account (Claude, Codex, Grok,
+OpenRouter or a key, from Settings, AI accounts). Neither ever runs on the owner's account for
+someone else. You see them on the agent's page under Apps, Agents, and in the agent's panel beside
+a chat, under **Routines and watchers**, with Pause, Resume, Run now and Delete. There is no form:
+to change one, ask the agent again. Flows do not show watchers.
+
+Vyre is the runtime: it handles the schedule, credentials from the [Vault](vault.md), the
+`since` cursor, dedupe, retries with backoff, logs, pause and resume. A teammate's standing
+duties are the same thing: a duty on a schedule is a Routine, a duty on an event is a Watcher, and
+they are listed with the rest.
 
 ## Ask for a watcher
 
-In any Claude Code session with Vyre, say what to watch and where it goes:
+Ask the agent in its chat:
 
-> Watch the billing inbox for new invoices and file them into Juniper Studio.
+> Tell me when an invoice from Northwind arrives.
 
-Claude uses the **write-a-watcher** skill. It:
+The agent uses the **write-a-watcher** skill. It:
 
-1. writes two files in the watchers folder, `~/.vyre/watchers/<name>/` (it moves with
-   `VYRE_HOME`; `vyre watchers` prints it);
-2. if the source needs a credential, gives you the exact grant command and waits;
-3. dry-runs the watcher with `watchers.test`, which files nothing;
-4. shows you the first items and the schedule in words;
-5. turns it on with `watchers.create`, only after you agree.
+1. writes the Watcher with `watchers.write`, only because your own words in this chat asked;
+   Vyre records it as that agent's, for you, in this chat;
+2. dry-runs it with `watchers.test`. It starts paused and turns on when that first test passes;
+3. tells you in one line what it set up, and the card shows in the chat.
 
-`watchers.create` turns on exactly what was dry-run. If either file changes afterwards, the
-watcher pauses until it is dry-run and created again, so nothing you did not see runs on a
-schedule, and a watcher cannot widen its own credentials after you approved it.
+When it finds something new, the agent gets one message in that chat with what is new, quoted as
+outside data it must not obey, at most five times a day. It decides what to do: tell you, or start
+a Flow with the items as untrusted outside data.
+
+A Watcher uses only the Vault items and Connections already lent to its agent. If it needs one
+that is not, its card says **Needs access to** the item, with a button to let the agent use it
+without seeing it.
+
+For a Routine, say when:
+
+> Every weekday at 9, check my inbox and tell me what needs me.
+
+The agent calls `watchers.routine.create` with the time and the instructions. A Routine's code is
+Vyre's own, so it is on at once and first runs at its next time, at most every 15 minutes.
+
+Watchers made before 0.6.4 (folders written by hand or by a preset, and a project's watchers) keep
+running and are looked after the same way below. A watcher's webhook address is retired: a webhook
+starts a Flow (Flows, the trigger **A webhook is called**).
 
 ## What a watcher is made of
 
@@ -54,7 +75,7 @@ schedule, and a watcher cannot widen its own credentials after you approved it.
 
 - `name` matches the folder. `project` is the slug of the project items file into.
 - `schedule` is five-field cron in the machine's local time (`*/15 * * * *`, `0 */2 * * *`,
-  `@hourly`, `@daily`), or `"webhook"` for a source that pushes.
+  `@hourly`, `@daily`). An agent's own watcher needs no `project`, and its `owner` is set by Vyre.
 - `net` lists the hosts the watcher reads, each with an optional Vault item that Vyre attaches to that host's requests; the watcher's code never sees it. `emits` names the kind of item (`noun.past-verb`).
 - Optional: `timeout` in seconds (default 60, at most 300) and `description`. Any other key is
   refused.
@@ -140,12 +161,8 @@ lists every watcher's items.
 > One of its files changed after you turned it on. Dry-run it again with
 > `vyre watchers test <name>`, check the items, then `vyre watchers create <name>`.
 
-For a `"webhook"` watcher, `vyre watchers create` prints the route (`POST
-/v1/watchers/<name>/hook`), the header (`x-vyre-token`) and the token the sender must use. The
-request body reaches the watcher as `hook`.
-
-In the Vyre app, an assistant's page (under **Assistants**) lists its watchers, each with a switch that pauses
-it and turns it back on. Filed items appear in the project and in its memory room.
+In the Vyre app, an agent's page (under **Apps**, **Agents**) and its panel beside a chat list its
+Routines and Watchers, with Pause, Resume, Run now and Delete. Filed items appear in the project and in its memory room.
 
 ## Which surface does what
 

@@ -17,6 +17,12 @@
       { "name": "watchers.preset.target", "reach": "modules" },
       { "name": "watchers.shown", "reach": "modules" },
       { "name": "watchers.pause", "effect": "write", "reach": "anyone", "projectArg": "project" },
+      { "name": "watchers.write", "effect": "write", "reach": "asked" },
+      { "name": "watchers.revise", "effect": "write", "reach": "anyone" },
+      { "name": "watchers.routine.create", "effect": "write", "reach": "asked" },
+      { "name": "watchers.own.resume", "effect": "write", "reach": "anyone" },
+      { "name": "watchers.own.run", "effect": "write", "reach": "anyone" },
+      { "name": "watchers.own.delete", "effect": "write", "reach": "anyone" },
       { "name": "watchers.resume", "effect": "write", "reach": "person" },
       { "name": "watchers.delete", "effect": "write", "reach": "person" },
       { "name": "watchers.run", "effect": "write", "reach": "person" },
@@ -44,14 +50,14 @@
     "tips": [
       {"id": "list", "text": "Run `vyre watchers` to see each watcher's state, project, schedule, items filed and next run.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre watchers", "docs": "using/watchers.md#look-after-running-watchers"},
       {"id": "dry-run", "text": "`vyre watchers test harlow-invoices` dry-runs a watcher now and lists up to ten items. It files nothing.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre watchers test <name>", "docs": "using/watchers.md#look-after-running-watchers"},
-      {"id": "own-grant", "text": "Each watcher needs its own grant: `vyre vault grant billing-inbox watchers --watcher harlow-invoices`.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre vault grant <item> watchers --watcher <name>", "docs": "using/watchers.md#give-a-watcher-a-credential"},
+      {"id": "own-grant", "text": "A Watcher an agent set up uses what is lent to that agent. A watcher of your own needs its own grant: `vyre vault grant billing-inbox watchers --watcher harlow-invoices`.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre vault grant <item> watchers --watcher <name>", "docs": "using/watchers.md#give-a-watcher-a-credential"},
       {"id": "changed-state", "text": "A watcher shows `changed` after its files are edited. Run `vyre watchers test`, check the items, then `vyre watchers create`.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre watchers create <name>", "docs": "using/watchers.md#look-after-running-watchers"},
       {"id": "auto-pause", "text": "Three failed runs in a row pause a watcher. Read `vyre watchers logs <name>`, fix the cause, then `vyre watchers resume <name>`.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre watchers logs <name>", "docs": "using/watchers.md#look-after-running-watchers"},
       {"id": "cron-schedule", "text": "`schedule` takes five-field cron in the Space's time zone, like `*/15 * * * *`, or `@hourly` and `@daily`.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "key": "schedule", "docs": "using/watchers.md#what-a-watcher-is-made-of"},
-      {"id": "ask-claude", "text": "Ask Claude to watch a source: \"watch the billing inbox for invoices and file them into Harlow Legal\". It dry-runs before it turns on.", "surfaces": ["chat", "cli"], "level": "discovery", "trigger": "never-used", "since": "0.1.0", "docs": "using/watchers.md#ask-for-a-watcher"},
-      {"id": "webhook-schedule", "text": "For a source that pushes, set `\"schedule\": \"webhook\"`. `vyre watchers create` then prints the route, header and token.", "surfaces": ["cli"], "level": "discovery", "trigger": "never-used", "since": "0.1.0", "docs": "using/watchers.md#look-after-running-watchers"},
+      {"id": "ask-claude", "text": "Ask an agent in chat to watch something for you: \"tell me when an invoice from Northwind arrives\". It sets up the Watcher itself and tells you in that chat when something new arrives.", "surfaces": ["chat", "cli"], "level": "discovery", "trigger": "never-used", "since": "0.1.0", "docs": "using/watchers.md#ask-for-a-watcher"},
       {"id": "items-filed", "text": "Run `vyre watchers items` to see what every watcher filed, or add a project slug for that project's items.", "surfaces": ["cli"], "level": "first-use", "trigger": "idle", "since": "0.1.0", "command": "vyre watchers items", "docs": "using/watchers.md#look-after-running-watchers"},
-      {"id": "board-switch", "text": "An agent's board in the Deck, `/agents/<name>`, lists its watchers, each with a switch to pause it and turn it back on.", "surfaces": ["deck"], "level": "power", "trigger": "idle", "since": "0.1.0", "docs": "using/watchers.md#look-after-running-watchers"}
+      {"id": "routine-or-watcher", "text": "A Routine runs on a schedule (\"every weekday at 9, summarise my inbox\"). A Watcher runs when something new appears (\"tell me when an invoice arrives\"). Ask the agent for either in chat.", "surfaces": ["chat", "deck"], "level": "discovery", "trigger": "never-used", "since": "0.1.0", "docs": "using/watchers.md#ask-for-a-watcher"},
+      {"id": "board-switch", "text": "An agent's page, Apps, Agents, then the agent, lists its Routines and Watchers with Pause, Resume, Run now and Delete. So does its panel beside a chat.", "surfaces": ["deck"], "level": "power", "trigger": "idle", "since": "0.1.0", "docs": "using/watchers.md#look-after-running-watchers"}
     ]
   }
 }

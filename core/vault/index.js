@@ -370,14 +370,15 @@ export default {
     ctx.tool("vault.granted", {
       internal: true,
       description: "Whether an item is granted to the calling module, and to exactly this watcher when one is named: { granted }. The same check vault.release makes; no value is returned.",
-      input: obj({ name: str, watcher: str, project: str }, ["name"]),
-      run: (input, { caller }) => { const mod = String(caller).startsWith("module:") ? String(caller).slice(7) : null; if (!mod) throw new Error("only modules ask whether they hold a grant"); return { granted: vault.granted({ name: input.name, module: mod, ...(input.watcher ? { watcher: input.watcher } : {}), ...(input.project ? { project: input.project } : {}) }) }; },
+      input: obj({ name: str, watcher: str, project: str, agent: str }, ["name"]),
+      // agent: for an agent's own watcher, what is lent to that agent counts (only the watchers module, for a named watcher)
+      run: async (input, { caller }) => { const mod = String(caller).startsWith("module:") ? String(caller).slice(7) : null; if (!mod) throw new Error("only modules ask whether they hold a grant"); return { granted: vault.granted({ name: input.name, module: mod, ...(input.watcher ? { watcher: input.watcher } : {}), ...(input.project ? { project: input.project } : {}) }) || (await vault.lentToAgent(input.name, mod, String(input.watcher || ""), String(input.agent || ""))) }; },
     });
 
     ctx.tool("vault.release", {
       internal: true,
       description: "One value, to a module holding a grant for it, or to Publish for a deployment holding its own grant. `project`, when the grant names one, must match.",
-      input: obj({ name: str, field: str, watcher: str, project: str, deployment: str }, ["name"]),
+      input: obj({ name: str, field: str, watcher: str, project: str, deployment: str, agent: str }, ["name"]),
       run: (input, { caller }) => vault.release(input, caller),
     });
 

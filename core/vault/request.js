@@ -649,7 +649,9 @@ export class ApiRequests {
     if (mod && !watcher) {
       try { reader = (((await this.vault.apiCredential(name)).config.readers) || []).some(x => x.module === mod); } catch { reader = false; }
     }
-    if (mod && !reader) this.granted(name, mod, watcher, audit);
+    // An agent's own watcher uses what is lent to its agent (vault.lentToAgent); only the watchers module names the agent, for a named watcher.
+    const lentTo = mod === "watchers" && watcher && isStr(input.agent) && input.agent ? String(input.agent) : "";
+    if (mod && !reader && !(lentTo && (await this.vault.lentToAgent(name, mod, watcher, lentTo)))) this.granted(name, mod, watcher, audit);
     let plan;
     try { plan = await this.plan(input, name); }
     catch (e) { audit(false, printable(/** @type {Error} */ (e).message, 160)); throw e; }
@@ -879,7 +881,7 @@ export function register({ vault, tool, internal, call, said, deps = {}, log }) 
   tool("vault.request", ["cli", "local", "deck", "capsule", "mcp", "module"],
     "HTTP call with a vault api-credential, or with {{vault:Item.FIELD}} placeholders Vyre fills in. Reads run at once; sends, payments, deletes wait at the Gate.",
     obj({ credential: { type: "string", description: "an api-credential's name; leave it out to use {{vault:Item.FIELD}} placeholders" }, method: { type: "string", enum: METHODS }, url: str, headers: { type: "object" }, query: { type: "object" },
-      body: { anyOf: [str, { type: "object" }, { type: "array" }] }, watcher: str, operation: str, input: { type: "object" } }),
+      body: { anyOf: [str, { type: "object" }, { type: "array" }] }, watcher: str, agent: { type: "string", description: "the watchers module only: the agent whose own watcher this is, which uses what is lent to that agent" }, operation: str, input: { type: "object" } }),
     (input, meta) => api.request(input, meta));
 
   // A member uses what the Space owner shared with her. The kernel is asked, for HER chain, on the item's address (one grant model): Fill in covers reads, and an outward act still waits at the Gate for a

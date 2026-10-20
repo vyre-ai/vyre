@@ -4251,6 +4251,22 @@
     }
    }
   },
+  "agent-routines": {
+   "title": "An agent's Routines and Watchers",
+   "screens": {
+    "compact": {
+     "component": "agent-routines"
+    }
+   }
+  },
+  "watcher-card": {
+   "title": "A Watcher's card in the chat",
+   "screens": {
+    "glance": {
+     "component": "watcher-card"
+    }
+   }
+  },
   "shell-folded-account": {
    "title": "Folded rail, account menu open",
    "screens": {

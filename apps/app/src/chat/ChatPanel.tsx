@@ -11,6 +11,7 @@ import { RAIL, ResizeHandle, useStoredWidth } from "@vyre/ui";
 import { ComputerTab } from "./ComputerTab";
 import { agentWords } from "../state/agent-name.js";
 import { ThreadsTab } from "./ThreadsTab";
+import { AgentRoutines } from "../../screens/assistants/AgentRoutines";
 import { callT } from "../real/call-tool";
 import { sharedView } from "./person-shared-model.js";
 import { addPeopleLine, chatKind, groupView, panelTabs, tabOf } from "./threads-model.js";
@@ -255,7 +256,7 @@ export function ChatPanel(p: ChatPanelProps) {
         {backRow}
         <View style={{ alignItems: "center", gap: 6 }}><Face name={name} family="assistant" size={56} id={who?.id ?? name} /><Text size="title" medium>{agentWords(name)}</Text></View>
         <Tabs items={[["threads", "Threads"], ["computer", "Computer"], ["details", "Details"]]} value={drillTab} onChange={setDrillTab} />
-        {drillTab === "threads" ? threadsOf(name) : drillTab === "computer" ? <ComputerTab agents={[name]} onLeave={p.onClose} /> : <Row dense title={`Open ${agentWords(name)}`} sub="Model, effort, what it can see and use" chevron onPress={() => { p.onClose(); router.push(`/u/assistants/${encodeURIComponent(name)}` as never); }} />}
+        {drillTab === "threads" ? threadsOf(name) : drillTab === "computer" ? <ComputerTab agents={[name]} onLeave={p.onClose} /> : <View style={{ gap: 16 }}><AgentRoutines agent={name} /><Row dense title={`Open ${agentWords(name)}`} sub="Model, effort, what it can see and use" chevron onPress={() => { p.onClose(); router.push(`/u/assistants/${encodeURIComponent(name)}` as never); }} /></View>}
       </View>
     );
   };
@@ -286,7 +287,7 @@ export function ChatPanel(p: ChatPanelProps) {
   };
   const body0 = view ? (view.level === "agent" ? agentView(view.name) : view.level === "person" ? personView(view.id) : groupFirst)
     : cur === "threads" && agents[0] ? threadsOf(agents[0].name) : cur === "runs" ? threadsOf(p.title, "run") : cur === "computer" && agents.length ? <ComputerTab agents={agents.map((a) => a.name)} onLeave={p.onClose} />
-    : kind === "agent" && cur === "details" ? <View style={{ gap: 16 }}>{details}{library}</View> : details;
+    : kind === "agent" && cur === "details" ? <View style={{ gap: 16 }}>{agents[0] ? <AgentRoutines agent={agents[0].name} /> : null}{details}{library}</View> : details;
   // The top of the panel: one face, the name, the labels. A chat with one other shows their face; more than one shows a small stack.
   const others = p.participants.filter((x) => x.id !== p.viewer);
   const hero = (

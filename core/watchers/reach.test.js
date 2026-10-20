@@ -19,6 +19,7 @@ const REACH = {
   "watchers.list": "anyone", "watchers.test": "anyone", "watchers.card": "anyone", "watchers.logs": "anyone", "watchers.items": "anyone",
   "watchers.create": "asked", "watchers.preset": "asked", "watchers.pause": "anyone",
   "watchers.resume": "person", "watchers.delete": "person", "watchers.run": "person", "watchers.hook": "hook",
+  "watchers.write": "asked", "watchers.routine.create": "asked", "watchers.revise": "anyone", "watchers.own.resume": "anyone", "watchers.own.run": "anyone", "watchers.own.delete": "anyone",
   "watchers.create.target": "modules", "watchers.preset.target": "modules", "watchers.shown": "modules", "watchers.duty.create": "modules", "watchers.duty.update": "modules", "watchers.duty.delete": "modules", "watchers.duty.run": "modules", "watchers.duty.resume": "modules", "watchers.hook.run": "modules",
 };
 
@@ -36,7 +37,7 @@ test("reach holds against the real registry: asked for a model, person for delet
   writeModule(root, "watchers", stub, `export default { async start(ctx) {
     // watchers.test and watchers.pause are writes by declaration (kernel-declare, RG-1), so a write open to anyone is the person's surfaces and modules unless the tool names its callers: the real module
     // does (core/watchers/index.js: people, module, mcp, harness), and a stub that left it out would test the default, not the module.
-    const OPEN = ["watchers.test", "watchers.pause"];
+    const OPEN = ["watchers.test", "watchers.pause", "watchers.write", "watchers.routine.create", "watchers.revise", "watchers.own.resume", "watchers.own.run", "watchers.own.delete"];
     for (const name of ${JSON.stringify(names)}) ctx.tool(name, { input: { type: "object" }, ...(OPEN.includes(name) ? { callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module", "mcp", "harness"] } : {}), run: async (input, meta) => ({ ran: name, caller: meta.caller }) });
     return { async stop() {} };
   } };`);
@@ -55,7 +56,7 @@ test("reach holds against the real registry: asked for a model, person for delet
   const code = async (tool, caller) => { const r = await reg.call(tool, { name: "w" }, caller); return r.error ? r.error.code : "ran"; };
 
   // Asked: the person's own surfaces run it; a model, the harness or an agent only on the person's words (none here: refused).
-  for (const tool of ["watchers.create", "watchers.preset"]) {
+  for (const tool of ["watchers.create", "watchers.preset", "watchers.write", "watchers.routine.create"]) {
     assert.equal(await code(tool, "cli"), "ran", tool);
     for (const c of agents) assert.equal(await code(tool, c), "not_asked", `${tool} for ${c}`);
   }
@@ -70,7 +71,8 @@ test("reach holds against the real registry: asked for a model, person for delet
     for (const c of ["mcp", "mcp:agent:kit", "harness", "module:team"]) assert.equal(await code(tool, c), "denied", `${tool} for ${c}`);
   }
   // Anyone: reading, and stopping (the safe direction).
-  for (const tool of ["watchers.list", "watchers.items", "watchers.logs", "watchers.card", "watchers.test", "watchers.pause"]) {
+  // An agent's own: open to it at the registry, and the module's own body checks the caller is the agent that owns it (agent-tools.test.js).
+  for (const tool of ["watchers.list", "watchers.items", "watchers.logs", "watchers.card", "watchers.test", "watchers.pause", "watchers.revise", "watchers.own.resume", "watchers.own.run", "watchers.own.delete"]) {
     for (const c of ["cli", ...agents]) assert.equal(await code(tool, c), "ran", `${tool} for ${c}`);
   }
   // Modules: the duty tools are the teammates module's, hidden from everyone else.

@@ -49,6 +49,10 @@ import { ChatPanel, type PanelPage } from "../src/chat/ChatPanel";
 import { sampleAccounts, sampleGroups, sampleNow } from "../src/models/mock-models.js";
 import { AgentAiTab } from "../screens/assistants/AgentPage";
 import { MODEL_COPY, welcomeGroups } from "../screens/first-run/welcome-model.js";
+import { RoutinesView } from "../screens/assistants/AgentRoutines";
+import { SAMPLE_ROWS } from "../screens/assistants/routines-model.js";
+import { WatcherCardView } from "../screens/chat-tools/WatcherCard";
+import { watcherCardOf } from "../screens/chat-tools/more-model.ts";
 
 const MD_SAMPLE = [
   "## The short answer", "",
@@ -81,6 +85,15 @@ function fromQuery(raw?: string): Record<string, any> | null {
 /** Whole screens that are components, not block screens: drawn from sample data so a picture of them needs no box. */
 function Sample({ name }: { name: string }) {
   const { phone } = useUiTheme();
+  // An agent's Routines and Watchers as its panel beside a chat lists them, and a Watcher's card in the chat where the person asked for it (sample data, no box).
+  if (name === "agent-routines") return <View style={{ maxWidth: 360 }}><RoutinesView agent="scout" rows={SAMPLE_ROWS} onAct={() => {}} /></View>;
+  if (name === "watcher-card") {
+    const card = watcherCardOf({ name: "northwind-invoices", hash: "h1", state: "paused", waiting: true, kind: "watcher", owner: { kind: "agent", agent: "scout", person: "per_self", thread: "t1" },
+      lines: { when: "Every 15 minutes", check: "Is it an invoice from Northwind?", do: "Tells you here" },
+      facts: { reads: ["mail.example"], readsText: "Reads mail.example", credentials: [{ host: "mail.example", item: "billing-inbox" }], acts: "Wakes scout with what it finds, as quoted notes, up to 5 times a day. scout decides what to do and tells you here", cost: "No model cost", schedule: "every 15 minutes" },
+      needs: [{ item: "billing-inbox", host: "mail.example" }] });
+    return card ? <WatcherCardView card={card} onAct={() => {}} onLend={() => {}} /> : null;
+  }
   if (name === "design-changes") {
     const desk = (FX.desk?.screens.full ?? null) as any, list = (FX["block-list"]?.screens.full ?? null) as any;
     const items = [

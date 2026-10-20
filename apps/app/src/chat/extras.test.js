@@ -25,7 +25,7 @@ test("watchers.shown names each card once, and the watcher tools are recognised 
   const shown = { project: "p", kinds: ["mail"], watchers: [{ name: "new-lead", hash: "h1", title: "t", state: "off", project: "p", at: 1 }, { name: "new-lead", hash: "h2", title: "t", state: "off", project: "p", at: 2 }, { name: "inbox", hash: "h3", title: "t", state: "off", project: "p", at: 3 }] };
   assert.deepEqual(watcherNames(shown), ["new-lead", "inbox"]);
   assert.deepEqual(watcherNames(null), []);
-  for (const t of ["watchers.card", "watchers.preset", "mcp__vyre__watchers_card"]) assert.equal(showsWatcherCard(t), true, t);
+  for (const t of ["watchers.card", "watchers.preset", "mcp__vyre__watchers_card", "watchers.write", "mcp__vyre__watchers_routine_create", "watchers.revise"]) assert.equal(showsWatcherCard(t), true, t);
   assert.equal(showsWatcherCard("watchers.list"), false);
 });
 
