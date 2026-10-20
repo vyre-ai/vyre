@@ -44,7 +44,8 @@ test("a photo that cannot be removed is said, and the rest still go", async () =
 
 test("on a timer: never two sweeps at once, a failure is logged in words, and stop ends it", async () => {
   const lines = /** @type {string[]} */ ([]);
-  const k = fake({ "member-profile": [], "member-photo": [{ id: "x", version: 1, created_at: ago(9e6) }] }, new Set(["x"]));
+  // the timer's sweep reads the real clock: the photo is from three hours before now
+  const k = fake({ "member-profile": [], "member-photo": [{ id: "x", version: 1, created_at: new Date(Date.now() - 3 * 3_600_000).toISOString() }] }, new Set(["x"]));
   const s = startPhotoSweep(k, (l) => lines.push(l), { firstMs: 1e9, everyMs: 1e9 });
   const [a, b] = await Promise.all([s.run(), s.run()]);
   assert.ok(a && a.failed.length === 1);
