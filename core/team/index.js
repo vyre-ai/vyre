@@ -29,9 +29,9 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { boundedWait } from "./bounded.js";
-import { duties as makeDuties, makeWake, DUTIES_MIGRATION, DUTIES_SEEN_MIGRATION, DUTIES_TITLE_MIGRATION, DUTIES_RUNAS_MIGRATION } from "./duties.js";
+import { duties as makeDuties, makeWake, holdUnstamped, DUTIES_MIGRATION, DUTIES_SEEN_MIGRATION, DUTIES_TITLE_MIGRATION, DUTIES_RUNAS_MIGRATION, DUTIES_HELD_MIGRATION } from "./duties.js";
 import { isPerson } from "../../lib/caller.js";
-import { connectOwn } from "../../lib/own-account.js";
+import { connectOwn, noPerson } from "../../lib/own-account.js";
 import { projectRecordIdOf } from "../../lib/project-id.js";
 import { rekeyLegacy } from "./rekey.js";
 import { LIVE_STATUSES } from "../../lib/thread-status.js";
@@ -105,6 +105,10 @@ export const MIGRATIONS = [
   `ALTER TABLE team_requests ADD COLUMN asker TEXT`,
   // the person a duty runs as (duties.js DUTIES_RUNAS_MIGRATION): its requests are queued as them, never as the owner's automation
   DUTIES_RUNAS_MIGRATION,
+  // why a duty made before that is held off (duties.js holdUnstamped): no person to run as, so it waits for one to turn it on
+  DUTIES_HELD_MIGRATION,
+  // the person who added a teammate (team.add's chain): the integrator a worktree teammate brings along runs its merges for them when a merge needs its AI turn
+  `ALTER TABLE team_teammates ADD COLUMN added_by TEXT`,
 ];
 
 /** How long stop() waits for in-flight dispatch and merge work before it stops anyway (milliseconds). */
@@ -251,6 +255,12 @@ export default {
   async start(ctx) {
     ctx.store.migrate(MIGRATIONS);
     const db = ctx.store.db;
+    // Rule 2 on upgrade: a duty made before Vyre recorded who it runs as is the owner's only when its own row shows the owner made it; any other is held off until a person turns it on (duties.js holdUnstamped).
+    // With no kernel there is one person, the owner, and nothing changes.
+    if (ctx.kernel && typeof ctx.kernel.owner === "string" && ctx.kernel.owner) {
+      try { const r = holdUnstamped(db, ctx.kernel.owner); if (r.held.length || r.stamped.length) ctx.log?.(`team: duties made before Vyre recorded who they run as: ${r.stamped.length} kept as the owner's, ${r.held.length} paused until a person turns them on`); }
+      catch (e) { ctx.log?.(`team: the duties upgrade did not run (${/** @type {Error} */ (e).message}); a duty with no one to run as is held when it fires`); }
+    }
 
     // ---------------------------------------------------------------- shapes
 
@@ -357,12 +367,14 @@ export default {
       if (!seat || !(seat.owner || seat.team)) throw Object.assign(new Error("You are not on this project's team. Ask the project's owner to add you, then ask again. Nothing was changed."), { code: "denied" });
     };
     /**
-     * The person a duty runs as once this call turns it on or changes what it does: the person on the call, who must hold an AI account of their own (the owner's own is theirs); null for a call with no
-     * person on it (the owner's setting, as before). Refused in plain words, before anything starts, for a person with none.
+     * The person a duty runs as once this call turns it on or changes what it does: the person on the call, who must hold an AI account of their own (the owner's own is theirs). A call with no person on it is
+     * refused with the kernel on (Rule 2: no person, no agent work); null only with no kernel, where the one person is the owner. Refused in plain words, before anything starts, for a person with none.
      * @param {any} meta @param {any} tm
      */
     const dutyRunner = async (meta, tm) => {
       const p = await personOnCall(meta);
+      // Rule 2: a duty runs as a person. With the kernel on, a call that names nobody turns nothing on (never the owner's by default); with no kernel the one person is the owner
+      if (!p && ctx.kernel) throw Object.assign(new Error(noPerson("Turn the duty on from your own signed-in Vyre. Nothing was turned on.")), { code: "denied" });
       if (!p) return null;
       await personAccount(p, undefined, tm.role).catch((/** @type {any} */ e) => { throw Object.assign(new Error(`${e.message} Nothing was turned on.`), { code: e.code || "no_account" }); });
       return p;
@@ -754,7 +766,13 @@ export default {
       if (pending) return;
       const range = await shaRange(info.repo, info.branch, info.base);
       const text = `merge ${info.branch} ${range ? `${range.from}..${range.to}` : "(range unknown)"}, from request ${fromRequest}`;
-      queueRequest({ teammate: integrator.agent, project: tm.project, from_kind: "assistant", from: "vyre", text, priority: "normal", asker: "automation" });   // Vyre's own integrator: the owner's setting
+      // The merge itself is vyred's own git act and runs no AI turn (attemptMerge). Only a conflict, or a test command to run, wakes the integrator's session, and that turn needs a person (Rule 2): the person
+      // who added the teammate that brought the integrator along, else (an integrator added before Vyre kept that) the person whose finished request these commits are. Neither: the mechanical merge still
+      // runs, and a merge that needs the integrator's turn is refused in words (pumpAgent).
+      const addedBy = /** @type {any} */ (db.prepare("SELECT added_by FROM team_teammates WHERE agent = ?").get(integrator.agent));
+      const from = reqById(fromRequest);
+      const asker = (addedBy && addedBy.added_by ? String(addedBy.added_by) : null) || (from && from.asker && from.asker !== "automation" ? from.asker : null);
+      queueRequest({ teammate: integrator.agent, project: tm.project, from_kind: "assistant", from: "vyre", text, priority: "normal", asker });
     };
 
     /**
@@ -841,6 +859,13 @@ export default {
               continue;
             }
             worktreeDir = merged.info.dir;
+          }
+          // Rule 2: what follows is an AI turn, and it runs for a person. A request with nobody behind it (queued before Vyre recorded the asker, an integrator's merge with no one to run it for) starts no
+          // session: never the teammate's standing thread as the owner's. The integrator's mechanical merge above has already run (it starts no turn); this only refuses the turn it would need.
+          if (ctx.kernel && (!req.asker || req.asker === "automation")) {
+            const closed = await finish(reqById(req.id), "failed", { result: noPerson(tm.role === INTEGRATOR_ROLE ? "Resolve the merge yourself, or ask the integrator from your own signed-in Vyre." : "Ask again from your own signed-in Vyre.") });
+            await release(closed || req);
+            continue;
           }
           let slot;
           try { slot = await use("sessions.slots", { action: "take", kind: "teammate", project: await slugOf(req.project), owner: req.id, key: agent }); }
@@ -936,9 +961,9 @@ export default {
     const insertTeammate = i => {
       const agent = agentName(i.role, i.slug);
       const now = Date.now();
-      db.prepare(`INSERT INTO team_teammates (agent, project, role, shared, brief, instructions, model, helper_model, tools, isolation, main_sha, test_command, state, created_at, updated_at)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?, 'asleep', ?,?)`).run(agent, i.project, i.role, "[]", i.brief || null, i.instructions || null,
-        i.model || "teammate", i.helper_model || "helper", JSON.stringify(i.tools || []), i.isolation || "folder", i.main_sha || null, i.test_command || null, now, now);
+      db.prepare(`INSERT INTO team_teammates (agent, project, role, shared, brief, instructions, model, helper_model, tools, isolation, main_sha, test_command, state, created_at, updated_at, added_by)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?, 'asleep', ?,?,?)`).run(agent, i.project, i.role, "[]", i.brief || null, i.instructions || null,
+        i.model || "teammate", i.helper_model || "helper", JSON.stringify(i.tools || []), i.isolation || "folder", i.main_sha || null, i.test_command || null, now, now, i.added_by || null);
       ctx.events.emit("teammate.created", { agent, project: i.project, role: i.role });
       const row = byAgent(agent);
       void record("add", row);
@@ -978,6 +1003,8 @@ export default {
         if (byAgent(agent)) throw new Error(`there is already an agent ${agent}`);
         let isolation = addIsolation(i, isPerson(meta.caller));
         let notice;
+        // who added it, from the call's own chain (never input): the integrator this add may bring along runs a merge that needs its AI turn for them
+        const addedBy = await personOnCall(meta);
         if (isolation === "worktree") {
           const home = await projectHome(project);
           const repo = home && await repoRoot(home);
@@ -996,7 +1023,7 @@ export default {
             if (!byRole(project, INTEGRATOR_ROLE)) {
               const iw = await ensureWorktree(repo, INTEGRATOR_ROLE, base);
               if (iw.ok) {
-                insertTeammate({ project, slug, role: INTEGRATOR_ROLE, isolation: "worktree",
+                insertTeammate({ project, slug, role: INTEGRATOR_ROLE, isolation: "worktree", added_by: addedBy,
                   brief: "Merges other teammates' finished work into this project's own branch once the tests pass.",
                   main_sha: await headSha(repo, B(base)), test_command: await detectTestCommand(repo) });
                 // One add made two teammates: say so, so the person sees the integrator it brought along.
@@ -1006,7 +1033,7 @@ export default {
             }
           }
         }
-        return { ...insertTeammate({ ...i, project, slug, isolation }), ...(notice ? { notice } : {}) };
+        return { ...insertTeammate({ ...i, project, slug, isolation, added_by: addedBy }), ...(notice ? { notice } : {}) };
       },
     });
 
@@ -1439,7 +1466,7 @@ export default {
         const from = callerTm ? callerTm.agent : meta.thread || String(meta.caller || "vyre");
         // WHO asked is judged HERE, where the person is on the call: from this call's own chain (the module's hop to the Switchboard does not carry a session's person). ONLY a person on the chain who is not the
         // owner or an admin is judged: she may send work only to a project she owns or is on the team of, and gets a refusal in words (nothing queued) when the teammate's credential would not reach the turn
-        // unreadable (the Switchboard's launch check). A call with no person on it is not judged and not refused: it runs as it did before the gate.
+        // unreadable (the Switchboard's launch check). A call with no person on it is refused below (Rule 2: no person, no agent work).
         const K = ctx.kernel;
         const chainPerson = async () => { if (!K || typeof K.chain !== "function") return null; try { const c = await K.chain(meta); const h = c && Array.isArray(c.hops) ? c.hops.find((/** @type {any} */ x) => x && x.actor && x.actor.kind === "person") : null; return h ? String(h.actor.id) : null; } catch { return null; } };
         const owner0 = K && typeof K.owner === "string" ? K.owner : "";
@@ -1455,6 +1482,9 @@ export default {
         }
         const inherited = callerTm ? ((reqById(callerTm.current_request || "") || {}).asker || null) : null;
         const forPerson = asker0 || inherited || null;
+        // Rule 2: a request is a person's. With the kernel on, a call that names nobody (a module's own, a session with no person proved, a teammate working an older request that had none) queues nothing:
+        // it never runs on the teammate's standing thread as the owner's. The owner's own call carries the owner first on its chain and runs as before.
+        if (ctx.kernel && (!forPerson || forPerson === "automation")) throw Object.assign(new Error(noPerson("Ask from your own signed-in Vyre. Nothing was queued.")), { code: "denied" });
         // a person's own request (anyone but the owner) runs on THEIR own AI account, in a session of its own (never the teammate's standing thread, which is on the owner's sign-in); one with none is refused here
         const mineAcct = await personAccount(forPerson, choice ? choice.provider : undefined, i.to).catch((/** @type {any} */ e) => { throw Object.assign(new Error(`${e.message} Nothing was queued.`), { code: e.code || "no_account" }); });
         const filler0 = mineAcct ? null : await fillerOf(tm).catch(() => null);
@@ -1617,8 +1647,14 @@ export default {
     // The duty wake (0.2.2): a firing duty that acts queues one request to its teammate; the filed items arrive as quoted data (dutyNewsBlock).
     const wake = makeWake({ dutyApi, live: agent => Boolean(byAgent(agent) && !byAgent(agent).retired_at),
       waiting: (agent, from) => Boolean(db.prepare("SELECT 1 FROM team_requests WHERE teammate = ? AND from_label = ? AND state = 'queued' LIMIT 1").get(agent, from)),
-      // a duty's request is the person's it runs as (on their own account, refused at dispatch if they have none since), never the owner's; only one with nobody stored (an older duty, the owner's own setting) is the automation's
-      queue: r => { let who = null; try { who = dutyApi.get(String(r.from).replace(/^duty:/, "")).run_as; } catch { who = null; } queueRequest({ ...r, asker: who || "automation" }); } });
+      // a duty's request is the person's it runs as (on their own account, refused at dispatch if they have none since), never the owner's. One with nobody stored (made before Vyre recorded it, and missed by
+      // the upgrade) queues nothing with the kernel on: it is held off until a person turns it on as themselves (Rule 2). With no kernel the one person is the owner, as before.
+      queue: r => {
+        const id = String(r.from).replace(/^duty:/, "");
+        let who = null; try { who = dutyApi.get(id).run_as; } catch { who = null; }
+        if (!who && ctx.kernel) { try { dutyApi.hold(id); } catch { /* gone meanwhile: nothing to hold */ } ctx.log?.(`team: duty ${id} fired with no one to run as; it is paused until a person turns it on`); return; }
+        queueRequest({ ...r, asker: who || "automation" });
+      } });
     const offFired = ctx.events.on("watcher.fired", e => { if (!stopped) { try { wake(e); } catch (err) { ctx.log?.(`team: duty wake failed: ${/** @type {Error} */ (err).message}`); } } });
     const offCompact = ctx.events.on("thread.started", async e => {
       const source = e.payload && e.payload.source, session = e.payload && e.payload.session;

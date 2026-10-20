@@ -294,7 +294,7 @@ export default {
         const routes = { ...cfg().routes };
         const gone = routeOf(name);
         if (!routeOf(name)) throw refuse(`no open route ${name} (hooks.list shows the open ones)`, "not_found");
-        if (gone.flow) throw refuse(`${name} is the Flow's own webhook address: turn the Flow off to close it, or get it a new address`, "conflict");
+        if (gone.flow) throw refuse(`${name} is the Flow's own webhook address: turn the Flow off to close it, or get it a new address; then retry`, "conflict");
         delete routes[name];
         // Replacing the whole routes object: save() merges one level deep, so a patch of
         // { routes: {...} } replaces routes.
@@ -452,7 +452,7 @@ export default {
         const flow = flowArg(input), hit = routeFor(flow);
         if (!hit) throw refuse("this Flow has no webhook address yet: turn it on first", "not_found");
         const r = /** @type {any} */ (await ctx.call("vault.make-hook-secret", { name: hit[1].secret, renew: true }));
-        if (r.error) throw refuse(`the new token could not be made: ${String(r.error.message || r.error.code).slice(0, 200)}`, "unavailable");
+        if (r.error) throw refuse(`the new token could not be made (${String(r.error.message || r.error.code).slice(0, 200)}); retry in a moment`, "unavailable");
         lastSeen.delete(hit[0]);
         ctx.log(`route ${hit[0]} has a new token, set by ${caller}; the old address no longer works`);
         return flowOut(flow);
@@ -507,7 +507,7 @@ export default {
         if (!item) {
           item = `hooks-${key}-sign`;
           const r = /** @type {any} */ (await ctx.call("vault.make-hook-secret", { name: item }));
-          if (r.error && !/already in the Vault/.test(String(r.error.message || ""))) throw refuse(`the signing secret could not be made: ${String(r.error.message || r.error.code).slice(0, 200)}`, "unavailable");
+          if (r.error && !/already in the Vault/.test(String(r.error.message || ""))) throw refuse(`the signing secret could not be made (${String(r.error.message || r.error.code).slice(0, 200)}); retry in a moment`, "unavailable");
           made = !r.error;
         }
         routes[key] = { ...route, sign: { scheme, header, secret: item } };
