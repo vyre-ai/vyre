@@ -66,5 +66,5 @@ test("a plain session (started for no agent) is nobody's assistant: it cannot mo
   const th = await d.registry.call("threads.start", { cwd: work, prompt: `vyre tasks.move ${JSON.stringify({ id: task.id, to: "working" })}`, surface: "deck" }, "cli");
   assert.ok(th.data && th.data.id, JSON.stringify(th));
   await until(async () => (await d.registry.call("threads.get", { thread: th.data.id, limit: 100 }, "cli")).data.events.some((/** @type {any} */ e) => e.type === "thread.finished"), "the plain session's turn");
-  assert.equal((await d.kernel.gateway.ask.get(person, task.id)).state, "ready", "a plain session moved the assistant's task");
+  { const now = await d.kernel.gateway.ask.get(person, task.id); assert.equal(now.state, "ready", "a plain session moved the assistant's task: " + JSON.stringify(now).slice(0, 900)); }
 });
