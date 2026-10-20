@@ -475,6 +475,19 @@
         ]
       },
       {
+        "name": "work.template.stage-flow",
+        "summary": "one stage of a Playbook as its Flow, for the Flow builder",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "work.template.stage-flow-in-space",
+        "crossSpace": "records.create",
+        "summary": "one stage of a Playbook as its Flow (run inside another Space; the cross-Space door only)",
+        "reach": "modules",
+        "effect": "write"
+      },
+      {
         "name": "work.template.library",
         "summary": "the project templates the Kits ship",
         "reach": "anyone",

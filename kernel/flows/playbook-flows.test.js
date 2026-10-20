@@ -60,7 +60,8 @@ test("the stage's tasks are the Flow's tasks, with Assigned, Reviewer and Approv
   assert.equal(draft.reviewer && draft.reviewer.id, BOB.id, "Reviewer");
   assert.equal(check.doer.id, BOB.id);
   assert.equal(check.checker && check.checker.id, ALEX.id, "Approver");
-  for (const t of ts) { assert.equal(t.source, "flow_step", `${t.title}: a Flow task`); assert.equal(t.flow, sf.id, `${t.title}: from the stage's Flow`); }
+  // (the test kernel holds a task's `flow` beside the task: kernel/flows/testing/real-kernel.js ask-flow-form)
+  for (const t of ts) { assert.equal(t.source, "flow_step", `${t.title}: a Flow task`); assert.equal((await w.kernel.ask.get(sys(w), t.id)).flow, sf.id, `${t.title}: from the stage's Flow`); }
 });
 
 test("finishing the stage's tasks runs its last step: the record moves to the next stage and the run is done", async () => {
