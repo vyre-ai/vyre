@@ -186,7 +186,7 @@ test("the wallpaper: the screen's size, the halftone dots, the large clean mark,
   const dots = deskDots(1440, 900);
   assert.ok(dots.length > 400 && dots.every(d => d.x > 0 && d.x < 1440 && d.y > 0 && d.y < 900 && d.a >= 0.055 && d.a <= 0.42 && d.r < 3.3));
   const centre = dots.filter(d => Math.abs(d.x - 720) < 120 && Math.abs(d.y - 414) < 120), bottom = dots.filter(d => d.y > 800);
-  assert.ok(centre.length / (240 * 240) < dots.length / (1440 * 900) / 3, "calm behind the mark");
+  assert.ok(centre.every(d => d.a < 0.09) && dots.some(d => d.a > 0.3), "calm behind the mark: its dots are barely there, and the field is brighter elsewhere");
   assert.ok(bottom.filter(d => d.y > 850).every(d => d.a < 0.14), "calm over the dock");
   // no name: no text at all. A hostile name: nothing that ImageMagick would read as a file or a format string.
   assert.equal(wallpaperArgv("1440x900", "", 20000, "/x").includes("-annotate"), false);

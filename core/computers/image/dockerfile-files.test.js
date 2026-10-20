@@ -81,7 +81,7 @@ test("the new-tab page calls nothing: no address in it is fetched, loaded or sen
   const page = read("desk/newtab.html");
   assert.match(page, /Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; form-action 'none'"/);
   assert.doesNotMatch(page, /<(?:script|link|img|iframe|audio|video|source|embed|object)\b[^>]*\b(?:src|href|data)=["']?(?:https?:)?\/\//i, "nothing is loaded from anywhere");
-  assert.doesNotMatch(page, /fetch\(|XMLHttpRequest|WebSocket|sendBeacon|navigator\.|importScripts|@import|url\(/, "no request of its own");
+  assert.doesNotMatch(page, /fetch\(|XMLHttpRequest|WebSocket|sendBeacon|navigator\.|importScripts|@import|url\(\s*["']?[^#\s"')]/, "no request of its own (url(#id) only points at a gradient in the page itself)");
   assert.equal([...page.matchAll(/location\.assign\(/g)].length, 3, "it navigates only inside the submit handler, three ways");
   assert.ok(page.indexOf("addEventListener(\"submit\"") < page.indexOf("location.assign("), "and only after a person submits");
   assert.match(page, /textContent = who/, "the agent's name is set as text, never as markup");
