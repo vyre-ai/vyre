@@ -394,3 +394,18 @@ test("changes requested on a member's task whose doer cannot run for lack of her
   assert.deepEqual(asked[0].spec.doer, { kind: "person", id: "ana" });
   assert.equal(asked[0].opts.idem, "no-account:t1:juno");
 });
+
+test("Rule 2: a task with nobody it is for (no assigned_by person, no requested_for) is stuck with the no-person words, and the agents module starts nothing", async () => {
+  const stuck = /** @type {any[]} */ ([]), asked = /** @type {any[]} */ ([]);
+  const t0 = task({ id: "n1", source: "assistant_request", assigned_by: { kind: "agent", id: "assistant" }, form: undefined, note: "Do the thing" });
+  const gw = { ask: { get: async () => t0, edit: async () => {}, stuck: async (_c, id, info) => { stuck.push({ id, info }); } } };
+  // the agents module's own refusal (core/agents/index.js agents.wake), as it crosses the module call
+  const onEvent = createAgentWake({ space: "s", gw, chain: () => ({}), agentChain: t => ({ for: t.doer.id }), clock: () => NOW, log: () => {},
+    callModule: async (tool, input) => { if (tool === "agents.wake-failed") return {}; asked.push(input); throw new Error("No person asked for this, so no agent was started. Give the task again from your own signed-in Vyre, so it runs for you."); } });
+  await onEvent(created("n1", "task.readied"));
+  assert.equal(asked.length, 1);
+  assert.equal(asked[0].approver, undefined, "no person to name");
+  assert.equal(stuck.length, 1);
+  assert.equal(stuck[0].info.reason, "No person asked for this, so no agent was started.");
+  assert.equal(stuck[0].info.suggested_fix, "Give the task to juno again from your own signed-in Vyre, so it runs for you.");
+});
