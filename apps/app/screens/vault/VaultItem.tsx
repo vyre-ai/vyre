@@ -6,7 +6,7 @@ import { View } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { Avatar, Banner, Button, Card, Chip, Field, Row, SecretField, Sheet, Text, markRef, showToast } from "@vyre/ui";
 import { Footnote, Sec } from "../places/Frame";
-import { canonical, clashes, placeholder, secretHint, toDotenv, type DField } from "./env-model.js";
+import { canonical, clashes, fieldLabel, placeholder, secretHint, toDotenv, type DField } from "./env-model.js";
 import { FieldsEditor } from "./FieldsEditor";
 import { ItemSharing } from "./ItemSharing";
 import { MoveItem } from "./MoveItem";
@@ -25,7 +25,7 @@ const presenceWords = (e: unknown, fallback: string) => ((e as { code?: string }
   : say(e, fallback));
 
 /** The names a field is shown by: its one form; a login's and a note's own fields keep their words. */
-const shownField = (item: VItem, name: string) => (item.kind === "login" ? ({ username: "Username", password: "Password", totp: "One-time code", url: "Web address" } as Record<string, string>)[name] ?? canonical(name) : item.kind === "note" && name === "text" ? "Note" : canonical(name));
+const shownField = (item: VItem, name: string) => fieldLabel(item.kind, name);
 
 export function VaultItem({ item, scope, data, owner, needs, events, onChanged, onDelete }: {
   item: VItem; scope: Scope; data: VaultData; owner: boolean; needs: Need[]; events: Event[]; onChanged: () => void; onDelete: () => void;

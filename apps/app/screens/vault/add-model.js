@@ -30,8 +30,8 @@ export function offered(name) {
   return !!p && p.how === "field" && !isAiAccount(p) && !isSignIn(p) && !(/** @type {readonly string[]} */ (ADVANCED_KINDS)).includes(name);
 }
 
-/** A field's label without its aside in brackets, capitalised. @param {string} l */
-const short = (l) => String(l).replace(/\s*\(.*$/, "").replace(/^./, (c) => c.toUpperCase());
+/** A field's label without its aside (in brackets, or after a comma), capitalised. @param {string} l */
+const short = (l) => String(l).replace(/\s*[(,].*$/, "").replace(/^./, (c) => c.toUpperCase());
 /** A module's name as people read it. @param {string} m */
 const moduleWord = (m) => String(m).replace(/[-_]+/g, " ").replace(/^./, (c) => c.toUpperCase());
 /** @param {{ name: string, label: string, secret: boolean, optional?: boolean }} f @returns {TField} */

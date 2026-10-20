@@ -103,9 +103,9 @@ export function AddBody({ open, scope, member, busy, problem, onClose, onSave, n
           return (
             <View key={f.id} className="gap-s1">
               <View className="flex-row items-center gap-s2">
-                <Switch label={`Add ${f.key}`} on={f.on} onChange={(on) => setDrafts((xs) => setField(xs, f.id, { on }))} />
                 <View className="min-w-0 flex-1"><Text mono strong={f.on} tone={f.on ? undefined : "label"}>{liveName(f.key)}</Text>
                   <Text size="caption" tone="label">{f.secret ? `Secret, ${secretHint(f.value)}` : f.value}</Text></View>
+                <Button kind="ghost" size="sm" label={f.on ? "Leave out" : "Put back"} onPress={() => setDrafts((xs) => setField(xs, f.id, { on: !f.on }))} />
                 <Menu trigger={<Button kind="ghost" size="sm" label="Move" />} items={[...drafts.filter((x) => x.id !== d.id).map((x) => ({ label: `To ${x.name || "another item"}`, onPress: () => setDrafts((xs) => moveField(xs, f.id, x.id)) })), { label: "To a new item", onPress: () => setDrafts((xs) => moveField(xs, f.id, "new")) }]} />
               </View>
               <View className="flex-row flex-wrap items-center gap-s2">

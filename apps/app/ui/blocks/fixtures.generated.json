@@ -4195,9 +4195,6 @@
     },
     "compact": {
      "component": "vault-mine"
-    },
-    "glance": {
-     "component": "vault-mine"
     }
    }
   },
@@ -4208,9 +4205,6 @@
      "component": "vault-shared"
     },
     "compact": {
-     "component": "vault-shared"
-    },
-    "glance": {
      "component": "vault-shared"
     }
    }
@@ -4223,9 +4217,6 @@
     },
     "compact": {
      "component": "vault-add"
-    },
-    "glance": {
-     "component": "vault-add"
     }
    }
   },
@@ -4234,12 +4225,6 @@
    "screens": {
     "full": {
      "component": "vault-paste"
-    },
-    "compact": {
-     "component": "vault-paste"
-    },
-    "glance": {
-     "component": "vault-paste"
     }
    }
   },
@@ -4247,12 +4232,6 @@
    "title": "Vault: Advanced",
    "screens": {
     "full": {
-     "component": "vault-advanced"
-    },
-    "compact": {
-     "component": "vault-advanced"
-    },
-    "glance": {
      "component": "vault-advanced"
     }
    }

@@ -22,7 +22,7 @@ const subOf = (w: Who) => (w.kind === "group" ? (w.id === "everyone" ? "All memb
 export function ShareRow({ w, level, onLevel, onRemove, connection, levels }: { w: Who; level: Level; onLevel: (l: Level) => void; onRemove: () => void; connection?: boolean; levels?: Level[] }) {
   const phone = usePhone();
   const allowed = ((): Level[] => { const a = allowedLevels(w.kind, { connection, levels }) as Level[]; return a.includes(level) || w.kind === "agent" || connection ? a : [...a, level]; })();
-  const sub = w.kind === "agent" ? "Agent. Fills in without ever seeing it" : LEVEL_HELP[level];
+  const sub = w.kind === "agent" ? "Agent. Uses it, without seeing it" : LEVEL_HELP[level];
   const remove = <Button kind="ghost" size="sm" label="Remove" onPress={onRemove} />;
   const seg = <Segmented<Level> label={`${w.name}'s access`} fill={phone} options={allowed.map((l) => [l, levelWord(l)] as [Level, string])} value={level} onChange={onLevel} />;
   if (allowed.length === 1) return <Row dense lead={<Lead w={w} />} title={w.name} sub={sub} end={<View className="flex-row items-center gap-s2"><Chip>{levelWord(allowed[0])}</Chip>{remove}</View>} />;

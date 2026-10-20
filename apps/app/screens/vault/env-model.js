@@ -159,3 +159,10 @@ export const placeholder = (item, field) => `{{vault:${item}.${canonical(field)}
  * @param {string} typed
  */
 export const liveName = (typed) => String(typed).replace(/([a-z0-9])([A-Z])/g, "$1_$2").toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_+/, "").slice(0, 64);
+
+/** The words a field is shown by: its one form, except a login's and a note's own fields, which keep plain words. @param {string | undefined} kind @param {string} name */
+export function fieldLabel(kind, name) {
+  if (kind === "login") return ({ username: "Username", password: "Password", totp: "One-time code", url: "Web address" })[/** @type {"username"} */ (name)] ?? canonical(name);
+  if (kind === "note" && name === "text") return "Note";
+  return canonical(name);
+}

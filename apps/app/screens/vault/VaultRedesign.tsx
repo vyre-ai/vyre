@@ -13,6 +13,7 @@ import { AddSheet, type Call } from "./AddSheet";
 import { VAULT_PANEL_MIN, useVaultNav } from "./vault-nav";
 import { VaultItem } from "./VaultItem";
 import { needPrompts, type Need, type Saved } from "./add-model.js";
+import { fieldLabel } from "./env-model.js";
 import { putRefusal } from "./real-model";
 import type { Event } from "./sample-redesign";
 
@@ -117,7 +118,7 @@ export default function VaultRedesign({ data }: { data: VaultData }) {
 
   const row = (v: VItem) => {
     const h = healthOf(v);
-    const names = (v.fields ?? []).map((f) => f.name);
+    const names = (v.fields ?? []).map((f) => fieldLabel(v.kind, f.name));
     return (
       <MenuRow key={v.id} items={[{ label: "Open", onPress: () => setSel(v.id) }, ...(owner || v.sp === "mine" ? [{ label: "Delete", danger: true, onPress: () => setDel(v.id) }] : [])]}>
         {(menu) => (
