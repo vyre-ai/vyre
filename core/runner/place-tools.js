@@ -150,7 +150,7 @@ export function registerPlaceTools(ctx, d) {
       const p0 = placements();
       if (typeof p0.adopt !== "function") throw refuse("Coming in this release: a chat that began on the server cannot be moved to a computer yet; leave it on the server for now", "unavailable");
       const space = i.space || p0.spaces()[0];
-      if (!space) throw refuse("no computer of yours is set up to run this Space's chats yet: turn on Run on this computer on the Mac, then move the chat", "unavailable");
+      if (!space) throw refuse("This computer is not set up to run chats yet. Turn on Run my chats on this computer in Settings, This computer.", "no_lease");
       const named = /** @type {any} */ (await ctx.call("threads.chat-thread", { thread }).catch(() => null));
       const at = named && named.data;
       if (!at) throw refuse("this chat has not run on this server yet, so there is nothing to carry to a computer: send it a message, then move it", "unavailable");

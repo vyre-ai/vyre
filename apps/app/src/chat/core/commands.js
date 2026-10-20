@@ -33,7 +33,7 @@ export const COMMANDS = Object.freeze([
   { name: "flow", description: "Build a Flow in a chat with the Engineer", hint: "[what it should do]", source: "vyre", local: "flow" },
   { name: "agent", description: "Set up a new agent in a chat with the Assistant", hint: "[what it is for]", source: "vyre", local: "agent" },
   { name: "fresh", description: "Start fresh and keep a summary", source: "vyre", local: "fresh" },
-  { name: "where", description: "Where this runs: My Computer or the Space's Cloud", source: "vyre", local: "where" },
+  { name: "where", description: "Where this runs: this computer or the server", source: "vyre", local: "where" },
   { name: "compact", description: "Summarise the conversation so far to free up context", hint: "[what to keep]", source: "session" },
   { name: "context", description: "Show how much of the context window is in use", source: "session" },
   { name: "cost", description: "Show what this session has cost so far", source: "session" },

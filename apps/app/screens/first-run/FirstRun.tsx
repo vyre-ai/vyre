@@ -486,7 +486,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
     const labelOf = (id: string) => agents.find((x) => x.id === id)?.label || id;
     const problem = pick ? labelProblem(acctLabel, taken) : "";
     return (
-      <FlowStep steps={steps} onBack={back} title={ACCOUNTS_COPY.title} lead={ACCOUNTS_COPY.lead} failure={failure}
+      <FlowStep steps={steps} onBack={back} title={ACCOUNTS_COPY.title} lead={ACCOUNTS_COPY.lead} failure={failure} enterSubmits={false}
         secondary={{ label: AI_SIGNIN_COPY.skip, onPress: onward }}
         primary={{ label: "Continue", loading: busy, onPress: () => {
           // Nothing added is not "connected": the person goes on only by choosing to skip, never by a Continue that did nothing.
