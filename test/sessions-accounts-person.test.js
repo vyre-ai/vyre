@@ -30,7 +30,9 @@ test("a member's AI account is theirs: listed, bound and removed by them only; t
   assert.equal((await as(BOB, "sessions.accounts.remove", { id: o.data.id })).error?.code, "not_found", "Bob cannot remove the owner's account by its id");
   assert.equal((await as(owner, "sessions.accounts.remove", { id: b.data.id })).error?.code, "not_found", "nor the owner Bob's");
   assert.equal((await as(BOB, "sessions.accounts.bind", { id: o.data.id, project: "x" })).error?.code, "not_found");
-  assert.equal((await as(BOB, "sessions.accounts.add", { provider: "grok", label: "Bob second", kind: "login" })).error?.code, "too_many", "a member has one sign-in account on the server");
+  // flows-accounts (ee89eede): a member holds one sign-in account per provider (Claude, Codex, Grok), not one in all; a second of the same provider is refused
+  assert.equal((await as(BOB, "sessions.accounts.add", { provider: "codex", label: "Bob second codex", kind: "login" })).error?.code, "too_many", "a member has one sign-in account per provider on the server");
+  assert.ok(!(await as(BOB, "sessions.accounts.add", { provider: "grok", label: "Bob grok", kind: "login" })).error, "and one for another provider is allowed");
 
   // the home resolves an account for a turn by its person: Bob's turn gets Bob's, the owner's gets the home's own, a person with none gets none
   const resolve = async (/** @type {any} */ q) => (await d.registry.call("sessions.accounts.resolve", { provider: "codex", ...q }, "module:vyred")).data;

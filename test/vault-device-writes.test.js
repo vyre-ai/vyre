@@ -29,6 +29,8 @@ async function box(t, yes) {
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "alex", vault: { keystore: "file" } }));
   const d = await start({ root, ...(yes ? { presence: present } : {}), log: () => {} });
   t.after(() => d.stop());
+  // The owner's ruling (core/presence noPresenceDevice, 19 Oct): with no presence device enrolled the owner's own paired device needs no yes. A box that asks the yes has one enrolled, as the phone's passkey is.
+  if (!yes) d.registry.deps.db.prepare("INSERT INTO presence_keys (id, kind, name, public_key, alg, rp_id, created) VALUES (?, 'passkey', 'alex phone', ?, -7, ?, ?)").run("k-alex-phone", "pk-alex-phone", "vyre.test", Date.now());
   pairDevice(d, DEVICE, d.kernel.id.owner);   // the owner's phone, paired as a real one is: the daemon then computes its facts
   const ctx = d.registry.context({ name: "names", version: "0.1.0", does: { tools: [] }, watches: { emits: ["owner.seen"] } });
   const sess = d.registry.deps.cliSessions.startStandIn("dev1");

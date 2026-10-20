@@ -347,6 +347,9 @@ test("RF-1: a placeholder resolves under the turn token's own chain, not the per
   const ses = await d.kernel.surfaces.open(owner, { agent: "kit" });
   const meta = { token: ses.token, thread: "t1", agent: "kit" };
   const call = input => d.registry.call("zz-out.send", input, "mcp:agent:kit", meta);
+  // the agent's reach on p1 (its team seat and task) is read from records a moment after they are written: wait until its own chain reads the field, then assert the product's answers
+  const agentChain = await d.kernel.surfaces.chainFor(ses.token, { noChat: true });
+  for (let n = 0; n < 100; n++) { try { const g = await d.kernel.gateway.records.get(agentChain, "contact", mine.urn.split("/").pop()); if (g && g.data) break; await new Promise(r => setTimeout(r, 100)); } catch { await new Promise(r => setTimeout(r, 100)); } }
   const ok = await call({ body: `Hi {{field:${mine.urn}#name}}` });
   assert.equal(ok.error.code, "held_unavailable", "a field in its own project is resolved and the act is held");
   const no = await call({ body: `Hi {{field:${other.urn}#name}}` });
