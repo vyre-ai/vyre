@@ -670,3 +670,61 @@ test("the name can be set in Account (one line, a letter, up to 60), and an olde
   store2.peek().spaces = [{ id: "spc_bbbbbbbbbbbb", name: "olb-space", role: "owner", server: null, paired: { box: "box2", route: "r", relay: "ws://x", name: "olb" } }];
   assert.deepEqual(await h2.call("identity.display.sync"), { display: null });
 });
+
+/** The owner's state on 20 Oct: the Space is the owner's in the directory, the server is paired, and this app's list has no row for it. */
+async function lostRow(t, username, label) {
+  const calls = [];
+  const pairs = [{ box: "bx", route: "", relay: "https://relay.example", name: "the owner's server" }];
+  const space = { load: async () => ({
+    pairings: async () => pairs,
+    join: async () => { throw new Error("not a team"); },
+    call: async (tool, _input, box) => { calls.push([tool, box]); return tool === "names.status" ? { name: label, phase: "not-listed" } : tool === "spaces.list" ? [{ id: "spc_vy7xabcdefgh", name: label }] : {}; },
+  }) };
+  const w = await oldSpace(t, username, { space });
+  pairs[0].route = w.box.route;
+  // oldSpace claimed "tess"; the name this test wants is claimed the same way, and the app's list is emptied
+  const dev = await fromSeed(w.host.signer().seed);
+  await claimServerSpace({ identity: { id: w.store.peek().id, name: username, eid: dev.eid, ops: w.store.peek().ops, key: dev }, name: label, base: w.d.base, fetch: w.d.fetch, now: w.d.now, host: async () => ({ space: "spc_vy7xabcdefgh", rootPublic: Buffer.alloc(32, 9).toString("base64url") }) });
+  await new Promise((r) => setTimeout(r, 50));
+  await w.store.save({ ...w.store.peek(), spaces: [], current: null, listed: {} });
+  return { ...w, calls, label };
+}
+
+test("unlocking adds back a Space the identity owns in the directory that the app's list lacks, when a paired server says it is that Space's name, and lists the server (not selected)", async (t) => {
+  const w = await lostRow(t, "harbo", "harbor");
+  await w.host.call("identity.lock");
+  await w.host.call("identity.unlock", { password: PASSWORD });
+  for (let i = 0; i < 100 && !(w.store.peek().spaces || []).length; i++) await new Promise((r) => setTimeout(r, 20));
+  const row = w.store.peek().spaces[0];
+  assert.deepEqual([row.id, row.name, row.role, row.server, row.paired.box], ["spc_vy7xabcdefgh", "harbor", "owner", "https://harbor.vyre.run", "bx"]);
+  assert.equal(w.store.peek().current, null, "a repair does not change the Space showing");
+  for (let i = 0; i < 100 && (await w.servedName()) === null; i++) { await w.host.call("identity.heal"); await new Promise((r) => setTimeout(r, 20)); }
+  assert.equal((await w.host.call("identity.servers.status")).failed, "");
+  assert.ok(w.store.peek().listed.harbor, "the server was listed on the directory, signed by the unlocked identity");
+});
+
+test("a Space owned in the directory is not added for someone else's identity, or when no paired server says its name", async (t) => {
+  const w = await lostRow(t, "harbn", "harbor");
+  const other = createHost({ store: memoryStore(), directory: w.d.base, fetch: w.d.fetch, now: w.d.now, kdf: FAST, space: { load: async () => ({ pairings: async () => [{ box: "bx", route: w.box.route, relay: "r", name: "x" }], call: async (tool) => (tool === "names.status" ? { name: "harbor" } : {}) }) } });
+  await other.call("onboard.person.create", { username: "stranger", password: PASSWORD, confirm: PASSWORD });
+  await other.call("identity.heal");
+  await new Promise((r) => setTimeout(r, 100));
+  assert.deepEqual((await other.call("onboard.space.list")).spaces, []);
+  await assert.rejects(() => other.call("onboard.join.read", { link: "harbor" }), (e) => e.code !== "no_pairing", "someone else's Space is not treated as theirs");
+});
+
+test("joining by name a Space the person owns is the owner's own Space: the row is added with its pairing, selected, and the server is listed", async (t) => {
+  const w = await lostRow(t, "harbj", "harbor");
+  await w.host.call("identity.lock");
+  await w.host.call("identity.unlock", { password: PASSWORD });
+  for (let i = 0; i < 100 && !(w.store.peek().spaces || []).length; i++) await new Promise((r) => setTimeout(r, 20));
+  await w.store.save({ ...w.store.peek(), spaces: [], current: null, listed: {} });
+  const read = await w.host.call("onboard.join.read", { link: "harbor.vyre.run" });
+  assert.deepEqual([read.role, read.space], ["owner", "harbor"]);
+  const joined = await w.host.call("onboard.space.join", { link: "harbor" });
+  assert.deepEqual([joined.joined, joined.role, joined.space, joined.id], [true, "owner", "harbor", "spc_vy7xabcdefgh"]);
+  const kept = w.store.peek();
+  assert.equal(kept.current, "spc_vy7xabcdefgh");
+  assert.equal(kept.spaces[0].paired.box, "bx");
+  assert.ok(kept.listed.harbor);
+});

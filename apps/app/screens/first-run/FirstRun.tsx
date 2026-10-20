@@ -17,6 +17,7 @@ import { PARTS, lookOf, lookSeed, partsOf, setPart, withParts } from "../../ui/c
 import { ASK_COPY, askAddressOf, entryWords, nextForAsk } from "../spaces/join-requests-model.js";
 import { ACCOUNTS_COPY, copyWords, defaultLabel, keyKindOf, keyShapeOk, labelProblem, NO_SIGNIN, pasteOk, signinInput, signinMode } from "./ai-accounts-model.js";
 import { ASSISTANT_COPY, MODEL_COPY, NAME_COPY, lastSpace, modelStep, pickedModel, rememberSpace, welcomeGroups } from "./welcome-model.js";
+import { useSpaces } from "../shell/state";
 import { effortFor } from "../../src/models/model-choice.js";
 import { clearAfter, readAfter, returnWaiting, saveAfter } from "../../src/identity/github-return.js";
 import { linkGithub, signInWithGithub, type GithubSession } from "../../src/real/github";
@@ -137,7 +138,11 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
       return nextStack;
     });
   };
-  const back = stack.length > 1 ? () => { setFailure(""); setStack((s) => s.slice(0, -1)); } : undefined;
+  // Opened from the app's Space menu (already signed in), the first step has a way out too: Cancel goes back to the app, and Escape does the same on every step.
+  const fromApp = isAnother(path, signedIn);
+  const leave = () => { if (router.canGoBack()) router.back(); else router.replace("/u/now" as never); };
+  const back = stack.length > 1 ? () => { setFailure(""); setStack((s) => s.slice(0, -1)); } : fromApp ? leave : undefined;
+  const backLabel = stack.length === 1 && fromApp ? "Cancel" : "Back";
   const steps = { labels: [...PHASES], current: phaseOf(screen), kind: "phase" as const };
 
   useEffect(() => {
@@ -397,7 +402,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
   if (screen === "id.name") {
     const person = displayNameOf(first, last);
     return (
-      <FlowStep steps={steps} onBack={back} title={NAME_COPY.title} lead={NAME_COPY.lead}
+      <FlowStep steps={steps} onBack={back} backLabel={backLabel} title={NAME_COPY.title} lead={NAME_COPY.lead}
         primary={{ label: "Continue", disabled: !person, onPress: () => go("id.create") }}>
         <Field label={NAME_COPY.first} value={first} onChangeText={setFirst} />
         <Field label={NAME_COPY.last} value={last} onChangeText={setLast} error={(first || last) && !person ? NAME_COPY.bad : undefined} />
@@ -408,7 +413,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
   if (screen === "id.signin") {
     const addr = spaceAddressOf(signSpace);
     return (
-      <FlowStep steps={steps} onBack={back} title={SIGNIN_COPY.title} lead={SIGNIN_COPY.lead} failure={failure}
+      <FlowStep steps={steps} onBack={back} backLabel={backLabel} title={SIGNIN_COPY.title} lead={SIGNIN_COPY.lead} failure={failure}
         primary={{ label: busy ? "Unlocking..." : "Sign in", disabled: !addr || !usernameOf(username) || !password || busy, loading: busy, onPress: () => void run(async () => {
           const r = await signInPassword({ space: addr ? addr.space : "", username: usernameOf(username), password });
           if (!r.ok) { setFailure(r.message); return; }
@@ -427,7 +432,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
 
   if (screen === "id.signin.spaces") {
     return (
-      <FlowStep steps={steps} onBack={back} title={SIGNIN_COPY.spacesTitle} lead={SIGNIN_COPY.spacesLead} failure={failure}
+      <FlowStep steps={steps} onBack={back} backLabel={backLabel} title={SIGNIN_COPY.spacesTitle} lead={SIGNIN_COPY.spacesLead} failure={failure}
         primary={{ label: busy ? "Unlocking..." : "Unlock", disabled: !password || busy, loading: busy, onPress: () => void run(async () => {
           const r = await unlockGithub(password);
           if (!r.ok) { setFailure(r.message); return; }
@@ -442,7 +447,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
 
   if (screen === "id.create") {
     return (
-      <FlowStep steps={steps} onBack={back} title="Pick a username." lead="It's how people find and add you, in any Space."
+      <FlowStep steps={steps} onBack={back} backLabel={backLabel} title="Pick a username." lead="It's how people find and add you, in any Space."
         failure={failure} primary={{ label: "Continue", disabled: !nameOk, onPress: () => go("id.password") }}>
         <Field label="Username" value={username} onChangeText={setUsername} help={username && !nameOk ? "Use 3 to 20 lowercase letters, digits or hyphens." : usernameOf(username) ? `Your page is vyre.run/u/${usernameOf(username)}` : "This becomes vyre.run/u/your-name"} />
       </FlowStep>
@@ -451,7 +456,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
 
   if (screen === "id.password") {
     return (
-      <FlowStep steps={steps} onBack={back} title="Make your password." lead="It locks your account and your vault. Nobody can reset it for you, not even us, so pick one you'll remember."
+      <FlowStep steps={steps} onBack={back} backLabel={backLabel} title="Make your password." lead="It locks your account and your vault. Nobody can reset it for you, not even us, so pick one you'll remember."
         failure={failure} primary={{ label: busy ? "Creating..." : "Create", disabled: !nameOk || !passOk || busy, loading: busy, onPress: () => void run(async () => {
           const r = await createPerson({ username, password, confirm, display: displayNameOf(first, last) });
           if (!r.ok) { setFailure(r.message); return; }
@@ -474,7 +479,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
 
   if (screen === "id.recovery") {
     return (
-      <FlowStep steps={steps} onBack={back} title="Save your recovery key" lead="One key for your identity and your vault. It is shown once."
+      <FlowStep steps={steps} onBack={back} backLabel={backLabel} title="Save your recovery key" lead="One key for your identity and your vault. It is shown once."
         failure={failure} primary={{ label: "Continue", disabled: recovery ? !saved : false, loading: busy, onPress: () => go(afterRecovery({ path, heldInvite: review?.link, skipAi: noDaemon })) }}>
         {recovery ? <RecoveryKeySheet secret={recovery} saved={saved} onSaved={setSaved} /> : <Text tone="muted">Your name is saved on this device. The recovery key appears when the vault can be created from here.</Text>}
       </FlowStep>
@@ -487,7 +492,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
     const labelOf = (id: string) => agents.find((x) => x.id === id)?.label || id;
     const problem = pick ? labelProblem(acctLabel, taken) : "";
     return (
-      <FlowStep steps={steps} onBack={back} title={ACCOUNTS_COPY.title} lead={ACCOUNTS_COPY.lead} failure={failure} enterSubmits={false}
+      <FlowStep steps={steps} onBack={back} backLabel={backLabel} title={ACCOUNTS_COPY.title} lead={ACCOUNTS_COPY.lead} failure={failure} enterSubmits={false}
         secondary={{ label: AI_SIGNIN_COPY.skip, onPress: onward }}
         primary={{ label: "Continue", loading: busy, onPress: () => {
           // Nothing added is not "connected": the person goes on only by choosing to skip, never by a Continue that did nothing.
@@ -606,7 +611,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
 
   if (screen === "space.choice") {
     return (
-      <FlowStep steps={steps} onBack={back} hero title="Your space" lead="Join one you were invited to, or create one. The same identity can be in more than one.">
+      <FlowStep steps={steps} onBack={back} backLabel={backLabel} hero title="Your space" lead="Join one you were invited to, or create one. The same identity can be in more than one.">
         <ChoiceHero title="How do you want to start?" options={[
           { value: "join", title: "Join a space", sub: "Use the invite link you were sent.", icon: "link" },
           { value: "create", title: "Create a space", sub: "Set up a Linux server or an always-on Mac.", icon: "server" },
@@ -617,7 +622,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
 
   if (screen === "join.ask") {
     return (
-      <FlowStep steps={steps} onBack={back} mark="working" title={ASK_COPY.waitingTitle} lead={ASK_COPY.waitingLead} failure={askSaid || failure}>
+      <FlowStep steps={steps} onBack={back} backLabel={backLabel} mark="working" title={ASK_COPY.waitingTitle} lead={ASK_COPY.waitingLead} failure={askSaid || failure}>
         {askWords ? (<View style={{ gap: 4, alignItems: "center" }} accessibilityLabel="Your check words"><Text size="caption" tone="label">{ASK_COPY.yourWords}</Text><Text strong size="page">{askWords}</Text></View>) : null}
         <Text tone="muted">{`Asking ${askAddr}.vyre.run`}</Text>
       </FlowStep>
@@ -626,7 +631,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
 
   if (screen === "join.link") {
     return (
-      <FlowStep steps={steps} onBack={back} title={isAnother(path, signedIn) ? ANOTHER_COPY.joinTitle : JOIN_COPY.title} lead={isAnother(path, signedIn) ? ANOTHER_COPY.joinLead : JOIN_COPY.lead} failure={failure}
+      <FlowStep steps={steps} onBack={back} backLabel={backLabel} title={isAnother(path, signedIn) ? ANOTHER_COPY.joinTitle : JOIN_COPY.title} lead={isAnother(path, signedIn) ? ANOTHER_COPY.joinLead : JOIN_COPY.lead} failure={failure}
         primary={{ label: "Continue", disabled: paste.trim().length < 3, loading: busy, onPress: () => void run(async () => {
           // a Space's address (not a link) asks to join it: no invite, the Space's owner is asked
           const addr = askAddressOf(paste);
@@ -653,14 +658,14 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
 
   if (screen === "join.review" && !review) {
     return (
-      <FlowStep steps={steps} onBack={back} title={JOIN_COPY.title} lead={JOIN_COPY.bad}
+      <FlowStep steps={steps} onBack={back} backLabel={backLabel} title={JOIN_COPY.title} lead={JOIN_COPY.bad}
         primary={{ label: "Paste a link", onPress: () => go("join.link") }} />
     );
   }
 
   if (screen === "join.review" && review) {
     return (
-      <FlowStep steps={steps} onBack={back} title={JOIN_COPY.reviewTitle} lead={JOIN_COPY.reviewLead} failure={failure}
+      <FlowStep steps={steps} onBack={back} backLabel={backLabel} title={JOIN_COPY.reviewTitle} lead={JOIN_COPY.reviewLead} failure={failure}
         primary={{ label: JOIN_COPY.accept, loading: busy, onPress: () => void run(async () => {
           const r = await joinSpace(review.link);
           if (!r.ok) { setFailure(r.message); return; }
@@ -677,7 +682,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
   if (screen === "create.kind") {
     const wanted = usernameOf(space);
     return (
-      <FlowStep steps={steps} onBack={back} title={isAnother(path, signedIn) ? ANOTHER_COPY.makeTitle : "Connect your server."} lead={isAnother(path, signedIn) ? ANOTHER_COPY.makeLead : "Name your space, say what the server runs, then paste the line into it. This screen waits until it is online."} failure={failure}
+      <FlowStep steps={steps} onBack={back} backLabel={backLabel} title={isAnother(path, signedIn) ? ANOTHER_COPY.makeTitle : "Connect your server."} lead={isAnother(path, signedIn) ? ANOTHER_COPY.makeLead : "Name your space, say what the server runs, then paste the line into it. This screen waits until it is online."} failure={failure}
         primary={{ label: "Continue", disabled: !command || !waitId || busy, loading: busy, onPress: () => go("create.wait") }}>
         <Field label="Space name" name="Space name" value={space} onChangeText={(v) => { setSpace(v); setFailure(""); }} help={wanted ? `Its address will be ${wanted}.vyre.run` : SPACE_NAME_SAY.required} />
         <Segmented label="Your server runs" fill value={kind || "linux"} onChange={(v) => setKind(v as "linux" | "mac")} options={[["linux", "Linux"], ["mac", "macOS"]]} />
@@ -688,7 +693,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
 
   if (screen === "create.wait") {
     return (
-      <FlowStep steps={steps} onBack={back} mark={online ? "done" : "working"} title={online ? "Your space is online" : "Waiting for it to come online"}
+      <FlowStep steps={steps} onBack={back} backLabel={backLabel} mark={online ? "done" : "working"} title={online ? "Your space is online" : "Waiting for it to come online"}
         lead={online ? "Your server is paired and your space has its address." : "Run this one line there. Nothing else. This screen updates when it is up."}
         failure={failure}
         secondary={back ? { label: "Cancel", onPress: back } : undefined}
@@ -727,7 +732,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
 
   if (screen === "invite.share") {
     return (
-      <FlowStep steps={steps} onBack={back} title="Invite someone" lead="They open the link and they are in. You pick the role and how long it lasts." failure={failure}
+      <FlowStep steps={steps} onBack={back} backLabel={backLabel} title="Invite someone" lead="They open the link and they are in. You pick the role and how long it lasts." failure={failure}
         primary={{ label: invite ? "Done" : "Create link", loading: busy, onPress: () => void run(async () => {
           if (invite) { go("ready"); return; }
           const r = await makeInvite({ role, ttlDays: Number(days), space: space || undefined });
@@ -750,7 +755,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
     const full = keep && carried!.look ? carried!.look : withParts(seed, name.toLowerCase());
     const parts = partsOf(full);
     return (
-      <FlowStep steps={steps} onBack={back} title={ASSISTANT_COPY.title} lead={ASSISTANT_COPY.lead} failure={failure}
+      <FlowStep steps={steps} onBack={back} backLabel={backLabel} title={ASSISTANT_COPY.title} lead={ASSISTANT_COPY.lead} failure={failure}
         primary={{ label: busy ? "Saving..." : keep ? `Keep ${name}` : "Continue", disabled: busy || asName.length > 40, loading: busy, onPress: () => void run(async () => {
           const r = await setAssistant({ name, look: full, person: displayNameOf(first, last) });
           if (!r.ok) { setFailure(r.message); return; }
@@ -776,7 +781,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
     const now = groups && modelPick ? pickedModel(groups, modelPick) : null;
     const stepNow = modelStep(models, Boolean(now));
     return (
-      <FlowStep steps={steps} onBack={back} title={MODEL_COPY.title(who)} lead={stepNow.lead} failure={failure}
+      <FlowStep steps={steps} onBack={back} backLabel={backLabel} title={MODEL_COPY.title(who)} lead={stepNow.lead} failure={failure}
         secondary={{ label: "Keep the default", onPress: () => go("ready") }}
         primary={{ label: "Continue", loading: busy, disabled: busy || !stepNow.canContinue, onPress: () => void run(async () => {
           if (now && modelPick) { const r = await setAssistantModel(now.model.id, now.model.provider, effortFor(now.model, modelPick.effort)); if (!r.ok) { setFailure(r.message); return; } }
@@ -800,6 +805,8 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
       primary={{ label: "Open now", loading: busy, onPress: () => void run(async () => {
         const r = await finishFirstRun();
         if (!r.ok) { setFailure(r.message); return; }
+        // The Space just made is the one showing when the app opens (its row is kept, with its pairing, by the last step).
+        if (path === "create" && paired?.id) useSpaces.getState().setShowing(paired.id);
         router.replace("/u/now" as never);
       }) }}>
       {asDone ? (

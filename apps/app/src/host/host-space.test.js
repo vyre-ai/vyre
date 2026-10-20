@@ -75,6 +75,7 @@ async function ready(t, extra = {}) {
   pp.seen.directoryDown = 0;
   const fetchSeen = async (url, init = {}) => {
     const u = new URL(url);
+    if (u.pathname === "/v1/ids/server") pp.seen.listed.push(JSON.parse(init.body));
     if (u.pathname.startsWith("/v1/ids/spaces/")) {
       posted.push({ path: u.pathname, body: JSON.parse(init.body), order: pp.seen.calls.length });
       if (pp.seen.directoryDown > 0) { pp.seen.directoryDown -= 1; return new Response("{}", { status: 503 }); }
@@ -85,6 +86,7 @@ async function ready(t, extra = {}) {
     return d.fetch(url, init);
   };
   pp.seen.posted = posted;
+  pp.seen.listed = [];
   pp.seen.asked = [];
   const host = createHost({ store, directory: d.base, fetch: fetchSeen, now: d.now, kdf: FAST, space: { load: async () => pp }, sleep: nap, pollMs: 5, ...extra });
   const made = await host.call("onboard.person.create", { username: "alex", password: PASSWORD, confirm: PASSWORD });
@@ -138,6 +140,28 @@ test("create a space from a page: the line carries a code the server's own check
   await host.call("onboard.space.poll", { id: open.id });
   assert.equal((await host.call("onboard.space.list")).spaces.length, 1);
   assert.deepEqual(Object.keys(store.peek().spaces[0].paired).sort(), ["box", "name", "relay", "route"]);
+});
+
+test("the last step of Make a new Space keeps the row with its pairing, selects it, and signs the server listing at once (not at the next repair); a copy of the record from before the claim is never written back over what was kept meanwhile", async (t) => {
+  const { store, pp, host } = await ready(t);
+  await host.call("identity.lock");
+  await host.call("identity.unlock", { password: PASSWORD });
+  const open = await host.call("onboard.space.open", { kind: "linux", name: "alex-space" });
+  pp.seen.resolveAs = "one";
+  // something else keeps a change to the record while the claim runs (the record the poll started from is then out of date)
+  const origClaim = pp.claim;
+  pp.claim = async (...a) => { const k = store.peek(); await store.save({ ...k, display: "Alex Rivera" }); return origClaim(...a); };
+  await until(host, open.id, (r) => r.online);
+  for (let i = 0; i < 100 && !pp.seen.listed.length; i++) await nap();
+  const kept = store.peek();
+  assert.equal(kept.display, "Alex Rivera", "what was kept while the claim ran is still there");
+  assert.equal(kept.current, "spc_abcdefghijkl");
+  assert.equal(kept.spaces.length, 1);
+  assert.equal(kept.spaces[0].paired.box, "boxA");
+  assert.equal(pp.seen.listed.length >= 1, true, "the owner's signed server-add was sent right after the Space was kept");
+  assert.equal(pp.seen.listed[0].name, "alex-space");
+  assert.equal(pp.seen.listed[0].route, "r".repeat(26));
+  assert.equal(pp.seen.listed[0].act.action ?? "server-add", "server-add");
 });
 
 test("two servers answering one line is a hard stop: nothing is paired, the page says so, and only a new line goes on", async (t) => {
