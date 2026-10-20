@@ -2,6 +2,12 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## 0.6.4
+
+- fix(chat): every chat send failed with "This chat has not started yet". A plain line has no sendAsMessage flag, so box-stream sent it to threads.slash, which needs a started session. box-stream now sends every non-command line (plain or a session slash) through stream.send via goesAsMessage in lib/thread-composer-route.js.
+- fix(chat): the Engineer showed twice in the chat sidebar (its own chat, titled by its thread, and the agents list's row for the same agent). convosFrom now draws the Engineer's chat as that agent's row and keeps one row per agent from any source (apps/app/ui/chat/convo-model.js).
+- fix(identity): a device that lost the private half of its chat key can replace its own list entry's key with no other device. Settings, Account, Try again signs an `agree` op that names the point the list holds (`replaces`) with the key held here (kernel/identity/chain.js, apps/app/src/host/host-core.js); only the same entry, only while unlocked, and the other devices are alerted. The names directory needs this build to accept the new op.
+
 ## 0.6.3
 
 - feat(vault): an item's page has Used with, the hosts its secrets may go to (read with vault.use.find, changed with vault.use.set; the hosts written on the item stay, the ones you allow can be removed), next to its plain fields and Allowed in scripts. No second store. Merged the train's placeholder review fixes with the simple Vault; the four reds of run 39350707365 fixed in place: vault.templates and vault.template.suggest in the presence list, hooks.flow tools in the door's owner list, the web-address bind in kernel/flows/runner.js back to its size, the web-address approver check reads roleAtLeast, and read-tools.generated.js named as a tool-name list.

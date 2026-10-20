@@ -530,6 +530,24 @@ test("agree op: an older entry gains agree once; a second is refused; another en
   assert.deepEqual(C.alertsSince(done.ops, 1).map(a => a.type), [], "an agree op is not a sign-in");
 });
 
+test("agree op: a device replaces its OWN lost chat key by naming the one it holds; no other entry, no wrong name, no same point, no first set with a name", async () => {
+  const dev = await key("rep-a"), other = await key("rep-b");
+  const p1 = agreePoint(), p2 = agreePoint();
+  const g = await C.makeGenesis({ kind: "person", entry: { ...dev.entry("device"), agree: p1 }, nonce: "n-agree-rep1", ts: T0, sign: dev.sign });
+  let w = { ops: [g], state: await C.verifyChain([g], { now: T0 }) };
+  w = await step(w, { type: "add", entry: { ...other.entry("device"), agree: agreePoint() } }, dev, T0 + H);
+  await refused(step(w, { type: "agree", target: dev.eid, agree: p2 }, dev, T0 + 2 * H), "exists");
+  await refused(step(w, { type: "agree", target: dev.eid, agree: p2, replaces: agreePoint() }, dev, T0 + 2 * H), "exists");
+  await refused(step(w, { type: "agree", target: dev.eid, agree: p1, replaces: p1 }, dev, T0 + 2 * H), "exists");
+  await refused(step(w, { type: "agree", target: dev.eid, agree: p2, replaces: p1 }, other, T0 + 2 * H), "not_allowed");
+  const done = await step(w, { type: "agree", target: dev.eid, agree: p2, replaces: p1 }, dev, T0 + 2 * H, { live: true });
+  assert.equal(done.state.entries.find(e => e.eid === dev.eid).agree, p2);
+  assert.equal((await C.verifyChain(done.ops, { now: T0 + 2 * H })).entries.find(e => e.eid === dev.eid).agree, p2, "a replay reaches the same state");
+  assert.deepEqual(C.alertsSince(done.ops, 1).map(a => a.type), ["agree"], "other devices are told a chat key was swapped");
+  const bare = await C.makeGenesis({ kind: "person", entry: dev.entry("device"), nonce: "n-agree-rep2", ts: T0, sign: dev.sign });
+  await refused(step({ ops: [bare], state: await C.verifyChain([bare], { now: T0 }) }, { type: "agree", target: dev.eid, agree: p2, replaces: p1 }, dev, T0 + H), "bad_op");
+});
+
 test("agree op: a web-held key and an enclave entry without its esig are refused like any list change", async () => {
   const web = await key("web-a");
   const g = await C.makeGenesis({ kind: "person", entry: { ...web.entry("device"), held: "web" }, nonce: "n-agree-web1", ts: T0, sign: web.sign });

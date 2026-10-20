@@ -93,6 +93,8 @@ export function convosFrom(i) {
     const g = mine ? byAgent.get(c.agents[0]) : undefined;
     if (g && g.newest !== c) continue;
     if (g) aloneAgent.add(c.agents[0]);
+    // the Engineer's own chat is that agent's row, whatever its title says: no second row from the agents list
+    if (eng && agentOnly) aloneAgent.add(c.agents[0]);
     const place = placeOf(c);
     const ts = agentOnly ? infoOf.get(c.agents[0]) ?? [] : [];
     const sum = agentOnly ? sumOf.get(c.agents[0]) : undefined;
@@ -131,7 +133,17 @@ export function convosFrom(i) {
     else if (same && r.section === "pinned" && asst) r.sub = "Your assistant";
     else if (same) r.sub = "";
   }
-  return out.sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.last - a.last);
+  // One row per agent, from whatever source: the row that opens a chat beats the bare agent row, then the newer one wins.
+  const keyOf = (/** @type {Convo} */ r) => (r.lone === "agent" && (r.kind === "chat" || r.kind === "agent") ? (r.agent || (r.names.length === 1 ? r.names[0] : "")) : "");
+  const best = new Map();
+  for (const r of out) {
+    const k = keyOf(r);
+    if (!k) continue;
+    const b = best.get(k);
+    if (!b || (r.chat !== "" && b.chat === "") || ((r.chat !== "") === (b.chat !== "") && r.last > b.last)) best.set(k, r);
+  }
+  const kept = out.filter((r) => { const k = keyOf(r); return !k || best.get(k) === r; });
+  return kept.sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.last - a.last);
 }
 
 /** The filter row above the list. @type {{ id: "all" | "personal" | "space" | "projects" | "flows", label: string }[]} */

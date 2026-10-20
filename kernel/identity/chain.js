@@ -15,6 +15,7 @@
 //   recover  two recovery contacts approve a new device (no signer on the list is needed)
 //   agree    a device gives ITSELF its key-agreement point (`agree`), once, when its entry has none (an entry made before the key existed). Self-signed: `by` and `target` are the same entry. It changes nothing else
 //            about the entry, so the eid, the age and the signing key stay; a second agree, one for another entry, a code, a contact and a space are refused.
+//            One exception: an agree that names `replaces` (the point the entry holds now) swaps a lost chat key for a new one. Same rules: the entry itself signs, for itself, and `replaces` must be the held point.
 //
 // The newcomer rule: for the first 24 hours an entry can sign but cannot remove older entries, touch a code or a contact, or (for a
 // space) change owners. Any older entry can remove a newcomer at once. Time here is the op's own `ts`, which may not run backwards
@@ -357,7 +358,9 @@ export async function applyOp(state, op, ctx = {}) {
       const target = find(state, String(op.target));
       if (!target || !signer || target.eid !== signer.eid || op.target !== op.by) throw chainError("not_allowed", "a device sets its own agreement key, nobody else's");
       if (target.kind !== "device") throw chainError("bad_entry", "only a device has an agreement key");
-      if (target.agree !== undefined) throw chainError("exists", "that device already has an agreement key");
+      // A device that lost the private half of its point swaps it, naming the point it holds now; without that name the point is set once.
+      if (target.agree !== undefined && !(op.replaces !== undefined && op.replaces === target.agree && op.agree !== target.agree)) throw chainError("exists", "that device already has an agreement key");
+      if (target.agree === undefined && op.replaces !== undefined) throw chainError("bad_op", "there is no agreement key to replace");
       const pt = unb64(op.agree);
       if (!pt || pt.length !== 65 || pt[0] !== 4) throw chainError("bad_entry", "an agreement key is a raw uncompressed P-256 point on a device entry");
       entries = entries.map(e => (e.eid === target.eid ? { ...e, agree: /** @type {string} */ (op.agree) } : e));
@@ -480,7 +483,7 @@ export const approvalMessage = op => messageOf(op);
 
 /** Entries that need to alert the person's devices: adds, removes and recoveries after a sequence number. @param {any[]} ops @param {number} afterSeq */
 export function alertsSince(ops, afterSeq) {
-  return ops.filter(o => o.seq > afterSeq && o.type !== "genesis" && o.type !== "agree").map(o => ({ seq: o.seq, ts: o.ts, type: o.type, by: o.by || null, entry: o.entry ? { eid: o.entry.eid, kind: o.entry.kind, label: o.entry.label || null } : null, target: o.target || null }));
+  return ops.filter(o => o.seq > afterSeq && o.type !== "genesis" && (o.type !== "agree" || o.replaces !== undefined)).map(o => ({ seq: o.seq, ts: o.ts, type: o.type, by: o.by || null, entry: o.entry ? { eid: o.entry.eid, kind: o.entry.kind, label: o.entry.label || null } : null, target: o.target || null }));
 }
 
 /**

@@ -267,9 +267,10 @@ export function createHost(o) {
 
   /**
    * Repair an identity whose device entry has no key-agreement point (v0.6.1 made them so): the device signs the chain's own `agree` op for ITS OWN entry (kernel/identity/chain.js: once, only for itself) and the
-   * directory appends it. Never a silent failure: what stopped it is kept in agreeNote (and one trail line), and Account shows it with a retry. @param {Uint8Array} seed
+   * directory appends it. Never a silent failure: what stopped it is kept in agreeNote (and one trail line), and Account shows it with a retry.
+   * When the list holds another point than this device keeps now, the unlock repair only says so; Try again (`replace`) signs a replacing `agree` op for this device's own entry with the identity key held here (never another entry, never while locked). @param {Uint8Array} seed @param {{ replace?: boolean }} [opt]
    */
-  async function ensureAgree(seed) {
+  async function ensureAgree(seed, opt = {}) {
     agreeNote.failed = "";
     try {
       if (!o.agreePoint) return;
@@ -285,15 +286,15 @@ export function createHost(o) {
       if (entry.agree !== undefined) {
         // The list keeps one point per device, set once. An older build that lost its key on every launch (the ad-hoc Mac window, v0.6.1) may have put a point there this device no longer holds:
         // say so, because chats on this device cannot open until the device is added again with the key it keeps now.
-        if (entry.agree !== point) { agreeNote.failed = "your list holds an older chat key for this device, one it no longer has; take this device off your list from another device, then sign in here again"; trail("agree repair: the list holds another point"); }
-        return;
+        if (entry.agree === point) return;
+        if (!opt.replace) { agreeNote.failed = "your list holds an older chat key for this device, one it no longer has; press Try again to replace it with this device's current key"; trail("agree repair: the list holds another point"); return; }
       }
-      const op = await C.makeOp(state, { type: "agree", target: entry.eid, agree: point }, { by: entry.eid, ts: Math.max(o.now ? o.now() : Date.now(), state.ts), sign: (/** @type {Uint8Array} */ m) => key.sign(m) });
+      const op = await C.makeOp(state, { type: "agree", target: entry.eid, agree: point, ...(entry.agree !== undefined ? { replaces: entry.agree } : {}) }, { by: entry.eid, ts: Math.max(o.now ? o.now() : Date.now(), state.ts), sign: (/** @type {Uint8Array} */ m) => key.sign(m) });
       const next = await C.applyOp(state, op, { now: (o.now ? o.now() : Date.now()) + C.SKEW_MS });
       const res = await f(`${base}/v1/ids/append`, { method: "POST", headers: { accept: "application/json", "content-type": "application/json" }, body: JSON.stringify({ name: k.username, ops: [op] }) });
       if (!res.ok) { agreeNote.failed = `the directory said no (${res.status})`; trail(`agree repair refused ${res.status}`); return; }
       await o.store.save({ ...k, ops: [...chain.ops, op], pin: C.pinOf(next) });
-      trail("agree repair done");
+      trail(entry.agree !== undefined ? "agree repair: replaced this device's chat key" : "agree repair done");
     } catch (e) {
       const code = String(/** @type {any} */ (e) && /** @type {any} */ (e).code || "error");
       // No store kept the key: the page's agreePoint says which refused and why, in words the person reads as is.
@@ -545,7 +546,7 @@ export function createHost(o) {
     "identity.agree.status": async () => ({ failed: agreeNote.failed, unlocked: held !== null }),
     "identity.agree.retry": async () => {
       if (!held) throw bad("Unlock with your password first.", "locked");
-      await ensureAgree(held);
+      await ensureAgree(held, { replace: true });
       return { failed: agreeNote.failed };
     },
     // The Space's server listing (ensureServers): what the last try came to, and a retry that lists every owned Space again. `failed` is "" or the reason in words, per Space, so Account says so with a Retry.
