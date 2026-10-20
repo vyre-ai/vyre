@@ -4,10 +4,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { DEFAULT_LOOKS, lookOwner, showingLine, themeFor } from "./spaces.js";
 
-test("all spaces shows Mine's look", () => {
-  assert.equal(lookOwner("all"), "mine");
+test("no Space yet shows Mine's look", () => {
+  assert.equal(lookOwner(""), "mine");
   assert.equal(lookOwner("juniper"), "juniper");
-  assert.equal(themeFor("all", DEFAULT_LOOKS).accent, "violet");
+  assert.equal(themeFor("", DEFAULT_LOOKS).accent, "violet");
 });
 
 test("each space gives its own accent and density", () => {
