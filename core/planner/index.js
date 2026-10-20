@@ -587,7 +587,12 @@ export default {
       if (i.waits_on !== undefined) { if (i.waits_on && !st.item(i.waits_on)) throw fail("no such item to wait on", "not_found"); patch.waits_on = i.waits_on || null; }
       if (i.paused !== undefined) patch.paused = Boolean(i.paused);
       // A task's words and where it runs are what its run does: whoever changes them is who it runs as from now on (on their own account), never the person who first made it. The editor is an owner or an admin (mayScheduleJobs above).
-      if (item.kind === "task" && ["title", "body", "thread", "project"].some(k => i[k] !== undefined)) { const editor = callerPerson(w.chain); if ((editor ?? null) !== (item.by ?? null)) patch.by = editor; }
+      // A call with no person on it cannot say whom it runs as, so it changes none of that: refused, never left to run as nobody (the Space's own, the owner's) or as the maker with words not theirs.
+      if (item.kind === "task" && ["title", "body", "thread", "project"].some(k => i[k] !== undefined)) {
+        const editor = callerPerson(w.chain);
+        if (!editor) throw fail("A task's words, thread or project are changed by a signed-in person, who it then runs as. Sign in and change it again; nothing was changed.", "denied");
+        if (editor !== (item.by ?? null)) patch.by = editor;
+      }
       if (item.kind === "note" && (i.visibility !== undefined || i.record !== undefined)) Object.assign(patch, noteShare({ visibility: i.visibility ?? item.visibility, record: i.record !== undefined ? i.record : item.record }));
       if (i.state !== undefined) {
         if (!STATES.includes(i.state)) throw fail(`state is one of ${STATES.join(", ")}`);

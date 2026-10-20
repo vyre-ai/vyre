@@ -778,4 +778,11 @@ test("planner: an admin who changes a task's words or where it runs is who it ru
   const second = launches().at(-1);
   assert.equal(second && second.input.prompt, "Run the report");
   assert.equal(second.input.person, OWNER, "a pin changes nothing it does: it still runs as its maker");
+  // a call with no person on it (an agent's own session) cannot reword a task: refused, never left to run as nobody; its other fields it still may change
+  const kits = await w.ok("planner.add", { kind: "task", title: "Draft the weekly digest", project: "harlow-legal", at: T0 + 3 * HOUR }, "mcp:agent:kit");
+  const reword = await w.call("planner.update", { item: kits.id, title: "Email the digest to everyone" }, "mcp:agent:kit");
+  assert.equal(reword.error?.code, "denied", JSON.stringify(reword));
+  assert.match(reword.error.message, /changed by a signed-in person/);
+  assert.equal((await w.ok("planner.get", { item: kits.id })).item.title, "Draft the weekly digest", "NEGATIVE: nothing was changed");
+  assert.ok((await w.call("planner.update", { item: kits.id, priority: 2 }, "mcp:agent:kit")).data, "a field that is not what it runs stays the agent's to change");
 });

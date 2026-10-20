@@ -1,7 +1,6 @@
 // @ts-check
 // A Playbook (stage) task that puts an agent to work is assigned by the person whose write moved the record into the stage, so the agent's job runs as that person, on their own AI account
-// (core/daemon/agent-wake.js wakes the agent as the task's assigned_by). The other tasks stay the module's, as before. With no mover (a write by the home's own services) no agent task is made:
-// the stage says so, and the people's tasks are still made.
+// (core/daemon/agent-wake.js wakes the agent as the task's assigned_by). The other tasks stay the module's, as before. With no mover no agent is started: a stage error, never the module's.
 import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -45,7 +44,7 @@ test("a stage task given to an agent records the person who moved the record the
   assert.equal(person.assigned_by.id, ALEX.id, "a person's task is the module's, as before");
 });
 
-test("the gateway's hook takes the mover from the writer's chain; with no mover no agent is put to work and the stage says so", async () => {
+test("the gateway's hook takes the mover from the writer's chain; with no mover no agent is started, and the person's task is the module's", async () => {
   const { w, k, stages, project, byTitle, said } = await setUp();
   const r = await project();
   await stages.onStageEnter({ record: r.urn, stage: "Opening", templates: tpl().stages[0].tasks, chain: k.as(BOB) });
@@ -54,7 +53,7 @@ test("the gateway's hook takes the mover from the writer's chain; with no mover 
   const r2 = await project();
   await stages.enter({ urn: r2.urn, type: "project", id: r2.id, stage: "Opening", entry: "start" });
   await settle(w); await stages.idle();
-  assert.equal(await byTitle("Agent task", r2.urn), undefined, "no mover: no agent task, on nobody's account");
-  assert.equal((await byTitle("Person task", r2.urn)).assigned_by.id, ALEX.id, "a person's task is still made, the module's");
-  assert.ok(said.some(x => x.type === "stage.error" && x.data.record === r2.urn && x.data.task === "Agent task" && /no person moved this record/.test(x.data.why)), "the stage says why in plain words");
+  assert.equal(await byTitle("Agent task", r2.urn), undefined, "NEGATIVE: no mover, so no agent task on the module's (the installer's) chain");
+  assert.ok(said.some(e => e.type === "stage.error" && e.data.record === r2.urn && e.data.why === "no person moved this record, so no agent was started"), JSON.stringify(said).slice(0, 800));
+  assert.equal((await byTitle("Person task", r2.urn)).assigned_by.id, ALEX.id, "the person's task is made by the module, as before");
 });
