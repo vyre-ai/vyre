@@ -8,7 +8,7 @@
 //   "write <file>"  asks permission for Write (offering "always"), then writes the file only if allowed
 //   "bash <command>" asks permission for Bash with that command, and runs nothing
 //   "use <tool>"    asks permission for that tool (an MCP name, say) with no input, and runs nothing
-//   "subagent[-slow] <task>"  runs Claude Code's Agent tool (after the host's PreToolUse hooks)
+//   "subagent[-slow|-hold] <task>"  runs Claude Code's Agent tool (after the host's PreToolUse hooks); -slow holds the turn 1.5s, -hold 6s (for a test that must queue work behind it on a loaded runner)
 //   "background <cmd>"  starts a background task (task_started) that runs until stop_task
 //   "fail"          a turn that ends in an error result
 //   "orphan"        leaves a `sleep 4` in its process group, then exits on its own
@@ -582,12 +582,12 @@ async function turn(prompt, uuid = null) {
   // <vyre-request> text can hold its turn open for a real interval (core/team's priority-order
   // test needs this: a request-wrapped prompt never starts with "subagent", so the old
   // start-anchored-only match let the turn finish in milliseconds instead of the 1.5s it asked for).
-  const SUB = /^subagent(-slow)? (.+)$/i;
+  const SUB = /^subagent(-slow|-hold)? (.+)$/i;
   const subAt = lines.findIndex(l => SUB.test(l));
   const sub = subAt < 0 ? null : SUB.exec(lines[subAt]);
   if (sub) {
     const { allowed, r } = await useTool("Agent", { description: sub[2], prompt: sub[2], subagent_type: "general-purpose" }, {
-      run: async () => { if (sub[1]) await sleep(1500); return { content: `subagent done: ${sub[2]}` }; } });
+      run: async () => { if (sub[1]) await sleep(/hold/i.test(sub[1]) ? 6000 : 1500); return { content: `subagent done: ${sub[2]}` }; } });
     const text = allowed ? `subagent done: ${sub[2]}` : `The subagent did not run: ${r.message}`;
     await say(text);
     return result(true, text);

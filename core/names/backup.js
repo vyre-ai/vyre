@@ -1,5 +1,5 @@
 // @ts-check
-// backup — one file that holds everything a box needs to come back: settings, the store, the
+// backup - one file that holds everything a box needs to come back: settings, the store, the
 // vault, watchers, installed modules, certificates and names.
 //
 // The store is copied with VACUUM INTO, not by copying vyre.db: vyred may be writing, and a raw

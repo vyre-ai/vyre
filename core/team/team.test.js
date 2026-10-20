@@ -97,18 +97,19 @@ test("team.done is refused for another teammate's request, and for one that is n
 test("priority: urgent runs before normal and low queued ahead of it", async t => {
   const { tool, project } = await boot(t);
   await tool("team.add", { project: project.record, role: "design" });
-  // "subagent-slow ..." holds the fake driver's turn open for ~1.5s (it runs a fake subagent
+  // "subagent-hold ..." holds the fake driver's turn open for ~6s (it runs a fake subagent
   // before saying anything back), which holds the first request "running" long enough to queue
-  // the second and third behind it and observe their order. It never calls team.done, so it
+  // the second and third behind it and observe their order. 1.5s ("subagent-slow") was not enough
+  // on a loaded runner: the two asks below took longer than that and "low" started running at once. It never calls team.done, so it
   // closes on its own as "the turn ended without team.done or team.fail" once it says its piece;
   // that is not what this test is about.
-  const first = await tool("team.ask", { to: "design", project: project.record, priority: "normal", text: "subagent-slow hold this turn open" });
+  const first = await tool("team.ask", { to: "design", project: project.record, priority: "normal", text: "subagent-hold hold this turn open" });
   await until(async () => (await tool("team.status", { request: first.request })).state === "running", "the first request to be picked");
   const low = await tool("team.ask", { to: "design", project: project.record, priority: "low", text: 'vyre team.done {"result":"low","notes":"unchanged","reason":"test"}' });
   const urgent = await tool("team.ask", { to: "design", project: project.record, priority: "urgent", text: 'vyre team.done {"result":"urgent","notes":"unchanged","reason":"test"}' });
   assert.equal(low.state, "queued");
   assert.equal(urgent.state, "queued");
-  await until(async () => (await tool("team.status", { request: first.request })).state !== "running", "the first request to finish", 8_000);
+  await until(async () => (await tool("team.status", { request: first.request })).state !== "running", "the first request to finish", 20_000);
   await until(async () => (await tool("team.status", { request: urgent.request })).state === "done", "urgent to finish");
   const urgentAfter = await tool("team.status", { request: urgent.request });
   const lowAfter = await tool("team.status", { request: low.request });

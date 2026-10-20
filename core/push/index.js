@@ -88,7 +88,7 @@ export function threadFromPath(path) {
 }
 
 /**
- * The person behind a push device's stored caller (deck, capsule, person:…), for mute checks.
+ * The person behind a push device's stored caller (deck, capsule, person:...), for mute checks.
  * @param {{ kernel?: { chain?: (meta: any) => Promise<any> } }} ctx @param {string} who
  * @returns {Promise<string | null>}
  */

@@ -27,7 +27,7 @@ import { whereIs, agentDir } from "../../lib/files/layout.js";
 import { createDoor } from "../../lib/gateway-door.js";
 
 export const KEPT_NOTE = "Kept on this agent's computer: not in the Space Drive, so without the Drive's extra encryption and version history.";
-export const WAKING = "Opening this agent's computer…";
+export const WAKING = "Opening this agent's computer\u2026";
 /** Who may do what in an agent's folder, by the person's level on that agent (agents.level). */
 export const AGENT_FOLDER_RULE = Object.freeze({ see: Object.freeze(["use", "edit"]), change: Object.freeze(["edit"]) });
 /** The largest one file the move from the Drive carries; a larger one is named in the record and stays in the Drive. */

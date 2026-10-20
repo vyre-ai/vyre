@@ -564,7 +564,7 @@ export default {
     // Only the files module calls this: it has already decided that the person behind the call may see (Can use) or change (Can edit) this agent, and refused every agent and model caller
     // (core/files/agent-folder.js, AGENT_FOLDER_RULE). The operation runs as the agent's own Linux user inside the computer, through computerd's own path guard (image/agentd-fs.js).
     // The agent's screen need not be up and is not woken. When the Space's computer itself is not running, `open` starts it in the background and every operation answers `waking`
-    // ("Opening this agent's computer…") until it answers; when this server has no agent computers at all, the answer says so plainly.
+    // ("Opening this agent's computer...") until it answers; when this server has no agent computers at all, the answer says so plainly.
     const FILES_NOT_SET = "Agent computers are not set up on this server, and an agent's files are kept on its computer, so this folder cannot open here. Ask the Space's owner to set up agent computers.";
     const canHaveFolders = () => Boolean(pool.driver && typeof /** @type {any} */ (pool.driver).execIn === "function" && ctx.config && ctx.config.computers && ctx.config.computers.agentUsers === true);
     /** @type {Promise<any> | null} */ let opening = null;
@@ -574,12 +574,12 @@ export default {
       if (!canHaveFolders()) throw Object.assign(new Error(FILES_NOT_SET), { code: "unavailable" });
       if (!agentdReady()) {
         if (wake) void openComputer();
-        throw Object.assign(new Error("Opening this agent's computer… Wait a few seconds, then try again."), { code: "waking" });
+        throw Object.assign(new Error("Opening this agent's computer\u2026 Wait a few seconds, then try again."), { code: "waking" });
       }
       await agentTools.place(agent);
     };
     const agentFiles = makeAgentFiles({ ready: a => folderReady(a, false), ticket: (a, hello, spec) => agentUsers.fsTicket(a, hello, spec),
-      where: async () => { const h = pool.hosts.get(SHARED_COMPUTER_ID); if (!h) throw Object.assign(new Error("Opening this agent's computer… Wait a few seconds, then try again."), { code: "waking" }); await pool.pin(SHARED_COMPUTER_ID); return { host: h.host, port: RELAY_PORT }; } });
+      where: async () => { const h = pool.hosts.get(SHARED_COMPUTER_ID); if (!h) throw Object.assign(new Error("Opening this agent's computer\u2026 Wait a few seconds, then try again."), { code: "waking" }); await pool.pin(SHARED_COMPUTER_ID); return { host: h.host, port: RELAY_PORT }; } });
     tool("computers.agent.files", "One operation on an agent's folder on its computer: open (start the computer if it is not running), list, stat, read, write, mkdir, move or trash. Only the files module calls it, after it has checked the person's access to the agent.",
       obj({ agent: str, op: { type: "string", enum: ["open", "list", "stat", "read", "write", "mkdir", "move", "trash"] }, path: str, from: str, to: str, base64: str, overwrite: { type: "boolean" }, max: { type: "number" } }, ["agent", "op"]),
       async (i, { caller }) => {

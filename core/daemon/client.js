@@ -1,5 +1,5 @@
 // @ts-check
-// client — how anything on this machine talks to vyred: the CLI, the Harness hooks, the Capsule.
+// client - how anything on this machine talks to vyred: the CLI, the Harness hooks, the Capsule.
 
 import { ZONE_HEADER, systemZone } from "../../lib/time/index.js";
 import crypto from "node:crypto";

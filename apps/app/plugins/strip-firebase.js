@@ -19,6 +19,10 @@ const REMOVE = {
     "com.google.firebase.components.ComponentDiscoveryService",
     "com.google.android.gms.measurement.AppMeasurementService",
     "com.google.android.gms.measurement.AppMeasurementJobService",
+    // expo-image-picker pulls in androidx.activity's photo picker backport, which declares this disabled service
+    // (with the action com.google.android.gms.metadata.MODULE_DEPENDENCIES inside it) so Play services can install the
+    // picker module. The picker works without it: Android 13+ has the system picker, older devices fall back to the documents picker.
+    "com.google.android.gms.metadata.ModuleDependencies",
   ],
   receiver: [
     "com.google.firebase.iid.FirebaseInstanceIdReceiver",
