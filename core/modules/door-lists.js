@@ -190,7 +190,7 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "push.devices", "push.key", "push.receipt", "push.seen", "push.settings", "push.subscribe", "push.test", "push.unsubscribe",
   "recall.eval", "recall.index", "recall.links", "recall.pointers", "recall.related", "recall.sealscan", "recall.sealscrub", "recall.sessions",
   "recall.setup", "recall.status", "recall.thread", "recall.transcript", "recall.turn", "recall.unwatch", "recall.watch",
-  "records.define", "records.dev-seed", "records.forget", "records.history", "records.history.undo", "records.log", "records.share", "records.busy", "records.type.update", "records.role.set", "records.roles.summary", "records.link.add", "records.link.set", "records.sample.add", "records.sample.remove", "records.stats", "records.rollup.add", "records.field.add", "records.field.promote", "records.field.status", "records.pipeline.set", "records.relationship.kinds.set", "records.reveal", "records.sees-as",
+  "records.define", "records.dev-seed", "records.forget", "records.field.seal", "records.history", "records.history.undo", "records.log", "records.share", "records.busy", "records.type.update", "records.role.set", "records.roles.summary", "records.link.add", "records.link.set", "records.sample.add", "records.sample.remove", "records.stats", "records.rollup.add", "records.field.add", "records.field.promote", "records.field.status", "records.pipeline.set", "records.relationship.kinds.set", "records.reveal", "records.sees-as",
   "relay.devices.ask-trust", "relay.devices.list", "relay.devices.mark", "relay.devices.path", "relay.devices.remove", "relay.devices.rename", "relay.devices.trust",
   "relay.disable", "relay.enable", "relay.join", "relay.pair.first", "relay.pair.start", "relay.pair.ticket", 
   "relay.setup.status", "relay.status", "relay.web.pin",
@@ -279,7 +279,7 @@ export const SELF_GATED = Object.freeze(new Set([
   "vault.restore", "vault.reveal", "vault.revert", "vault.revoke", "vault.rotate", "vault.rotation", "vault.search", "vault.session.close", "vault.session.open",
   "vault.session.status", "vault.space.attention", "vault.space.create", "vault.space.grant", "vault.space.list", "vault.space.put", "vault.space.rotate", "vault.space.status", "vault.space.use",
   "vault.ssh.add", "vault.ssh.approvals", "vault.ssh.approve", "vault.ssh.forget", "vault.ssh.generate", "vault.ssh.keys", "vault.state",
-  "vault.sweep", "vault.tagged", "vault.totp", "vault.unlink", "vault.unlock", "vault.unlock-passphrase", "vault.untag", "vault.update", "vault.used-by", "vault.uses",
+  "vault.sweep", "vault.tagged", "vault.totp", "vault.unlink", "vault.unlock", "vault.unlock-passphrase", "vault.untag", "vault.update", "vault.use.env", "vault.use.set", "vault.used-by", "vault.uses", "vault.use.find",
   "vault.vaults.create", "vault.vaults.list", "vault.vaults.rotate", "vault.vaults.sync",
 ]));
 

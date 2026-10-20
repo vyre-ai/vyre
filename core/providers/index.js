@@ -3,6 +3,8 @@
 // sessions. Today that is only core/sessions (Claude, Codex, Grok, ADR 0030); this module holds
 // no state of its own and never will unless a second source of providers exists to merge.
 
+import { modelView } from "../../lib/model-registry.js";
+
 export default {
   async start(ctx) {
     ctx.tool("providers.list", {
@@ -16,7 +18,8 @@ export default {
         const m = await ctx.call("models.list", { available: true, limit: 500 }).catch(() => null);
         const live = m && !m.error && m.data && Array.isArray(m.data.models) ? m.data.models : [];
         return r.data.map((/** @type {any} */ p) => {
-          const mine = live.filter((/** @type {any} */ x) => x.provider === p.id).map((/** @type {any} */ x) => ({ id: x.id, label: x.label || x.id }));
+          // the one shape every picker shows (lib/model-registry.js modelView): name, version, context, max output, price, capabilities, effort levels
+          const mine = live.filter((/** @type {any} */ x) => x.provider === p.id).map((/** @type {any} */ x) => modelView({ ...x, label: x.name || x.label }));
           return mine.length ? { ...p, models: mine } : p;
         });
       },

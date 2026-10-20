@@ -492,7 +492,7 @@ try {
     if (!/juno/i.test(await drv.text())) throw new Error(`the Agents list does not show the Assistant named in the first run: ${(await drv.text()).replace(/\s+/g, " ").slice(0, 300)}`);
   }, { needs: READY });
   await run.step(S("owner walk: Settings, AI accounts, has no \"Pair first\""), async () => {
-    await look("AI accounts", "14-ai-accounts", /Other AI accounts|AI accounts|Claude|Codex/i, 60_000, async () => { await drv.go("/u/settings/ai"); });
+    await look("AI accounts", "14-ai-accounts", /AI accounts|Claude|Codex/i, 60_000, async () => { await drv.go("/u/settings/ai"); });
   }, { needs: READY });
 
   // ---- The group walk (browser client, real installer server): a SECOND person asks to join the owner's Space by its address, over the real relay; the owner lets people ask, sees the ask, checks the four words and approves

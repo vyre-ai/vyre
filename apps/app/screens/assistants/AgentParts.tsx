@@ -1,14 +1,14 @@
-// The four parts of an agent's page: its instructions, the context it keeps, the models it runs on, and where it is used. Each reads and writes through config.ts; nothing here holds a credential.
+// The four parts of an agent's page: its instructions, the context it keeps, whose AI account it runs on, and where it is used. Each reads and writes through config.ts; nothing here holds a credential.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { Avatar, Banner, Button, Card, Chip, Divider, EmptyState, ErrorState, Field, IconButton, LoadingState, Row, Segmented, Sheet, SortableList, Text, markRef, showToast } from "@vyre/ui";
+import { Avatar, Button, Card, Divider, EmptyState, ErrorState, Field, IconButton, LoadingState, Row, Segmented, Sheet, Text, markRef, showToast } from "@vyre/ui";
 import { Sec } from "../places/Frame";
 import { pickFile } from "../vault/pick-file";
 import { dayOf } from "../../src/time/show.js";
 import { config, agentDocs } from "./config";
 import { DocsEditor } from "../folderdocs/FolderDocs";
-import { LEVELS, LEVEL_NOTE, ACK_WORDS, DOCS, NOT_USED, add, authorLine, accessRow, addable, workRows, NO_WORK, contextName, docInput, drop, kindLine, moveTo, linkLine, move, needsAck, sizeLine, usedRows, type Doc, type Entry } from "./config-model.ts";
+import { LEVELS, LEVEL_NOTE, DOCS, NOT_USED, authorLine, accessRow, workRows, NO_WORK, contextName, docInput, linkLine, sizeLine, usedRows, type Doc } from "./config-model.ts";
 
 const say = (e: unknown, f = "That did not go through.") => (e instanceof Error && e.message ? e.message : f);
 type Load<T> = { data: T | null; err: string; reload: () => void };
@@ -99,64 +99,9 @@ export function Context({ name }: { name: string }) {
   );
 }
 
-/** 3. Models: the sign-ins this agent runs on, in the order they are tried. */
-export function Models({ name }: { name: string }) {
-  const router = useRouter();
-  const q = useLoad(() => config.plan(name), [name]);
-  const [plan, setPlan] = useState<Entry[] | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [adding, setAdding] = useState(false);
-  useEffect(() => { if (q.data) setPlan(q.data.entries); }, [q.data]);
-  if (q.err) return <Card flush><ErrorState title="Models did not load" reason={q.err} retry={q.reload} /></Card>;
-  if (!q.data || !plan) return <LoadingState rows={3} />;
-  const { accounts } = q.data;
-  const saved = JSON.stringify(q.data.entries);
-  const dirty = JSON.stringify(plan) !== saved;
-  const rows = plan.map((e) => ({ e, a: accounts.find((x) => x.id === e.account) }));
-  const ack = needsAck(plan);
-  const save = () => { setBusy(true); config.savePlan(name, plan, ack).then(() => { showToast("Saved. It applies from the next turn."); q.reload(); }).catch((e) => showToast(say(e))).finally(() => setBusy(false)); };
-  return (
-    <>
-      <Sec title="Which AI account it runs on">
-        <Banner icon="info">{`In chats: each person's own AI account. In flows: the sign-ins below, in order.`}</Banner>
-        {rows.length ? (
-          <Card flush>
-            <SortableList items={rows} keyOf={({ e }) => `${e.provider}:${e.account ?? ""}`} rowHeight={92} onMove={(from, to) => setPlan(moveTo(plan, from, to))}
-              render={({ e, a }, i) => (
-                <View>
-                  <Row
-                    title={a ? a.label : e.account ? "An account that was removed" : e.provider}
-                    sub={kindLine(a)}
-                    lead={<Chip>{String(i + 1)}</Chip>}
-                    end={<View className="flex-row"><IconButton icon="chevron-up" label="Move up" onPress={() => setPlan(move(plan, i, -1))} /><IconButton icon="chevron-down" label="Move down" onPress={() => setPlan(move(plan, i, 1))} /><IconButton icon="x" label="Take off the plan" onPress={() => setPlan(drop(plan, i))} /></View>}
-                  />
-                  <View className="px-s3 pb-s2"><Text size="caption" tone="label">{i === 0 ? "First choice." : "Used when the one above runs out or fails."}</Text></View>
-                </View>
-              )} />
-          </Card>
-        ) : <Card><Text tone="muted">{`No order of its own. In flows, ${name} runs on the Space's default. Add a sign-in to choose.`}</Text></Card>}
-        {ack ? <Banner tone="warn" icon="warning">{ACK_WORDS}</Banner> : null}
-        <View className="flex-row flex-wrap gap-s2">
-          <Button size="sm" kind="secondary" label="Add a sign-in" onPress={() => setAdding(true)} />
-          <Button size="sm" label="Save the plan" disabled={busy || !dirty} onPress={save} />
-          {dirty ? <Button size="sm" kind="ghost" label="Revert" onPress={() => setPlan(q.data!.entries)} /> : null}
-        </View>
-      </Sec>
-      <Sheet open={adding} onClose={() => setAdding(false)} title="Add a sign-in">
-        <View className="gap-s2">
-          {addable(plan, accounts).length ? (
-            <Card flush>
-              {addable(plan, accounts).map((a, i) => (
-                <View key={a.id}>{i ? <Divider /> : null}<Row title={a.label} sub={a.kind === "login" ? "Your sign-in" : a.kind === "setup-token" ? "Setup token" : "API token"} onPress={() => { setPlan(add(plan, { provider: a.provider, account: a.id })); setAdding(false); }} /></View>
-              ))}
-            </Card>
-          ) : <Text tone="muted">Every account you have is already on the plan.</Text>}
-          <Text size="caption" tone="label">A setup token, your own login or an API token (Anthropic, OpenAI, OpenRouter) is added once under AI accounts, kept in the Vault, and then picked here.</Text>
-          <View className="flex-row"><Button size="sm" kind="secondary" label="Open AI accounts" onPress={() => { setAdding(false); router.push("/u/settings/ai" as never); }} /></View>
-        </View>
-      </Sheet>
-    </>
-  );
+/** 3. Whose AI account it runs on: always the account of the person using it (in a chat the asker, in a Flow its "Runs on" person, for a Routine or a Watcher the person who asked). One line; nothing to set. */
+export function Models() {
+  return <Text size="caption" tone="label">Runs on the AI account of whoever is using it.</Text>;
 }
 
 /** 4. Where it is used: chats and flows, and the Vault items put at its disposal. */

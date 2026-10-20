@@ -9,6 +9,7 @@
 import { newId } from "./items.js";
 import { occurrences, parseRule } from "./rrule.js";
 import { validZone } from "./time.js";
+import { PERSON_SURFACES } from "../../lib/person-surfaces.js";
 
 const DAY = 86_400_000;
 const FIRING_KEEP = 60 * DAY;
@@ -292,6 +293,24 @@ export async function openRecords(o) {
         known.set(id, rec.version);
         return fromEvent(rec, now());
       },
+    },
+    /**
+     * Whether the Space's owner made this reminder (a /later task), read only from what the kernel wrote when the record was made, never from its data: the record's `created_for` (the person on the creating
+     * chain, or the person a module wrote it for) or `created_by` naming the owner. One exception, the one-time import from the 0.2.x planner (legacy.js), which wrote as the planner's own service: a carried
+     * row whose `source` is one of the owner's own surfaces (lib/person-surfaces.js) was the owner's, since a 0.2.x home had one person. Anything else, or an owner that cannot be read, is not the owner's.
+     * @param {string} id @returns {Promise<boolean>}
+     */
+    async ownerMade(id) {
+      const me = owner();
+      if (!me) return false;
+      const canon = (/** @type {string} */ x) => (typeof K.canonicalPerson === "function" ? K.canonicalPerson(x) : x);
+      let a = null; try { a = typeof K.records.attrsOf === "function" ? await K.records.attrsOf(`vyre://${space}/reminder/${id}`) : null; } catch { a = null; }
+      if (!a) return false;
+      const made = String(a.created_for || a.created_by || "");
+      if (made.startsWith("person:")) return canon(made.slice(7)) === canon(String(me));
+      if (a.created_by !== "service:planner" || a.created_for) return false;
+      const rec = await K.records.get(chain(), "reminder", id).catch(() => null);
+      return Boolean(rec && rec.data && rec.data.legacy_id && PERSON_SURFACES.includes(String(rec.data.source || "")));
     },
     /** Make an item (a record or a Task) and learn its id: the one write the caller waits for. @param {any} row @param {{ chain?: any }} [w] */
     async create(row0, w = {}) {

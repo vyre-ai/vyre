@@ -1,15 +1,42 @@
 import "../../../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ABOUT_MAX, PROFILE_TYPE, aboutProblem, looksByName, profileWrite, profilesOf } from "./profiles-model.js";
-import { MEMBER_PROFILE } from "../../../../records/core-types.js";
+import { ABOUT_MAX, PHOTOS_KEY, PHOTO_TYPE, PROFILE_TYPE, aboutProblem, looksByName, photoCacheKey, photoCreate, photoIdOf, photoUrn, photoWipe, photosOf, profileWrite, profilesOf, retiredPhotos } from "./profiles-model.js";
+import { MEMBER_PHOTO, MEMBER_PROFILE } from "../../../../records/core-types.js";
 
 const row = (id, data, version = 1, updated_at = 1) => ({ type: PROFILE_TYPE, id, version, data, updated_at });
 
 test("the app writes the type the Space defines, with the fields it has", () => {
   assert.equal(PROFILE_TYPE, MEMBER_PROFILE.name);
   const fields = MEMBER_PROFILE.fields.map((f) => f.name);
-  for (const k of ["person", "name", "about", "look"]) assert.ok(fields.includes(k), k);
+  for (const k of ["person", "name", "about", "look", "photo"]) assert.ok(fields.includes(k), k);
+  assert.equal(PHOTO_TYPE, MEMBER_PHOTO.name);
+  const photoFields = MEMBER_PHOTO.fields.map((f) => f.name);
+  for (const k of Object.keys(photoCreate("per_bob", "spc_aaaaaaaaaaaa", { base64: "AAAA", mime: "image/webp", bytes: 3 }).data)) assert.ok(photoFields.includes(k), k);
+});
+
+const PID = "0192f0aa-0000-7000-8000-000000000001";
+test("a profile names its photo by record id; the faces find it by person and by a name nobody else has", () => {
+  const S = "spc_aaaaaaaaaaaa";
+  const byPerson = profilesOf({ rows: [row("a", { person: "p1", name: "Ana", photo: PID }), row("b", { person: "p2", name: "Sam", photo: PID.replace(/1$/, "2") }), row("c", { person: "p3", name: "sam" }), row("d", { person: "p4", name: "Lee", photo: "../../etc" })] });
+  assert.equal(byPerson.p1.photo, PID);
+  assert.equal(byPerson.p4.photo, "", "a photo that is not a record id is dropped");
+  const got = photosOf(byPerson, S);
+  assert.equal(got.p1, `vyre://${S}/member-photo/${PID}`);
+  assert.equal(got.ana, got.p1, "by name");
+  assert.ok(got.p2, "by person even when the name is shared");
+  assert.equal(got.sam, undefined, "a shared name finds nobody's photo");
+  assert.equal(got.p3, undefined, "a person with none");
+});
+
+test("a new photo is a record of its person's; the profile then names it, and taking it away empties the field", () => {
+  const S = "spc_aaaaaaaaaaaa";
+  assert.deepEqual(photoCreate("per_bob", S, { base64: "AAAA", mime: "image/jpeg", bytes: 3 }), { type: PHOTO_TYPE, space: S, data: { person: "per_bob", image: "AAAA", mime: "image/jpeg", bytes: 3 } });
+  const cur = profilesOf({ rows: [row("r1", { person: "per_bob", name: "Bob" }, 2)] }).per_bob;
+  assert.deepEqual(profileWrite(cur, "per_bob", { photo: PID }, S), { tool: "records.update", input: { urn: `vyre://${S}/${PROFILE_TYPE}/r1`, patch: { photo: PID }, base_version: 2 } });
+  const withPhoto = profilesOf({ rows: [row("r1", { person: "per_bob", name: "Bob", photo: PID }, 3)] }).per_bob;
+  assert.deepEqual(profileWrite(withPhoto, "per_bob", { photo: "" }, S)?.input, { urn: `vyre://${S}/${PROFILE_TYPE}/r1`, patch: { photo: "" }, base_version: 3 });
+  assert.deepEqual(profileWrite(withPhoto, "per_bob", { photo: "not an id!" }, S)?.input.patch, { photo: "" }, "never anything but an id");
 });
 
 test("one profile per person, the last saved, and nothing made up from a broken row", () => {
@@ -39,4 +66,18 @@ test("a save makes the record once, then changes only what changed, against the 
   const cur = profilesOf({ rows: [row("r1", first.input.data, 4)] }).per_bob;
   assert.equal(profileWrite(cur, "per_bob", { name: "Bob", about: "Runs intake" }, "spc_aaaaaaaaaaaa"), null, "nothing changed");
   assert.deepEqual(profileWrite(cur, "per_bob", { about: "Runs intake and billing" }, "spc_aaaaaaaaaaaa"), { tool: "records.update", input: { urn: `vyre://spc_aaaaaaaaaaaa/${PROFILE_TYPE}/r1`, patch: { about: "Runs intake and billing" }, base_version: 4 } });
+});
+
+test("this device keeps a photo by its id, and forgets the ones a fresh read no longer names", () => {
+  const S = "spc_aaaaaaaaaaaa", A = PID, B = PID.replace(/1$/, "2"), C = PID.replace(/1$/, "3");
+  assert.equal(photoIdOf(photoUrn(S, A)), A);
+  assert.equal(photoIdOf("vyre://spc_aaaaaaaaaaaa/member-profile/x"), "", "only a photo address");
+  assert.equal(photoIdOf("vyre://spc_aaaaaaaaaaaa/member-photo/../../etc"), "");
+  assert.equal(photoCacheKey(A), `photo:${A}`);
+  assert.equal(typeof PHOTOS_KEY, "string");
+  const was = profilesOf({ rows: [row("a", { person: "p1", photo: A }), row("b", { person: "p2", photo: B }), row("c", { person: "p3", photo: C })] });
+  const now = profilesOf({ rows: [row("a", { person: "p1", photo: A }), row("b", { person: "p2", photo: C.replace(/3$/, "4") }), row("c", { person: "p3" })] });
+  assert.deepEqual(retiredPhotos(was, now).sort(), [B, C].sort(), "a replaced one and a removed one");
+  assert.deepEqual(retiredPhotos(undefined, now), [], "a first read forgets nothing");
+  assert.deepEqual(photoWipe(photoUrn(S, A), 3), { urn: photoUrn(S, A), patch: { image: "", bytes: 0 }, base_version: 3 }, "a wipe keeps the record and its person, never the picture");
 });

@@ -26,6 +26,47 @@ export const STREAM_LIMITS = Object.freeze({ perDevice: 8, frameBytes: 15_000, q
 const STREAM_ID = /^[A-Za-z0-9_-]{8,64}$/;
 const err = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
 
+/** A device's call through the door that fails, or takes longer than this, is written to the log. */
+export const SLOW_CALL_MS = 10_000;
+const CODE = /^[a-z][a-z0-9_]{0,40}$/;
+const secs = (/** @type {number} */ ms) => `${(ms / 1000).toFixed(1)} s`;
+/** The tool's name for the log, and for a kernel call the call it carries (a method name, never its arguments). @param {string} tool @param {any} input */
+const callName = (tool, input) => {
+  const t = /^[a-z][a-z0-9.-]{0,80}$/.test(String(tool)) ? String(tool) : "a tool";
+  const c = tool === KERNEL_CALL_TOOL && input && typeof input.call === "string" && /^[a-z][a-zA-Z0-9.-]{0,60}$/.test(input.call) ? input.call : "";
+  return c ? `${t} ${c}` : t;
+};
+/**
+ * Run one call and say in the log when it failed (its error code) or was slow (how long it took). A call still waiting at the mark is logged then, so a call that never ends is seen too, and again when
+ * it ends. Only the tool's name, the device's short id, the code and the time are written: never the call's input, its words or its answer.
+ * @template T
+ * @param {(m: string) => void} log @param {string} caller @param {string} tool @param {any} input @param {() => Promise<T>} run @param {{ slowMs?: number, now?: () => number }} [o]
+ * @returns {Promise<T>}
+ */
+export async function loggedCall(log, caller, tool, input, run, o = {}) {
+  const slow = o.slowMs ?? SLOW_CALL_MS;
+  const clock = o.now || Date.now;
+  const name = callName(tool, input);
+  const who = String(caller).replace(/^(device:[A-Za-z0-9_-]{8})[A-Za-z0-9_-]*$/, "$1");
+  const t0 = clock();
+  let late = false;
+  const mark = setTimeout(() => { late = true; log(`peer door: ${name} from ${who} still waiting after ${secs(clock() - t0)}`); }, slow);
+  if (mark.unref) mark.unref();
+  try {
+    const r = await run();
+    const ms = clock() - t0;
+    // a kernel call answers a refusal as { ok: false, error } instead of throwing
+    const refused = r && typeof r === "object" && /** @type {any} */ (r).ok === false && /** @type {any} */ (r).error ? String(/** @type {any} */ (r).error.code || "") : null;
+    if (refused !== null) log(`peer door: ${name} from ${who} failed (${CODE.test(refused) ? refused : "error"}) after ${secs(ms)}`);
+    else if (late || ms >= slow) log(`peer door: ${name} from ${who} answered after ${secs(ms)}`);
+    return r;
+  } catch (e) {
+    const code = String((/** @type {any} */ (e) || {}).code || "");
+    log(`peer door: ${name} from ${who} failed (${CODE.test(code) ? code : "error"}) after ${secs(clock() - t0)}`);
+    throw e;
+  } finally { clearTimeout(mark); }
+}
+
 /**
  * @param {{ kernel: any, registry: any, people?: { list(): any[] } | null, events?: { on(type: string, f: (e: any) => void): (() => void) | void } | null, now?: () => number, identityEntry?: (identity: string, eid: string, name?: string) => Promise<{ pub: string, alg?: string, held?: string, since?: number, founder?: boolean } | null>, boxId?: () => Promise<string | null>, isServer?: (id: string) => boolean, homeMoves?: { isOpen(space: string): boolean, any(): boolean, arrive(): void, begin(space: string): () => void } | (() => any), lent?: (space: string, kernel: any) => any, onSession?: (caller: string, session: any) => void, serverFor?: (space: string) => { serve(request: any, peer: any): Promise<any> } | null, memberWatchMs?: number, inviteeLimits?: { perInvite?: number, perIdentity?: number, perMinute?: number, perChannel?: number, perBox?: number, nonceMax?: number, idleMs?: number, presenceMs?: number }, callerFacts: (caller: string, policy: any, via: any, k: any, capsule: boolean, device: any) => any, log?: (m: string) => void }} o
  */
@@ -227,7 +268,7 @@ export function createPeerDoor(o) {
         if (r && r.error) throw Object.assign(err(String(r.error.code || "internal"), String(r.error.message || "the call failed")), r.error.detail ? { detail: r.error.detail } : {});
         return r ? r.data : null;
       }
-      return withKernelCall((/** @type {string} */ c, /** @type {string} */ t, /** @type {any} */ i, /** @type {any} */ x) => asDevice(c, t, i, null, x), { serverFor, personOf: (/** @type {string} */ d) => personOf(d), pathOf: () => "wink" })(caller, tool, input);
+      return loggedCall(log, caller, tool, input, () => withKernelCall((/** @type {string} */ c, /** @type {string} */ t, /** @type {any} */ i, /** @type {any} */ x) => asDevice(c, t, i, null, x), { serverFor, personOf: (/** @type {string} */ d) => personOf(d), pathOf: () => "wink" })(caller, tool, input));
     },
     /**
      * An invitee's stream (see above). `head` is the hello the peer stream carried. @param {any} stream @param {{ inviteeId: string }} who @param {any} head
@@ -447,7 +488,7 @@ export function createPeerDoor(o) {
       session = peerSession(pipe, { first: 2,
         serve: async (/** @type {string} */ tool, /** @type {any} */ input) => {
           if (!DEVICE.test(id) || !(await rowOf(id))) { { const t = setTimeout(() => { try { session.close("device removed"); } catch { /* closed */ } }, 200); if (t.unref) t.unref(); } throw err("denied", "this device is not paired here any more"); }
-          return dispatch(caller, tool, input);
+          return loggedCall(log, caller, tool, input, () => dispatch(caller, tool, input));
         },
         // the device closes a stream it opened (an id it never opened is ignored: it cannot touch another's)
         onframe: (/** @type {{ type: number, payload: Buffer }} */ f) => {

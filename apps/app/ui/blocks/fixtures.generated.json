@@ -4209,6 +4209,34 @@
     }
    }
   },
+  "flow-webhook": {
+   "title": "A Flow's webhook address",
+   "screens": {
+    "full": {
+     "component": "flow-webhook"
+    },
+    "compact": {
+     "component": "flow-webhook"
+    },
+    "glance": {
+     "component": "flow-webhook"
+    }
+   }
+  },
+  "flow-webhook-wait": {
+   "title": "A Flow's webhook address, not reachable yet",
+   "screens": {
+    "full": {
+     "component": "flow-webhook-wait"
+    },
+    "compact": {
+     "component": "flow-webhook-wait"
+    },
+    "glance": {
+     "component": "flow-webhook-wait"
+    }
+   }
+  },
   "design-changes": {
    "title": "Design changes",
    "screens": {
@@ -4506,6 +4534,55 @@
     },
     "glance": {
      "component": "import-4"
+    }
+   }
+  },
+  "model-picker": {
+   "title": "The one model picker",
+   "screens": {
+    "full": {
+     "component": "model-picker"
+    },
+    "compact": {
+     "component": "model-picker"
+    },
+    "glance": {
+     "component": "model-picker"
+    }
+   }
+  },
+  "chat-model-switch": {
+   "title": "Chat: your model for this chat",
+   "screens": {
+    "full": {
+     "component": "chat-model-switch"
+    },
+    "compact": {
+     "component": "chat-model-switch"
+    }
+   }
+  },
+  "agent-ai-tab": {
+   "title": "An agent's AI tab",
+   "screens": {
+    "full": {
+     "component": "agent-ai-tab"
+    }
+   }
+  },
+  "welcome-model": {
+   "title": "Welcome: the model step",
+   "screens": {
+    "full": {
+     "component": "welcome-model"
+    }
+   }
+  },
+  "flow-ai-step": {
+   "title": "Flow: an AI step's model",
+   "screens": {
+    "full": {
+     "component": "flow-ai-step"
     }
    }
   }

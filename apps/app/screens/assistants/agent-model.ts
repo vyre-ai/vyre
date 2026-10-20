@@ -1,30 +1,9 @@
 import { timeOf } from "../../src/time/show.js";
 // The pure half of an assistant's page and the New assistant form (the Deck's views/agents.js and js/agent-create.js, ported): the lines the screens show and the input the box takes.
 
-import { modelChoices } from "../../src/chat/core/composer-state.js";
-
-export type AgentFull = { name: string; look?: string | null; kind?: string; role?: string; projects?: unknown; instructions?: string | null; model?: string | null; effort?: string | null; computer?: boolean; status?: string; thread?: string | null };
+export type AgentFull = { name: string; look?: string | null; kind?: string; role?: string; projects?: unknown; instructions?: string | null; model?: string | null; model_provider?: string | null; effort?: string | null; computer?: boolean; status?: string; thread?: string | null };
 export type Computer = { agent?: string; state?: string; screen?: number | null; screens?: number; size?: { w?: number; h?: number }; viewers?: number; takeover?: string | null; paused?: boolean; cpus?: number; memory_gb?: number; label?: string | null };
 export type UsageFull = { agent: string | null; auth?: string; turns?: number; threads?: number; spent_usd?: number; budget_usd?: number | null; left_usd?: number | null; duration_ms?: number; last_at?: number | null; tokens?: Record<string, number>; limit?: { status?: string; kind?: string; utilization?: number; resets_at?: number } | null };
-
-export const EFFORT: [string, string][] = [["low", "Low"], ["medium", "Medium"], ["high", "High"]];
-/** The model picker's rows: the box's own list (sessions.models.get aliases), plus the agent's model when it is not on it. No list lives here (test/cohesion-drift.test.js). */
-export const modelsFor = (current?: string | null, aliases?: unknown): { id: string; name: string }[] =>
-  modelChoices({ current, aliases }).map((m) => ({ id: m.id, name: m.label }));
-
-/** One AI account and the models it offers (sessions.accounts.models). */
-export type ModelGroup = { account: string; label: string; models: { id: string; label: string }[] };
-/**
- * The agent page's model picker from the person's own AI accounts: only models an account of theirs offers, each once, named with its account when there is more than one, then the agent's own
- * model when no account offers it (so the picker still shows what it runs on).
- */
-export function accountModelsFor(current: string | null | undefined, groups: ModelGroup[] | null | undefined): { id: string; name: string }[] {
-  const withModels = (groups || []).filter((g) => g && Array.isArray(g.models) && g.models.length);
-  const out = new Map<string, { id: string; name: string }>();
-  for (const g of withModels) for (const m of g.models) if (m && typeof m.id === "string" && !out.has(m.id)) out.set(m.id, { id: m.id, name: withModels.length > 1 ? `${m.label || m.id} (${g.label})` : m.label || m.id });
-  if (current && !out.has(current)) out.set(current, { id: current, name: current });
-  return [...out.values()];
-}
 
 const plural = (n: number, one: string) => `${n} ${n === 1 ? one : one + "s"}`;
 const since = (at: number, now: number) => {

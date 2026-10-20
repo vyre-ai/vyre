@@ -18,7 +18,9 @@ test("a helper cannot hold more than its parent: its tool list is inside the par
   const { d, tool, root, project, launches } = await boot(t);
   await tool("agents.create", { name: "kit", kind: "agent", projects: [] });
   const { thread } = await realSession(root, tool, launches, project.slug);
-  const spawn = (/** @type {any} */ input, /** @type {any} */ meta) => d.registry.call("agents.spawn", input, "mcp:agent:kit", { agent: "kit", thread, ...meta });
+  // kit's own session, working for the owner (vyred vouches the session and the person it works for): a helper is that person's call (Rule 2)
+  const kitFacts = { kernelFacts: { kind: "agent_session", agent: "kit", session: "s-kit", thread, vouched: true, person: d.kernel.id.owner } };
+  const spawn = (/** @type {any} */ input, /** @type {any} */ meta) => d.registry.call("agents.spawn", input, "mcp:agent:kit", { agent: "kit", thread, ...kitFacts, ...meta });
 
   // held to a short list itself: a helper may ask for less, never for more
   const parentOnly = ["agents.spawn", "recall.search", "memory.space.recall"];   // the parent is held to a short list, and spawning is on it
@@ -48,7 +50,8 @@ test("the helper's row nests in the parent's conversation: one hand-off row by r
   const { d, tool, root, project, launches } = await boot(t);
   await tool("agents.create", { name: "kit", kind: "agent", projects: [] });
   const { thread } = await realSession(root, tool, launches, project.slug);
-  const r = await d.registry.call("agents.spawn", { task: "summarise the file", label: "reader" }, "mcp:agent:kit", { agent: "kit", thread });
+  const kitFacts = { kernelFacts: { kind: "agent_session", agent: "kit", session: "s-kit", thread, vouched: true, person: d.kernel.id.owner } };   // kit's own session, for the owner (Rule 2)
+  const r = await d.registry.call("agents.spawn", { task: "summarise the file", label: "reader" }, "mcp:agent:kit", { agent: "kit", thread, ...kitFacts });
   assert.equal(r.error, undefined, JSON.stringify(r));
   const frames = await until(async () => { const f = framesOf(root, thread); const rows = f.filter(x => x.type === "chat.handoff"); return rows.some(x => x.data.state === "done" || x.data.state === "failed") ? f : null; }, "the helper's row to finish");
   const rows = frames.filter(x => x.type === "chat.handoff");

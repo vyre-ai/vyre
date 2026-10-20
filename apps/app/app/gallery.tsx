@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
-import { AgentComputerPane, ConversationHeader, ConversationList, NewAgentDialog, convosFrom, ShellStates, ShellSample, SpaceTileSheet, BlockScreen, BackgroundTasksCard, Card, ChatCard, ChatForkPanel, Chip, ChoiceHero, ChoiceList, CodeDisplay, CodeField, FlowCanvas, FlowStep, InviteShare, LaterPlannerNote, Markdown, NeedsYouCard, PanelCapabilityRows, PasswordField, ProviderRow, ProviderSignInButton, RecoveryKeySheet, ServerUrlField, SlashChips, Stack, ThemeProvider, Text, useAppearance, useUiTheme } from "@vyre/ui";
+import { AgentComputerPane, ConversationHeader, ConversationList, NewAgentDialog, convosFrom, ShellStates, ShellSample, SpaceTileSheet, BlockScreen, BackgroundTasksCard, Card, ChatCard, ChatForkPanel, Chip, ChoiceHero, ChoiceList, CodeDisplay, CodeField, FlowCanvas, FlowStep, InviteShare, LaterPlannerNote, Markdown, ModelPicker, ModelPickerSheet, NeedsYouCard, PanelCapabilityRows, PasswordField, ProviderRow, ProviderSignInButton, RecoveryKeySheet, ServerUrlField, SlashChips, Stack, ThemeProvider, Text, useAppearance, useUiTheme } from "@vyre/ui";
 import type { CanvasEdge, NodeState } from "../ui/canvas/FlowCanvas";
 import data from "../ui/blocks/fixtures.generated.json";
 import "../screens/records/register";
@@ -29,6 +29,7 @@ import { ExplainCard } from "../screens/flows/ExplainCard";
 import { RunSteps } from "../screens/flows/RunSteps";
 import { RunPage } from "../screens/flows/RunPage";
 import { FlowBuilder } from "../ui/flows/FlowBuilder";
+import { WebhookFields } from "../ui/flows/WebhookFields";
 import { SAMPLE_OPTIONS, REMINDER_DRAFT } from "../screens/flows/starters.js";
 import { dayTimeOf } from "../src/time/show.js";
 import { TimelineEntries } from "../screens/projects/TimelineList";
@@ -45,6 +46,9 @@ import { GroupedTasksDemo, ImportDemo, RecordFormDemo, RecordPageDemo } from "..
 import { ChatComposer } from "../src/chat/ChatComposer";
 import { FileViewerFixture } from "../ui/files/Fixture";
 import { ChatPanel, type PanelPage } from "../src/chat/ChatPanel";
+import { sampleAccounts, sampleGroups, sampleNow } from "../src/models/mock-models.js";
+import { AgentAiTab } from "../screens/assistants/AgentPage";
+import { MODEL_COPY, welcomeGroups } from "../screens/first-run/welcome-model.js";
 
 const MD_SAMPLE = [
   "## The short answer", "",
@@ -126,6 +130,12 @@ function Sample({ name }: { name: string }) {
   if (name === "setup-field-access") return <FieldPaneDemo draft={DRAFTS.value} rules={{ visible: null, required: { field: "kind", op: "is_not", value: "Other" } }} />;
   if (name === "setup-field-seal") return <FieldPaneDemo draft={DRAFTS.sealed} />;
   if (name === "setup-field-errors") return <FieldPaneDemo draft={DRAFTS.broken} tried />;
+  if (name === "flow-webhook" || name === "flow-webhook-wait") {
+    const live = name === "flow-webhook";
+    const h = { open: true, address: { path: "/hooks/refund-request-4f9c", url: live ? "https://team.example/hooks/refund-request-4f9c0b7e1d2a" : null }, why: live ? null : "The public address is not up yet: the server's name does not point at it. Senders on the internet reach it once the server has its public address.",
+      last: live ? { when: "Today 10:05", ok: true, bytes: 412 } : { when: "Today 9:58", ok: false, why: "the token does not match", bytes: 210 }, check: null };
+    return <Card><WebhookFields kind="webhook" onOwn={() => {}} sources={{ flowHook: async () => h, renewHook: async () => {}, testHook: async () => ({ ok: true, line: "The test reached the address and its token checked. A test does not start the Flow." }), signHook: async () => {} }} /></Card>;
+  }
   if (name === "flow-parallel") {
     // A flow with a parallel (two lanes) and the step that follows it, in the shape kernel/flows/canvas.js graph() hands over.
     const n = (id: string, kind: string, label: string, lane: number, y: number, state?: NodeState) => ({ id, kind, label, lane, y, ...(state ? { state } : {}) });
@@ -225,6 +235,29 @@ function Sample({ name }: { name: string }) {
   if (name === "notice-answered") {
     return <View style={{ gap: 8 }}><NoticeAnswered kind="approved" say="Approved: An assistant (kit) wants to send an email: Northwind" onClose={() => {}} /><NoticeAnswered kind="denied" say="Denied: An assistant (kit) wants to send an email: Oakline" onClose={() => {}} /><NoticeAnswered kind="gone" say="That request ended before you answered." onClose={() => {}} /><NoticeAnswered kind="failed" say="Face ID or Touch ID did not work. Nothing was approved." onClose={() => {}} /></View>;
   }
+  // The one model picker (model-service): the sample world's accounts and models, as the one model service answers them.
+  if (name === "model-picker") {
+    const groups = sampleGroups();
+    return (
+      <View style={{ gap: 20, maxWidth: 520 }}>
+        <ModelPicker label="Juno's model" groups={groups} value={{ account: "ac_claude", provider: "claude", model: "sample-claude-deep" }} effort="high" onChange={() => {}} onEffort={() => {}} />
+        <ModelPicker label="A model with no effort levels" groups={groups} value={{ account: "ac_router", provider: "openrouter", model: "acme/plain-chat" }} onChange={() => {}} onEffort={() => {}} />
+      </View>
+    );
+  }
+  if (name === "chat-model-switch") {
+    const groups = sampleGroups();
+    return <ModelPickerSheet title="Your model for this chat" groups={groups} current={{ account: groups[1].account, model: groups[1].models[0] }} effort="high" onClose={() => {}} onPick={() => {}} onEffort={() => {}} inline />;
+  }
+  if (name === "agent-ai-tab") return <View style={{ maxWidth: 640 }}><AgentAiTab a={{ name: "qi", kind: "assistant", instructions: "Your name is Qi.", model: "sample-claude-deep", model_provider: "claude", effort: "high" }} /></View>;
+  if (name === "welcome-model") {
+    return (
+      <FlowStep steps={{ labels: ["Identity", "Space", "Ready"], current: 1, kind: "phase" }} title={MODEL_COPY.title("Juno")} lead={MODEL_COPY.lead} primary={{ label: "Continue", onPress: () => {} }} secondary={{ label: "Keep the default", onPress: () => {} }}>
+        <ModelPicker label="Juno's model" groups={welcomeGroups(sampleAccounts())} value={{ account: "ac_claude", provider: "claude", model: "sample-claude-deep" }} effort="high" onChange={() => {}} onEffort={() => {}} />
+      </FlowStep>
+    );
+  }
+  if (name === "flow-ai-step") return <FlowBuilder draft={{ name: "Sort new messages", trigger: { kind: "form", path: "intake" }, steps: [{ id: "classify1", kind: "classify", input: "{message}", labels: "Urgent, Routine", model: "openrouter/x-ai/grok-4.7" }] } as any} onChange={() => {}} options={{ ...SAMPLE_OPTIONS, models: sampleGroups() } as any} initialOpen="classify1" />;
   if (name === "chat-tools-fork") return <View style={{ gap: 12 }}><Card><ForkRows otherPlace="server" onFork={() => {}} onForkTo={() => {}} /></Card><Card><ForkRows otherPlace="mac" onFork={() => {}} onForkTo={() => {}} /></Card><Card><ForkRows otherPlace={null} onFork={() => {}} onForkTo={() => {}} /></Card></View>;
   if (name === "signin-card") {
     const site = { id: "connectors:li", title: "Sign in to app.example.com again", detail: "HTTP 401: the login ran out. Sign in on the site, then check again.", at: 1, buttons: [{ label: "Check it now", tool: "connectors.connection.check", input: { id: "li" } }] };
@@ -311,13 +344,13 @@ const CMP_RECORDS = [
   { name: "Trust certificate.pdf", type: "File", sealed: 0, urn: "urn:rec:3", kind: "file" }, { name: "Quarterly review", type: "Tag", sealed: 0, urn: "urn:rec:4", kind: "tag" },
 ];
 const CMP_SLOTS = [{ id: "s1", label: "kit on Claude", provider: "claude" }, { id: "s2", label: "kit on Codex", provider: "codex" }, { id: "s3", label: "Grok", provider: "grok" }];
-const CMP_MODELS = [{ id: "opus", label: "Opus", fit: 94 }, { id: "sonnet", label: "Sonnet", fit: 88 }, { id: "haiku", label: "Haiku", fit: 71 }];
+const CMP_MODELS = sampleGroups();
 
 /** The composer, before and after, side by side: /gallery?f=composer. The "after" is live: try / @ # and Cmd+/ with the keyboard only. */
 function ComposerCompare() {
-  const [model, setModel] = useState("opus");
+  const [model, setModel] = useState<{ account?: string | null; provider?: string | null; model?: string | null }>(sampleNow());
   const [where, setWhere] = useState<"mac" | "server">("server");
-  const common = { state: "idle", people: CMP_PEOPLE, records: CMP_RECORDS, models: CMP_MODELS, model, onModel: (id: string) => setModel(id), slots: CMP_SLOTS, runsOn: where, onRunsOn: () => setWhere((w) => (w === "mac" ? "server" : "mac")), onSend: () => {}, onAttachFile: () => {}, vyreFiles: [{ id: "f1", name: "Trust certificate.pdf", path: "Projects/Wine estate/Received" }, { id: "f2", name: "Site visit.mp4", path: "Projects/Wine estate/Made" }, { id: "f3", name: "Deed scan.png", path: "Projects/Wine estate/Received" }], onAttachVyreFile: () => {} };
+  const common = { state: "idle", people: CMP_PEOPLE, records: CMP_RECORDS, models: CMP_MODELS, model, onModel: (p: { account: { id: string }; model: { id: string; provider: string } }) => setModel({ account: p.account.id, provider: p.model.provider, model: p.model.id }), slots: CMP_SLOTS, runsOn: where, onRunsOn: () => setWhere((w) => (w === "mac" ? "server" : "mac")), onSend: () => {}, onAttachFile: () => {}, vyreFiles: [{ id: "f1", name: "Trust certificate.pdf", path: "Projects/Wine estate/Received" }, { id: "f2", name: "Site visit.mp4", path: "Projects/Wine estate/Made" }, { id: "f3", name: "Deed scan.png", path: "Projects/Wine estate/Received" }], onAttachVyreFile: () => {} };
   return (
     <View style={{ gap: 24 }}>
       <View style={{ gap: 6 }}><Text size="caption" tone="label">After (live)</Text><ChatComposer {...common} phone={false} /></View>

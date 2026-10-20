@@ -191,6 +191,9 @@ test("install-box.sh v2: a release with digests is cosign-checked against the wo
     assert.match(l, /--certificate-oidc-issuer https:\/\/token\.actions\.githubusercontent\.com/);
   }
   assert.ok(calls.includes(`docker pull -q ${DIGEST}`), calls);
+  // the agents' computers' image too, by the digest release.json names and only after cosign checked it: the Engine never pulls on create
+  assert.ok(calls.includes(`docker pull -q ${COMPUTER}`), `the computer image is pulled by digest:\n${calls}`);
+  assert.ok(calls.lastIndexOf(" verify ") < calls.indexOf(`docker pull -q ${COMPUTER}`), "after both signature checks");
   assert.ok(!calls.includes("manifest inspect"), "no tag lookup when the release names a digest");
   assert.ok(!fs.existsSync(path.join(b.dir, "vyre.tgz")) && !fs.existsSync(path.join(b.dir, "src")), "nothing built from source");
   assert.match(r.stdout, /signed by Vyre's release workflow/);

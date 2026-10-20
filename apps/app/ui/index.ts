@@ -23,7 +23,10 @@ export { AnsweringControl, AiMark } from "./components/AnsweringControl";
 export type { AnsweringAi } from "./components/AnsweringControl";
 export { SpaceTag } from "./components/SpaceTag";
 export { ProviderBadge } from "./components/ProviderBadge";
-export { providerName, providerOfModel } from "./marks/provider.js";
+export { ProviderLogo } from "./components/ProviderLogo";
+export { ModelPicker, ModelPickerSheet } from "./components/ModelPicker";
+export type { ModelPick } from "./components/ModelPicker";
+export { providerName, providerOfModel, providerVendor } from "./marks/provider.js";
 export { Fab } from "./components/Fab";
 export { Card, Divider } from "./components/Card";
 export { SectionLabel } from "./components/SectionLabel";
@@ -51,7 +54,10 @@ export { Avatar, AvatarStack, SpaceMark, kindOf, badgePx } from "./components/Av
 export type { AvatarKind, AvatarRef, AvatarSize } from "./components/Avatar";
 export type AvatarFamily = import("./components/Avatar").AvatarKind;
 export { markRef, spaceRef } from "./marks/useMark";
-export { usePersonLooks } from "./marks/usePersonLooks";
+export { usePersonLooks, usePersonPhoto, photoCache } from "./marks/usePersonLooks";
+export { PhotoCropSheet } from "./components/PhotoCropSheet";
+export type { CropPick, Crop } from "./components/PhotoCropSheet";
+export { PHOTO_SIDE, PHOTO_MAX_BYTES, QUALITIES, outputSide, base64Bytes, nextQuality, stripMeta, sniff } from "./components/photo-crop-model.js";
 export { IconTile } from "./components/IconTile";
 export { AskCard } from "./components/AskCard";
 export { Sheet } from "./components/Sheet";
@@ -182,7 +188,7 @@ export { ActivityFeed } from "./records/ActivityFeed";
 export type { Activity } from "./records/ActivityFeed";
 export { ImportWizard, IMPORT_STEPS } from "./records/ImportWizard";
 export type { ImportIssue, DupeRule } from "./records/ImportWizard";
-export { groupRelated, viaOf, prefillFromLink, factsOf, createPayload, formErrors, formOrder, guessMapping, importIssues, importSummary, timelineOf } from "./records/logic.js";
+export { groupRelated, viaOf, prefillFromLink, factsOf, createPayload, formErrors, formOrder, guessMapping, importIssues, importSummary, timelineOf, isInternalField, isLockedField, personFields, taskRequestOf } from "./records/logic.js";
 export { FlowBuilder } from "./flows/FlowBuilder";
 export type { TriggerSources } from "./flows/trigger-sources";
 export { StepCard } from "./flows/StepCard";
@@ -210,6 +216,6 @@ export type { FileViewerProps } from "./files/FileViewer";
 export type { FileSource, FileBody, FileVersion, SaveResult } from "./files/source";
 export {
   SlashChips, LaterPlannerNote, laterWords, ChatForkPanel, BackgroundTasksCard, RewindSheet, SecondOpinionSheet, PanelCapabilityRows,
-  FEATURED_SLASHES, NATIVE_SLASHES, displayName, ConversationList, ConversationTypes, NewPopover, newMenuRows, newMenuAgents, ConversationHeader, NewAgentDialog, AgentLookPicker, lookSeed, lookOf, AgentComputerPane, computerOf, computerWords, computerActions, DOCK, convosFrom, convoChips, convosShown, convoKindWord, convoSections, CONVO_TYPES, agentLine, summaryLine, placeOf, PARTS, partsOf, withParts, setPart, rememberLook, lookFor,
+  FEATURED_SLASHES, NATIVE_SLASHES, displayName, ConversationList, ConversationTypes, NewPopover, newMenuRows, newMenuAgents, ConversationHeader, NewAgentDialog, AgentLookPicker, lookSeed, lookOf, AgentComputerPane, computerOf, computerProblem, computerWords, computerActions, DOCK, convosFrom, convoChips, convosShown, convoKindWord, convoSections, CONVO_TYPES, agentLine, summaryLine, placeOf, PARTS, partsOf, withParts, setPart, rememberLook, lookFor,
 } from "./chat";
 export type { LaterPlannerState, BackgroundTask, RewindPoint, OpinionTarget, PanelCapabilityRowsProps, Convo, ComputerView, NewAgentValues } from "./chat";

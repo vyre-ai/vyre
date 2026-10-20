@@ -14,6 +14,7 @@ import { open } from "../store/index.js";
 import { Events } from "../../kernel/bus.js";
 import { createKernel } from "../../kernel/index.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
+import { OWNER_UPKEEP } from "./index.js";
 
 const SPACE = "spc_aaaaaaaaaaab", OWNER = "per_owner", ANA = "per_ana", ADA = "per_ada";
 const ACCOUNTS = pathToFileURL(path.join(path.dirname(new URL(import.meta.url).pathname), "..", "sessions", "accounts.js")).href;
@@ -21,6 +22,12 @@ const ACCOUNTS = pathToFileURL(path.join(path.dirname(new URL(import.meta.url).p
 const THREADS = `export default { async start(ctx) {
   ctx.tool("threads.launch", { internal: true, run: async i => { (globalThis.__launched ||= []).push(i); return { id: "job" + globalThis.__launched.length }; } });
   ctx.tool("threads.get", { effect: "read", run: async () => ({ thread: null }) });
+  ctx.tool("threads.send", { run: async i => ({ sent: true, thread: i.thread }) });
+  return {};
+} };`;
+// The onboarding module's one call this test needs: the greeting it sends when the owner finishes onboarding, relayed as the person on the call (core/onboard meet()).
+const ONBOARD = `export default { async start(ctx) {
+  ctx.tool("onboard.greet", { run: async () => { const r = await ctx.call("agents.ask", { agent: "ava", text: "Say hello.", wait: false, surface: "onboard" }, { relay: true }); if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r.data; } });
   return {};
 } };`;
 const PROJECTS = `export default { async start(ctx) {
@@ -42,18 +49,20 @@ export default { async start(ctx) {
   return {};
 } };`;
 
-async function world(/** @type {any} */ t) {
+async function world(/** @type {any} */ t, { greeter = false } = {}) {
   const home = tempHome(t);
   const root = path.join(home, "mods");
-  writeModule(root, "threads", { roles: ["box", "local"], does: { tools: ["threads.launch", "threads.get"] } }, THREADS);
+  writeModule(root, "threads", { roles: ["box", "local"], does: { tools: ["threads.launch", "threads.get", "threads.send"] } }, THREADS);
+  if (greeter) writeModule(root, "onboard", { roles: ["box", "local"], does: { tools: ["onboard.greet"] } }, ONBOARD);
   writeModule(root, "projects", { roles: ["box", "local"], does: { tools: ["projects.list"] } }, PROJECTS);
   writeModule(root, "assistant", { roles: ["box", "local"], does: { tools: ["assistant.capabilities"] } }, ASSISTANT);
   writeModule(root, "sessions", { roles: ["box", "local"], does: { tools: ["sessions.accounts.resolve"] } }, SESSIONS);
   const k = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 6) });
   const db = open(path.join(home, "vyre.db"));
-  const reg = new Registry({ db, events: new Events(db), config: { role: "local" }, paths: { root: home }, log: () => {}, kernelFor: k.kernelFor });
+  // the greeter stand-in sits where Vyre's own onboard module would: first party, so the registry's relay list applies to it
+  const reg = new Registry({ db, events: new Events(db), config: { role: "local" }, paths: { root: home }, log: () => {}, kernelFor: k.kernelFor, ...(greeter ? { firstPartyRoots: [root] } : {}) });
   const core = discover([path.join(path.dirname(new URL(import.meta.url).pathname), "..")]).filter(f => f.manifest?.name === "agents");
-  await reg.start([...core, ...discover([root])], { role: "local" });
+  await reg.start([...core, ...discover([root], greeter ? { firstPartyRoots: [root] } : {})], { role: "local" });
   t.after(async () => { await reg.stop?.(); db.close(); delete /** @type {any} */ (globalThis).__launched; delete /** @type {any} */ (globalThis).__accounts; });
   const call = (/** @type {string} */ tool, /** @type {any} */ input = {}, caller = "local") => reg.call(tool, input, caller);
   const made = await call("agents.create", { name: "juno", kind: "agent", projects: [] });
@@ -65,7 +74,7 @@ async function world(/** @type {any} */ t) {
   let n = 0;
   const wake = (/** @type {string | undefined} */ approver) => call("agents.wake", { task: `t${++n}`, agent: "juno", title: "Refund R-9", ...(approver ? { approver } : {}) }, "module:vyred");
   const job = (/** @type {string | undefined} */ person) => call("agents.job", { agent: "juno", prompt: "Draft the digest", ...(person ? { person } : {}) }, "module:planner");
-  return { call, accounts, home0, last, count, wake, job, db };
+  return { call, reg, accounts, home0, last, count, wake, job, db };
 }
 const NONE = /Connect your own AI account in Settings, AI accounts, to use juno\./;
 
@@ -98,15 +107,19 @@ test("a member with no AI account of her own is refused for a task wake in plain
   assert.equal(w.count(), before);
 });
 
-test("the owner's task wake and a wake for nobody run as before: the owner's own (the agent's or the home's), no member account named", async t => {
+test("the owner's task wake runs as before, on the owner's own (the agent's or the home's); a wake for nobody starts nothing", async t => {
   const w = await world(t);
   await w.accounts.add({ provider: "claude", label: "Ana's Claude", kind: "login", person: ANA });
   assert.equal((await w.wake(OWNER)).error, undefined);
   assert.equal(w.last().account, undefined, "the owner's run names no member's account");
   assert.equal(w.last().run_as, OWNER);
-  assert.equal((await w.wake(undefined)).error, undefined);
-  assert.equal(w.last().account, undefined);
-  assert.equal(w.last().for_person, undefined);
+  // Rule 2: a task with nobody it is for starts no job, on anyone's account
+  const before = w.count();
+  const none = await w.wake(undefined);
+  assert.equal(none.error && none.error.code, "denied", JSON.stringify(none));
+  assert.match(none.error.message, /No person asked for this, so no agent was started\./);
+  assert.equal(w.count(), before, "NEGATIVE: nothing was launched");
+  assert.equal(w.db.prepare("SELECT COUNT(*) n FROM agents_wakes WHERE task = 't2'").get().n, 0, "and no wake was claimed");
 });
 
 test("a member with only Codex, or only an API key, runs agents on it", async t => {
@@ -122,7 +135,7 @@ test("a member with only Codex, or only an API key, runs agents on it", async t 
   assert.notEqual(w.last().account, codex.id);
 });
 
-test("a scheduled run uses the account of the person who made the schedule; one with none is refused; a schedule with no maker runs as before", async t => {
+test("a scheduled run uses the account of the person who made the schedule; one with none is refused; a schedule with no maker is refused, never run as the owner", async t => {
   const w = await world(t);
   const hers = await w.accounts.add({ provider: "grok", label: "Ana's Grok", kind: "login", person: ANA });
   assert.equal((await w.job(ANA)).error, undefined);
@@ -131,8 +144,14 @@ test("a scheduled run uses the account of the person who made the schedule; one 
   const r = await w.job(ADA);
   assert.match(String(r.error && r.error.message), NONE, "an admin with none is refused, never run on the owner's");
   assert.equal(w.count(), before);
-  assert.equal((await w.job(undefined)).error, undefined);
-  assert.equal(w.last().account, undefined, "no maker: the Space's own, as before");
+  // Rule 2: no person, no agent work. A schedule with nobody recorded starts nothing, and never on the owner's or the home's account
+  const none = await w.job(undefined);
+  assert.equal(none.error && none.error.code, "denied", JSON.stringify(none));
+  assert.match(none.error.message, /No person asked for this, so no agent was started\./);
+  assert.equal(w.count(), before, "NEGATIVE: nothing was launched for a schedule with no maker");
+  // the owner's own schedule runs on the owner's own (the agent's picked sign-in or the home's), acting as the owner
+  assert.equal((await w.job(OWNER)).error, undefined);
+  assert.deepEqual([w.last().account, w.last().run_as], [undefined, OWNER]);
 });
 
 test("a model picked on OpenRouter runs on OpenRouter even with Claude connected: its provider is stored with the model and read at launch", async t => {
@@ -140,7 +159,7 @@ test("a model picked on OpenRouter runs on OpenRouter even with Claude connected
   const up = await w.call("agents.update", { name: "juno", model: "x-ai/grok-4", model_provider: "openrouter" });
   assert.equal(up.error, undefined, JSON.stringify(up.error));
   // the owner's run: no Claude credentials in the launch, the provider named for the switchboard (accountProviderFor) to pick the asker's OpenRouter account
-  assert.equal((await w.job(undefined)).error, undefined);
+  assert.equal((await w.job(OWNER)).error, undefined);
   assert.deepEqual([w.last().model, w.last().model_provider, w.last().auth, w.last().env], ["x-ai/grok-4", "openrouter", "ambient", undefined]);
   // a member with Claude AND OpenRouter of her own: the model's provider is preferred
   await w.accounts.add({ provider: "claude", label: "Ana's Claude", kind: "login", person: ANA });
@@ -158,17 +177,17 @@ test("a model picked on OpenRouter runs on OpenRouter even with Claude connected
 test("a rollback to a version with another model clears the provider: the old provider never carries over to the model it restores", async t => {
   const w = await world(t);
   assert.equal((await w.call("agents.update", { name: "juno", model: "x-ai/grok-4", model_provider: "openrouter" })).error, undefined);
-  assert.equal((await w.job(undefined)).error, undefined);
+  assert.equal((await w.job(OWNER)).error, undefined);
   assert.equal(w.last().model_provider, "openrouter", "picked on OpenRouter");
   // back to how it began (no model): Claude's, never the OpenRouter provider left from the pick
   const back = await w.call("agents.update", { name: "juno", rollback: 0 });
   assert.equal(back.error, undefined, JSON.stringify(back.error));
-  assert.equal((await w.job(undefined)).error, undefined);
+  assert.equal((await w.job(OWNER)).error, undefined);
   assert.equal(w.last().model_provider, undefined, "NEGATIVE: no stale provider on the restored model");
   assert.notEqual(w.last().model, "x-ai/grok-4");
   // a model picked again with its provider: as named
   assert.equal((await w.call("agents.update", { name: "juno", model: "x-ai/grok-4", model_provider: "openrouter" })).error, undefined);
-  assert.equal((await w.job(undefined)).error, undefined);
+  assert.equal((await w.job(OWNER)).error, undefined);
   assert.equal(w.last().model_provider, "openrouter");
 });
 
@@ -176,11 +195,11 @@ test("a run on a model picked on another provider is held to the agent's budget:
   const w = await world(t);
   assert.equal((await w.call("agents.update", { name: "juno", model: "x-ai/grok-4", model_provider: "openrouter", auth: { budget_usd: 1 } })).error, undefined);
   w.db.prepare("INSERT INTO agents_spend (thread, agent, at, usd) VALUES (?,?,?,?)").run("t-old", "juno", Date.now(), 0.25);
-  assert.equal((await w.job(undefined)).error, undefined);
+  assert.equal((await w.job(OWNER)).error, undefined);
   assert.equal(w.last().budget_usd, 0.75, "what is left of the budget is the run's own backstop");
   w.db.prepare("INSERT INTO agents_spend (thread, agent, at, usd) VALUES (?,?,?,?)").run("t-old2", "juno", Date.now(), 0.75);
   const before = w.count();
-  const r = await w.job(undefined);
+  const r = await w.job(OWNER);
   assert.match(String(r.error && r.error.message), /has spent its \$1 budget/, JSON.stringify(r));
   assert.equal(w.count(), before, "NEGATIVE: nothing started past the budget");
 });
@@ -205,4 +224,62 @@ test("resuming a member's own thread with the agent brings it back as her, on he
   const g = await w.call("agents.resume", { agent: "juno", thread: "th-ana" }, "module:switchboard");
   assert.match(String(g.error && g.error.message), NONE, JSON.stringify(g));
   assert.equal(w.count(), before, "NEGATIVE: nothing resumed on anyone else's account");
+});
+
+test("Rule 2: a call whose chain is only the home's own services starts no agent; only the named upkeep, which starts no thread, reads it as the owner's", async t => {
+  const w = await world(t);
+  const before = w.count();
+  // a module's own call, and a surface label with no person proved: both name nobody
+  for (const caller of ["module:onboard", "local"]) {
+    const r = await w.call("agents.ask", { agent: "juno", text: "hello", wait: false }, caller);
+    assert.equal(r.error && r.error.code, "denied", `${caller}: ${JSON.stringify(r)}`);
+    assert.match(r.error.message, /No person asked for this, so no agent was started\./);
+  }
+  assert.equal(w.count(), before, "NEGATIVE: no agent was started, on the owner's account or any other");
+  // the allow-list: each entry says why it is upkeep that runs no AI turn
+  assert.deepEqual(Object.keys(OWNER_UPKEEP).sort(), ["agents.access.set", "agents.context.link", "agents.create", "agents.docs.set", "agents.update", "agents.vault.assign"]);
+  for (const [tool, why] of Object.entries(OWNER_UPKEEP)) assert.match(why, /starts no thread/, `${tool} says why it is upkeep`);
+  // the upkeep still runs with no person on the call: a module makes an agent and changes it, and the owner is named as its maker and on its version
+  const made = await w.call("agents.create", { name: "kit", kind: "agent", projects: [] }, "module:onboard");
+  assert.equal(made.error, undefined, JSON.stringify(made.error));
+  assert.equal(made.data.owner, OWNER);
+  const up = await w.call("agents.update", { name: "kit", instructions: "Answer in one line." }, "module:onboard");
+  assert.equal(up.error, undefined, JSON.stringify(up.error));
+  assert.equal(w.db.prepare("SELECT by FROM agents_versions WHERE agent = 'kit' ORDER BY n DESC").get().by, OWNER);
+  assert.equal(w.count(), before, "and none of it started a thread");
+});
+
+test("Rule 2: the onboarding greeting is asked as the owner who finishes onboarding (relayed), and the same call with no person proved is refused", async t => {
+  const w = await world(t, { greeter: true });
+  assert.equal((await w.call("agents.create", { name: "ava", kind: "assistant" })).error, undefined);
+  const before = w.count();
+  // no person proved on the call: nothing to relay, so the greeting names nobody and starts nothing
+  const nobody = await w.reg.call("onboard.greet", {}, "local");
+  assert.ok(nobody.error, JSON.stringify(nobody));
+  assert.equal(nobody.error.code, "denied", "refused: a call with no person on it is judged as the module, which does not reach the assistant, and names nobody to run it for");
+  assert.equal(w.count(), before, "NEGATIVE: no agent was started");
+  // the owner finishing onboarding: the greeting runs for the owner, on the owner's own (the assistant's or the home's), never as the module
+  const owner = { kernelFacts: { kind: "device", device_key_id: "d-owner", person: OWNER, path: "direct", session: "s-owner" } };
+  const greeted = await w.reg.call("onboard.greet", {}, "local", owner);
+  assert.equal(greeted.error, undefined, JSON.stringify(greeted.error));
+  assert.equal(w.count(), before + 1, "one thread, the greeting");
+  assert.equal(w.last().agent, "ava");
+  assert.equal(w.last().for_person, OWNER, "asked as the owner");
+  assert.equal(w.last().account, undefined, "on the owner's own, no member account named");
+});
+
+test("a task given to the kernel's own assistant slot is worked from the person's chat: its wake starts no job and is not a failure", async t => {
+  const w = await world(t);
+  const before = w.count();
+  const r = await w.call("agents.wake", { task: "slot1", agent: "assistant", title: "Draft the engagement letter", approver: OWNER }, "module:vyred");
+  assert.equal(r.error, undefined, JSON.stringify(r.error));
+  assert.deepEqual([r.data.thread, r.data.chat], [null, true]);
+  assert.equal(w.count(), before, "no job");
+  // the same once the home's assistant is named "assistant": still the chat's, no job
+  assert.equal((await w.call("agents.create", { name: "assistant", kind: "assistant" })).error, undefined);
+  const named = await w.call("agents.wake", { task: "slot3", agent: "assistant", title: "Draft the engagement letter", approver: OWNER }, "module:vyred");
+  assert.deepEqual([named.data && named.data.thread, named.data && named.data.chat], [null, true]);
+  assert.equal(w.count(), before, "no job");
+  // a named agent that does not exist is still refused (the host marks that task stuck)
+  assert.ok((await w.call("agents.wake", { task: "slot2", agent: "nobody-here", title: "x", approver: OWNER }, "module:vyred")).error);
 });

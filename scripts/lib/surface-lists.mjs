@@ -2,6 +2,7 @@
 //   web/js/one-yes-ops.generated.js            the Deck cannot import lib/, so the tools a yes may be reused for are written out from lib/one-yes-ops.js
 //   apps/app/src/real/space-tools.generated.js every tool whose input takes a `space`, read from docs/reference/tools.md (itself generated from the tools' own schemas)
 //   apps/app/src/real/member-routes.generated.js the calls a team member reaches over the team's door beyond chat, read from the door's one table (core/work/member-tools.js MEMBER_TOOLS)
+//   apps/app/src/real/read-tools.generated.js   every tool a module's manifest declares changes nothing: the app makes such a call once more after a peer timeout (real/peer-retry.js), and no write
 // `node scripts/gen-surface-lists.mjs` writes them; test/surface-lists.test.js fails when a written file is not what this makes.
 import fs from "node:fs";
 import path from "node:path";
@@ -22,6 +23,30 @@ export function spaceTools(md) {
   return out.sort();
 }
 
+/**
+ * The tools a module's manifest declares change nothing: `effect: "read"` on a tool entry, or a name in `does.reads` (the registry's own reading, core/modules/index.js). A tool that declares nothing is a write.
+ * @param {string} [root] @returns {string[]}
+ */
+export function readTools(root = ROOT) {
+  /** @type {Set<string>} */ const out = new Set();
+  const walk = (/** @type {string} */ dir) => {
+    if (!fs.existsSync(dir)) return;
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (e.name === "node_modules" || e.name === ".git" || e.name === "testing") continue;
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) walk(p);
+      else if (e.name === "module.json") {
+        const j = JSON.parse(fs.readFileSync(p, "utf8"));
+        const does = (j && j.does) || {};
+        for (const t of Array.isArray(does.tools) ? does.tools : []) if (t && typeof t === "object" && typeof t.name === "string" && t.effect === "read") out.add(t.name);
+        for (const n of Array.isArray(does.reads) ? does.reads : []) if (typeof n === "string") out.add(n);
+      }
+    }
+  };
+  for (const top of ["core", "modules", "local"]) walk(path.join(root, top));
+  return [...out].sort();
+}
+
 /** @returns {Record<string, string>} file (from the repo root) -> its content */
 export function files() {
   const md = fs.readFileSync(path.join(ROOT, "docs/reference/tools.md"), "utf8");
@@ -30,5 +55,6 @@ export function files() {
     "web/js/one-yes-ops.generated.js": `${head("the tools a yes may be reused for, from lib/one-yes-ops.js")}export const REUSE_OPS = ${JSON.stringify(REUSE_OPS)};\n`,
     "apps/app/src/real/member-routes.generated.js": `${head("the member door's rows, from core/work/member-tools.js MEMBER_TOOLS")}export const MEMBER_ROWS = ${JSON.stringify(Object.keys(MEMBER_TOOLS).sort(), null, 1)};\n`,
     "apps/app/src/real/space-tools.generated.js": `${head("every tool whose input takes a space, from docs/reference/tools.md")}export const TOOLS_WITH_SPACE = ${JSON.stringify(spaceTools(md), null, 1)};\n`,
+    "apps/app/src/real/read-tools.generated.js": `${head("every tool a module's manifest declares changes nothing (effect read, or does.reads), from the module.json files")}export const READ_TOOLS = ${JSON.stringify(readTools(), null, 1)};\n`,
   };
 }

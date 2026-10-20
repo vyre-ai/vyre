@@ -11,6 +11,7 @@ import path from "node:path";
 import http from "node:http";
 import { createProxy, duplicateKey, loadPolicy, scrub } from "./proxy.js";
 import { SCRATCH } from "../../test/scratch.mjs";
+import { ensure, watch } from "../../lib/bearer/index.js";
 import { BOOT, bootTar, allowBootTar, AGENT_TOKENS, agentTokensTar, allowAgentTokensTar, allowAgentdExec, AGENTD_EXEC, AGENTD_TOKEN, agentdTokenTar, allowAgentdTokenTar } from "../computers/driver/policy.js";
 
 const PREFIX = "run.vyre.computers";
@@ -442,6 +443,44 @@ test("dockerproxy: every request needs Authorization: Bearer <token>, checked ag
   // The right one still works.
   const ok = await call("GET", "/v1.43/containers/json");
   assert.equal(ok.status, 200);
+});
+
+test("dockerproxy: started before vyred writes the bearer, it refuses until the file is there and then lets the bearer in, with no restart; a new file replaces the old token", async t => {
+  const e = await engine(t);
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-dproxy-bearer-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const file = path.join(dir, "secrets", "docker-api-bearer");
+  const server = createProxy({ socket: e.socket, policy: stub, config: CONFIG, bearer: watch(file, { minGapMs: 0 }) });
+  await new Promise(r => server.listen(0, "127.0.0.1", () => r(undefined)));
+  t.after(() => server.close());
+  const port = /** @type {import("node:net").AddressInfo} */ (server.address()).port;
+  const get = (/** @type {string} */ token) => new Promise((resolve, reject) => {
+    const req = http.request({ host: "127.0.0.1", port, method: "GET", path: "/v1.43/containers/json", headers: { authorization: `Bearer ${token}` } }, res => {
+      let text = ""; res.on("data", c => text += c); res.on("end", () => resolve({ status: res.statusCode, text }));
+    });
+    req.on("error", reject); req.end();
+  });
+  // docker-api is up first: nothing to compare with, so every request is refused, and says it is not ready rather than wrong
+  const early = /** @type {any} */ (await get("a".repeat(64)));
+  assert.equal(early.status, 503);
+  assert.match(early.text, /no bearer yet/);
+  assert.equal(e.seen.length, 0, "nothing reached the Engine");
+  // vyred starts and writes the file: the very next request with it is let in
+  const first = ensure(file);
+  assert.equal(/** @type {any} */ (await get(first)).status, 200);
+  assert.equal(/** @type {any} */ (await get("b".repeat(64))).status, 401, "a wrong bearer is still refused once there is one");
+  // the file is lost and vyred makes a new one: the new token works, the old one no longer does
+  fs.rmSync(file, { force: true });
+  const second = ensure(file);
+  assert.notEqual(first, second);
+  assert.equal(/** @type {any} */ (await get(second)).status, 200);
+  assert.equal(/** @type {any} */ (await get(first)).status, 401);
+});
+
+test("dockerproxy: a bearer source must be a real one -- there is still no unauthenticated mode", async t => {
+  const e = await engine(t);
+  assert.throws(() => createProxy({ socket: e.socket, policy: stub, config: CONFIG, bearer: /** @type {any} */ ({}) }), /needs a bearer/);
+  assert.throws(() => createProxy({ socket: e.socket, policy: stub, config: CONFIG, bearer: /** @type {any} */ ({ current: () => null }) }), /needs a bearer/);
 });
 
 test("dockerproxy: /events streams this box's computers' deaths, with the type, the events and the labels forced and only since= the caller's", async t => {

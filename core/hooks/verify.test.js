@@ -68,3 +68,35 @@ test("a refusal never carries the secret or the signature it expected", () => {
   }
   assert.equal(verify({ scheme: "github" }, { "x-hub-signature-256": sign("github", "", BODY) }, BODY, "", NOW).ok, false, "an empty secret checks nothing");
 });
+
+test("token: the right token in the address or an Authorization: Bearer header is accepted; a wrong, short, missing or long one is refused", async () => {
+  const { TOKEN_MIN } = await import("./verify.js");
+  const route = { scheme: "token" };
+  const tok = crypto.randomBytes(32).toString("hex");
+  assert.equal(tok.length, TOKEN_MIN);
+  assert.deepEqual(verify(route, {}, BODY, tok, NOW, tok), { ok: true }, "in the address");
+  assert.deepEqual(verify(route, { authorization: `Bearer ${tok}` }, BODY, tok, NOW), { ok: true }, "in the header");
+  assert.deepEqual(verify(route, { authorization: `bearer  ${tok} ` }, BODY, tok, NOW), { ok: true }, "the word Bearer in any case, spaces around");
+  const wrong = tok.slice(0, -1) + (tok.endsWith("a") ? "b" : "a");
+  assert.match(/** @type {any} */ (verify(route, {}, BODY, tok, NOW, wrong)).why, /does not match/);
+  assert.match(/** @type {any} */ (verify(route, {}, BODY, tok, NOW, tok.slice(0, 32))).why, /does not match/, "a short one, even a true prefix");
+  assert.match(/** @type {any} */ (verify(route, {}, BODY, tok, NOW, tok + tok)).why, /does not match/, "a longer one");
+  assert.match(/** @type {any} */ (verify(route, {}, BODY, tok, NOW, "x".repeat(5000))).why, /does not match/, "an oversized one");
+  assert.match(/** @type {any} */ (verify(route, {}, BODY, tok, NOW)).why, /no token/, "none at all");
+  assert.match(/** @type {any} */ (verify(route, { authorization: `Basic ${tok}` }, BODY, tok, NOW)).why, /no token/, "not a bearer header");
+  assert.match(/** @type {any} */ (verify(route, {}, BODY, "short", NOW, "short")).why, /too short/, "a stored token under 32 bytes is never trusted");
+  const refusal = JSON.stringify([verify(route, {}, BODY, tok, NOW, wrong), verify(route, {}, BODY, tok, NOW)]);
+  assert.equal(refusal.includes(tok), false, "a refusal carries the token");
+});
+
+test("token: every answer is one constant-time comparison of two 32-byte digests, whatever was offered", async () => {
+  const tok = crypto.randomBytes(32).toString("hex");
+  const real = crypto.timingSafeEqual;
+  /** @type {number[][]} */ const seen = [];
+  crypto.timingSafeEqual = (a, b) => { seen.push([a.length, b.length]); return real(a, b); };
+  try {
+    for (const given of [tok, tok.slice(0, -1) + "0", tok.slice(0, 10), "", "y".repeat(5000)]) verify({ scheme: "token" }, {}, BODY, tok, NOW, given);
+    verify({ scheme: "token" }, {}, BODY, tok, NOW);
+  } finally { crypto.timingSafeEqual = real; }
+  assert.deepEqual(seen, Array(6).fill([32, 32]), "a right, wrong, short, empty, oversized and missing token each take the same one comparison");
+});

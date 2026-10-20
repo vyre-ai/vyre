@@ -1,4 +1,5 @@
-// @ts-check
+    // the step's own model (provider/model, the one picker's key), else the Space's
+    const m = typeof o.model === "string" && /^[a-z][a-z0-9-]{0,39}\/[A-Za-z0-9][A-Za-z0-9._:\/\[\]-]{0,119}$/.test(o.model) ? { provider: o.model.slice(0, o.model.indexOf("/")), model: o.model.slice(o.model.indexOf("/") + 1) } : o.ports.model || { provider: "default", model: "default" };// @ts-check
 // Whose AI account a Flow's AI steps run on ("Runs on"). Every AI turn runs on the account of the PERSON it is for: a Flow runs as its maker (the person who wrote its first version), or as the person its
 // Runs on names, and on the account that person picked there (else their default key account). The definition holds it as `runs_on: { person, account?, provider? }`, part of the version the approver reads.
 //
@@ -92,7 +93,9 @@ export async function runsAsChecked(store, ctx) {
 export async function modelCall(o) {
   const { ctx } = o;
   if (typeof o.ports.model !== "function") {
-    const m = o.ports.model || { provider: "default", model: "default" };
+    // the step's own model (provider/model, the one picker's key), else the Space's
+    const own = typeof o.model === "string" && /^[a-z][a-z0-9-]{0,39}\/[A-Za-z0-9][A-Za-z0-9._:\/\[\]-]{0,119}$/.test(o.model) ? { provider: o.model.slice(0, o.model.indexOf("/")), model: o.model.slice(o.model.indexOf("/") + 1) } : null;
+    const m = own || o.ports.model || { provider: "default", model: "default" };
     return o.k.model.call({ chain: o.chain, purpose: o.purpose, provider: m.provider, model: m.model, max_tokens: o.max_tokens, messages: o.messages, ...(o.expect ? { expect: o.expect } : {}) });
   }
   const who = await runsAsChecked(o.store, ctx);

@@ -324,3 +324,16 @@ test("one owner that hangs no longer holds back the list: the rest answer within
   assert.ok(!(late.partial || []).includes("documents"), "and the owner is no longer partial");
   await items.stop();
 });
+
+test("fromVault: a host an agent asks to send an item to is shown whole, with Allow and Decline, and a rentable domain is called out", () => {
+  const long = `${"a".repeat(30)}.${"b".repeat(30)}.${"c".repeat(25)}.example.org`;   // 99 characters
+  const [plain, shared] = fromVault({ useHosts: [
+    { id: "vu_1", item: "northwind-crm", host: long, by: "mcp:agent:kit", at: 2 },
+    { id: "vu_2", item: "northwind-crm", host: "northwind-sync.workers.dev", shared: true, by: "mcp:agent:kit", at: 1 },
+  ] });
+  assert.equal(plain.title, `Use "northwind-crm" with ${long}?`, "the whole host, never cut");
+  assert.deepEqual(plain.answers.map(a => [a.label, a.tool]), [["Allow", "vault.approve"], ["Decline", "vault.use.set"]]);
+  assert.deepEqual(plain.answers[1].input, { name: "northwind-crm", decline: "vu_1" });
+  assert.match(shared.detail, /^Anyone can rent a name under this domain/);
+  assert.doesNotMatch(plain.detail || "", /rent a name/);
+});

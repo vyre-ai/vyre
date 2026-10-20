@@ -5,6 +5,7 @@
 // A Space with no Drive wired answers `unavailable`.
 import { createDoor } from "../../lib/gateway-door.js";
 import { safePath } from "../../kernel/seal/uses.js";
+import { agentFolderOf, agentPathOf, NOT_IN_DRIVE } from "./agent-folder.js";
 
 const obj = (/** @type {any} */ props = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties: props, ...(required.length ? { required } : {}) });
 const str = { type: "string" };
@@ -19,11 +20,32 @@ export const MAX_UPLOAD = 8 * 1024 * 1024;
 export function registerSpaceDrive(ctx) {
   const door = createDoor(ctx);
   /** @param {string} name @param {string} description @param {any} input @param {(i: any, d: any, drive: any) => Promise<any>} fn */
+  const agents = agentFolderOf(ctx);
   const tool = (name, description, input, fn) => ctx.tool(name, { description, input, callers: /^files\.drive\.space\.(list|read)$/.test(name) ? READ_CALLERS : CALLERS, run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
     const d = await door.open(i || {}, meta);
+    // an agent's folder is on its computer, not in the Drive (agent-folder.js): the same calls reach it there
+    const routed = await toAgentFolder(name, i || {}, d, meta);
+    if (routed !== undefined) return routed;
     if (!d.gateway.drive) throw refuse("this Space has no Drive yet; ask the owner or an admin of the Space", "unavailable");
     return fn(i || {}, d, d.gateway.drive);
   } });
+  /** The Drive call, answered from the agent's folder on its computer when its path is under agents/<id>/; undefined for every other path. @param {string} name @param {any} i @param {any} d @param {any} meta */
+  async function toAgentFolder(name, i, d, meta) {
+    if (name === "files.drive.space.list") { const raw = String(i.prefix ?? "").replace(/\/+$/, ""); return raw && agentPathOf(pathOf(raw)) ? agents.list(d, meta, pathOf(raw)) : undefined; }
+    const p = typeof i.path === "string" && i.path ? pathOf(i.path) : "";
+    if (!p || !agentPathOf(p)) return undefined;
+    // a named version is the Drive copy from before the agent's folder moved to its computer: read-only, still there for one release
+    if (name === "files.drive.space.read") return i.version !== undefined ? undefined : agents.read(d, meta, p);
+    if (name === "files.drive.upload") {
+      const text = String(i.base64 ?? "");
+      if (!/^[A-Za-z0-9+/]*={0,2}$/.test(text) || text.length % 4 === 1) throw refuse("base64 is the file's bytes, standard base64", "bad_input");
+      if (Math.floor(text.length / 4) * 3 > MAX_UPLOAD + 3) throw refuse(`a file here is at most ${MAX_UPLOAD / 1048576} MB: send a smaller file, or put it there from the agent's computer`, "too_large");
+      // with `base` the person had this file open and is saving over it; without, an existing file is never replaced
+      return agents.upload(d, meta, p, text, i.base !== undefined);
+    }
+    if (name === "files.drive.restore") throw refuse(NOT_IN_DRIVE, "unavailable");
+    return undefined;   // versions: the Drive copy's history, read-only
+  }
   const pathOf = (/** @type {any} */ p) => { try { return safePath(String(p ?? "")); } catch { throw refuse("that is not a path in the Drive: no leading slash, dot segments, backslash, encoded slash or control characters", "bad_input"); } };
 
   tool("files.drive.upload", `Put a file in the Space's Drive as a new version, under the caller's own grants: { space?, path, base64, base? }. \`path\` is relative (Clients/A/retainer.pdf), \`base64\` the bytes (at most ${MAX_UPLOAD / 1048576} MB here), \`base\` the version you edited from (a second writer on one file makes a new version flagged conflict, never a merge). Answers { path, version, conflict }.`,

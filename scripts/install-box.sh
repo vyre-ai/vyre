@@ -988,6 +988,11 @@ verify_images() {
     fi
   done
   dk docker pull -q "$BOX_REF" >/dev/null
+  # The agents' computers' image too: it is not a service of the stack (compose.yml hands its ref to vyred and the docker-api proxy), and the Engine
+  # never pulls on create, so a box without it has no computer to start. A failed pull does not stop the install; the next update pulls it again.
+  if [ -n "$COMPUTER_REF" ]; then
+    dk docker pull -q "$COMPUTER_REF" >/dev/null || printf '%s\n' "vyre: the agents' computer image could not be pulled now; agents' computers start once an update pulls it" >&2
+  fi
   done_step "signed by Vyre's release workflow, and pulled by digest"
 }
 
