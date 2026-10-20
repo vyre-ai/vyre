@@ -42,7 +42,7 @@ export function ownRow(w, self) {
   const waiting = w.waiting === true;
   const state = w.state === "on" ? "on" : waiting ? "waiting" : w.state === "paused" ? "paused" : w.state === "invalid" || w.state === "missing" || w.state === "changed" ? "broken" : "off";
   const word = state === "on" ? "On" : state === "waiting" ? "Testing" : state === "paused" ? "Paused" : state === "broken" ? "Needs a fix" : "Off";
-  const when = kind === "routine" ? str(w.every) : str(w.title) || (str(w.every) ? `Checks ${str(w.every)}` : "");
+  const when = kind === "routine" ? str(w.every) : str(w.every) ? `Checks ${str(w.every)}` : "";
   const why = state === "waiting" ? "Waiting for its first test to pass" : state === "paused" ? str(w.pausedWhy) : state === "broken" ? (Array.isArray(w.problems) && w.problems.length ? String(w.problems[0]) : str(w.lastError)) : "";
   return {
     key: `own:${str(w.name)}`, source: "own", name: str(w.name), id: str(w.name), kind,

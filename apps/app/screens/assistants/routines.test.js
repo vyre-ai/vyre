@@ -31,7 +31,7 @@ test("one list: the agent's own Routines and Watchers and its duties, Routines f
     ["watcher", "own", "Tells you when an invoice from Northwind arrives", "On"],
   ], "a watcher no agent owns is not in an agent's list");
   assert.equal(rowLine(rows[0]), "Runs every weekday at 09:00 · For member other1");
-  assert.equal(rowLine(rows[4]), "Tells you when an invoice from Northwind arrives · For you");
+  assert.equal(rowLine(rows[4]), "Checks every 15 minutes · For you", "a Watcher's title says what it watches; its line says how often");
   assert.equal(rowLine(rows[1]), "Runs daily 17:00 · For you");
   assert.equal(rowLine(rows[2]), "When thread.finished");
   assert.deepEqual([dutyKind("weekdays 09:30"), dutyKind("15 7 * * 1-5"), dutyKind("push gmail"), dutyKind("goal.stale")], ["routine", "routine", "watcher", "watcher"]);
