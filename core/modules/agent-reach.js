@@ -174,6 +174,8 @@ export const PERSON_ONLY = new Map([
   ["spaces.groups.remove", "removes a group: the owner's or an admin's own act"],
   ["spaces.identity.republish", "republishes the person's identity list: the person's own act"],
   ["signin.ask", "needs the person's Face ID or presence: it asks the phone to sign the command line in, from a terminal login only"],
+  ["signin.password.begin", "the person's own terminal sign-in with their username and password: the salt and a one-use challenge"],
+  ["signin.password.finish", "the person's own terminal sign-in with their username and password: a signed challenge makes a command-line session for the home's owner"],
   ["signin.pending", "needs the person's Face ID or presence: the card the phone signs"],
   ["signin.answer", "needs the person's Face ID or presence: the person's approval of a sign-in"],
   ["signin.status", "needs the person's Face ID or presence: it hands the credential only to the terminal that asked"],

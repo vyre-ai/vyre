@@ -728,3 +728,86 @@ test("joining by name a Space the person owns is the owner's own Space: the row 
   assert.equal(kept.spaces[0].paired.box, "bx");
   assert.ok(kept.listed.harbor);
 });
+
+test("the chat key lives in the master record: an account with none gets one made into its record on the next password unlock, the list's agree point is replaced once, and the next unlock reads the same key", async (t) => {
+  const A = await import("../crypto/agree-key.ts");
+  const d = directory(t);
+  const store = memoryStore();
+  const old = createHost({ store, directory: d.base, fetch: d.fetch, now: d.now, kdf: FAST });
+  await old.call("onboard.person.create", { username: "ruth", password: PASSWORD, confirm: PASSWORD });
+  const before = store.peek().master;
+  const port = { make: A.makeRecordAgreeKey, use: A.useRecordAgreeKey };
+  const agreePoint = async () => { const r = await A.agreeKeyResult(); if (!r.key) throw Object.assign(new Error(r.reason), { code: "no_agree_key" }); return r.key.point; };
+  const fresh = createHost({ store, directory: d.base, fetch: d.fetch, now: d.now, kdf: FAST, agreePoint, agreeKey: port });
+  assert.equal((await A.agreeKeyResult()).key, null, "locked: no chat key, and no device makes one");
+  await fresh.call("identity.unlock", { password: PASSWORD });
+  const point = (await A.agreeKeyResult()).key.point;
+  const after = store.peek().master;
+  assert.deepEqual([after.kdf, after.passwordWrap, after.recoveryWrap], [before.kdf, before.passwordWrap, before.recoveryWrap], "the salt, the password wrap and the recovery wrap are as they were, so the space's login key still fits");
+  assert.notDeepEqual(after.identityWrap, before.identityWrap, "the identity wrap now carries the chat key");
+  assert.ok(!JSON.stringify(store.peek()).includes('"d":'), "the private half is kept only inside the wrap");
+  for (let i = 0; i < 100 && (await chainEntry(d, "ruth")).entry.agree !== point; i++) await new Promise((r) => setTimeout(r, 20));
+  const entry = await chainEntry(d, "ruth");
+  assert.equal(entry.entry.agree, point, "the list's agree point is the record's key");
+  // lock drops the key from memory; the next unlock reads the SAME key out of the record and changes nothing on the list
+  await fresh.call("identity.lock");
+  assert.equal((await A.agreeKeyResult()).key, null);
+  await fresh.call("identity.unlock", { password: PASSWORD });
+  assert.equal((await A.agreeKeyResult()).key.point, point);
+  await new Promise((r) => setTimeout(r, 100));
+  assert.equal((await chainEntry(d, "ruth")).ops.length, entry.ops.length, "no second op");
+  // a recovery-key unlock has no password to re-wrap with: it makes nothing and says why
+  await fresh.call("identity.lock");
+  const recDev = createHost({ store: memoryStore(), directory: d.base, fetch: d.fetch, now: d.now, kdf: FAST, agreeKey: port });
+  const made = await recDev.call("onboard.person.create", { username: "ira", password: PASSWORD, confirm: PASSWORD });
+  const iraEntry = await chainEntry(d, "ira");
+  assert.ok(iraEntry.entry.agree, "a new account's genesis entry already carries the record's key");
+  assert.ok(made.recoveryKey);
+});
+
+test("link GitHub from Settings: each of the person's spaces gets a signed link-github request (the relay's assertion for that space, the identity key's signature over space, username, GitHub id and time), and the status names the login", { timeout: 240000 }, async (t) => {
+  const { githubLinkMessage } = await import("./login-web.js");
+  const w = spaceWorld(t);
+  const one = createHost({ store: memoryStore(), directory: w.base, fetch: w.fetch, now: w.now });
+  await one.call("onboard.person.create", { username: "alex", password: PASSWORD, confirm: PASSWORD });
+  await w.svc.register(await one.registerLogin("juniper", PASSWORD));
+  const linkPosts = [];
+  const fetchLink = async (url, init = {}) => {
+    const u = new URL(url);
+    if (u.host === "juniper.vyre.run" && u.pathname === "/login" && JSON.parse(init.body).op === "link-github") { linkPosts.push(JSON.parse(init.body)); return new Response(JSON.stringify({ ok: true, username: "alex", login: "alexg" }), { status: 200 }); }
+    if (u.pathname.startsWith("/v1/ids/spaces/")) return new Response(JSON.stringify({ data: {} }), { status: 200 });
+    return w.fetch(url, init);
+  };
+  const github = { start: async () => ({ ok: true, session: { ticket: "t", cv: "c" }, user: { id: 7, login: "alexg" } }), assert: async (_s, audience) => `assert:${audience}` };
+  const two = createHost({ store: memoryStore(), directory: w.base, fetch: fetchLink, now: w.now, github });
+  await two.call("onboard.signin", { space: "juniper.vyre.run", username: "alex", password: PASSWORD });
+  const r = await two.call("identity.github.link", {});
+  assert.deepEqual([r.linked, r.login, r.spaces], [true, "alexg", 1]);
+  assert.equal(linkPosts.length, 1);
+  const p = linkPosts[0];
+  assert.equal(p.assertion, "assert:juniper");
+  assert.equal(p.username, "alex");
+  assert.ok(ed25519.verify(Buffer.from(p.sig, "base64url"), githubLinkMessage("juniper", "alex", "7", p.ts), Buffer.from(p.pub, "base64url")), "signed by the identity key over the space, the name, the GitHub id and the time");
+  assert.equal((await two.call("identity.status")).github, "alexg");
+  await two.call("identity.lock");
+  await assert.rejects(() => two.call("identity.github.link", {}), (e) => e.code === "locked");
+});
+
+test("the unlocked identity key says the person's yes with no prompt (class session); locked, nothing signs; a card whose fields do not match its hash is refused", async (t) => {
+  const { proofBytes, payloadHash } = await import("../../modules/vyre-signer/presence-proof.js");
+  const d = directory(t);
+  const host = createHost({ store: memoryStore(), directory: d.base, fetch: d.fetch, now: d.now, kdf: FAST });
+  await host.call("onboard.person.create", { username: "sofia", password: PASSWORD, confirm: PASSWORD });
+  const signer = host.sessionSigner();
+  assert.ok(signer, "unlocked: there is a key");
+  const fields = { ref: "seal_x", purpose: "p" };
+  const card = { op: "seal.reveal", space: "spc_testspace0001", fields, payload_hash: payloadHash("seal.reveal", "spc_testspace0001", fields) };
+  const proof = await signer.signPresence(card);
+  const key = await fromSeed(host.signer().seed);
+  assert.deepEqual([proof.signer, proof.key_id, proof.decision, proof.payload_hash], ["session", key.eid, "seal.reveal", card.payload_hash]);
+  assert.ok(ed25519.verify(Buffer.from(proof.signature, "base64url"), proofBytes(proof), Buffer.from(key.publicKey, "base64url")), "signed by the identity key over the proof's bytes");
+  await assert.rejects(() => signer.signPresence({ ...card, fields: { ref: "seal_y", purpose: "p" } }), (e) => e.code === "ERR_PAYLOAD_MISMATCH");
+  await host.call("identity.lock");
+  assert.equal(host.sessionSigner(), null, "locked: nothing signs");
+  await assert.rejects(() => signer.signPresence(card), (e) => e.code === "locked", "a signer taken before locking stops signing too");
+});

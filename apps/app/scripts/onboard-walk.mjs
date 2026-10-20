@@ -184,7 +184,7 @@ await walk("sign in from any device with a space address, a username and the pas
   await t.at("Sign in");
   if (await t.enabled("Sign in")) throw new Error("Sign in should wait for the username and the password");
   await t.type("Space address", "not an address");
-  await t.sees("address of a space");
+  await t.sees("name of a space");
   await t.type("Space address", "juniper.vyre.run");
   await t.type("Username", "alex");
   await t.type("Password", PASS);

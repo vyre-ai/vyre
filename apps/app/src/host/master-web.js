@@ -122,3 +122,22 @@ export async function openMasterRecord(rec, o) {
     return { privateKey: String(id.privateKey), agreePrivate: id.agreePrivate ? String(id.agreePrivate) : null };
   } finally { rk.fill(0); }
 }
+
+/**
+ * The same record with its identity wrap replaced: the root key is opened with the password (or the K already stretched from it) and wraps the new identity halves. Every other wrap, the salt and the KDF stay
+ * as they were, so the login key the space holds for this password still fits (an existing account's first chat key is stored this way). A recovery-key unlock cannot do this: it has no password.
+ * @param {any} rec @param {{ password?: string, kek?: Uint8Array }} o @param {{ privateKey: string, agreePrivate: string | null }} identity
+ */
+export async function rewrapIdentity(rec, o, identity) {
+  if (!rec || rec.v !== 1) throw refuse("There is no password on this device yet. Create your username first.", "no_identity");
+  /** @type {Uint8Array} */ let rk;
+  if (o.kek) {
+    try { rk = unwrap(o.kek, rec.passwordWrap, AAD_PW); } catch { throw refuse("That password does not unlock this identity. Try again.", "bad_password"); }
+  } else {
+    const kek = await passwordKek(rec.kdf, unb64(rec.kdf.salt), checkPassword(o.password));
+    try { rk = unwrap(kek, rec.passwordWrap, AAD_PW); } catch { throw refuse("That password does not unlock this identity. Try again.", "bad_password"); } finally { kek.fill(0); }
+  }
+  try {
+    return { ...rec, identityWrap: wrap(rk, enc.encode(JSON.stringify({ privateKey: identity.privateKey, agreePrivate: identity.agreePrivate || null })), AAD_ID) };
+  } finally { rk.fill(0); }
+}

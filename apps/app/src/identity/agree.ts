@@ -1,13 +1,7 @@
-// This device's agreement key: a P-256 key kept in the platform's hardware where there is one (Secure Enclave on an iPhone or a Mac, the Android Keystore, the TPM on Windows) and in the OS keystore
-// where there is not (Keychain, DPAPI). It does one thing: ECDH. Another device wraps a chat key (or the identity home) to its public point; this device opens the wrap with `agree` and portable code does the
-// rest (HKDF-SHA256, AES-256-GCM: lib/keywrap.js). The private key never reaches the page. There is no prompt per use: opening a chat is not one of the yes moments (the user's no-nagging rule).
-// No react-native import here (Node tests run this file): a phone is told apart by `navigator.product`.
-// Its public point goes in this device's identity entry as `agree` (kernel/identity/chain.js).
-// A browser has no native key: it uses the page's own non-extractable WebCrypto key in IndexedDB (src/crypto/agree-key.ts, app-wire's getAgreeKey), the same key that opens its chats, so the point
-// it publishes is the one that opens them. The Mac app's window goes through that module too: it asks the shell's key first (the login Keychain works on an app signed ad hoc) and falls back to the page's
-// storage only when the Keychain refuses, so the point published here is always the one chats open with, and a key no store would keep is an error in words, never a silent null.
-
-import { shellIdentity, shellKind } from "../shell/shell.ts";
+// The person's agreement key, as one interface for every platform. On a computer and in a browser it is the master record's chat key (src/crypto/agree-key.ts), opened with the password: one key for all of the
+// person's devices, no Keychain, no Secure Enclave, no page storage. A phone still uses its own native key (the phone's sign-in is not the record's yet). It does one thing: ECDH. Another device wraps a chat key
+// (or the identity home) to its public point; this device opens the wrap with `agree` and portable code does the rest (HKDF-SHA256, AES-256-GCM: lib/keywrap.js). There is no prompt per use.
+// No react-native import here (Node tests run this file): a phone is told apart by `navigator.product`. Its public point goes in the person's identity entry as `agree` (kernel/identity/chain.js).
 
 const onPhone = () => typeof navigator !== "undefined" && (navigator as { product?: string }).product === "ReactNative";
 const b64u = (b: Uint8Array) => btoa(String.fromCharCode(...b)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
@@ -21,19 +15,16 @@ export function validPoint(epk: string): Uint8Array {
   return p;
 }
 
-/** The page's agreement key (a browser's; on a Mac the shell's key, else the page's fallback), or why there is none. */
+/** The person's chat key from the opened master record (src/crypto/agree-key.ts), or why there is none yet. v0.6.5: no device makes a key of its own, on the desktop or in a browser. */
 const webKey = async (): Promise<{ key: import("../crypto/agree-key.ts").AgreeKey; store: string } | { key: null; reason: string }> => {
   try { return await (await import("../crypto/agree-key.ts")).agreeKeyResult(); } catch (e) { return { key: null, reason: String((e as Error)?.message || e) }; }
 };
-/** A shell whose own agreement key answers directly (the Windows panel). The Mac's goes through agree-key.ts, which falls back when its Keychain refuses. */
-const directShell = () => { const id = shellIdentity(); return id && shellKind() !== "mac" ? id : null; };
 
 /** This device's agreement public point (raw uncompressed, base64url), made on first use. null where this build has no agreement key (a browser, an app without the native module). */
 export async function agreePublic(create = true): Promise<string | null> {
   try {
     if (!onPhone()) {
-      const id = directShell();
-      if (id?.agreePublic) return await id.agreePublic(create);
+      void create; // the record's key is made when the record is, never here
       return (await webKey()).key?.point ?? null;
     }
     const m = (await import("../../modules/vyre-signer")) as unknown as { agreePublic?: (create: boolean) => Promise<string> };
@@ -46,13 +37,9 @@ export async function agree(epk: string): Promise<Uint8Array> {
   validPoint(epk);
   let out: string;
   if (!onPhone()) {
-    const id = directShell();
-    if (id?.agree) out = await id.agree(epk);
-    else {
-      const k = await webKey();
-      if (!k.key) throw Object.assign(new Error(`Vyre couldn't save this device's chat key: ${k.reason}.`), { code: "no_agree_key" });
-      out = b64u(await k.key.ecdh(validPoint(epk)));
-    }
+    const k = await webKey();
+    if (!k.key) throw Object.assign(new Error(`Vyre can't open your chat key yet: ${k.reason}.`), { code: "no_agree_key" });
+    out = b64u(await k.key.ecdh(validPoint(epk)));
   } else {
     const m = (await import("../../modules/vyre-signer")) as unknown as { agree?: (epk: string) => Promise<string> };
     if (!m.agree) throw Object.assign(new Error("This device has no agreement key."), { code: "no_agree_key" });

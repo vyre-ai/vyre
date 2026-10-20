@@ -209,7 +209,7 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "settings.changes", "settings.get", "settings.request", "settings.reset", "settings.schema", "settings.set", "settings.snapshot", "settings.undo",
   "sidebar.edit", "sidebar.get", "sidebar.pin", "sidebar.stored", "sidebar.team", "sidebar.unpin",
   "sight.frame", "sight.now", "sight.steps", "sight.targets", "sight.watch",
-  "signin.answer", "signin.ask", "signin.dev", "signin.end", "signin.pending", "signin.status",
+  "signin.answer", "signin.ask", "signin.dev", "signin.end", "signin.password.begin", "signin.password.finish", "signin.pending", "signin.status",
   "skills.approve", "skills.decline", "skills.rollback", "skills.versions",
   "spaces.assess-computer", "spaces.bundle.enrol", "spaces.bundle.export", "spaces.bundle.status", "spaces.cancel", "spaces.code.submit", "spaces.compute.accept",
   "spaces.compute.allow", "spaces.compute.status", "spaces.create", "spaces.devices.enrol", "spaces.devices.lend", "spaces.devices.lend.status", "spaces.devices.list",

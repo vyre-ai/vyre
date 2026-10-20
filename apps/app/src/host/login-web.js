@@ -55,3 +55,7 @@ export async function deriveLogin(password, salt, kdf) {
   const loginPub = b64u(ed25519.getPublicKey(seed));
   return { K, loginPub, sign: (/** @type {Uint8Array} */ msg) => { const sig = b64u(ed25519.sign(msg, seed)); return sig; }, close: () => { K.fill(0); seed.fill(0); } };
 }
+
+export const GH_LINK_TAG = "vyre-login-github-link-v1";
+/** What the identity key signs to link a GitHub account to a username in a space (kernel/identity/space-login.js githubLinkMessage). @param {string} space @param {string} username @param {string} ghid @param {number} ts */
+export const githubLinkMessage = (space, username, ghid, ts) => enc.encode(`${GH_LINK_TAG}\n${space}\n${username}\n${ghid}\n${ts}`);

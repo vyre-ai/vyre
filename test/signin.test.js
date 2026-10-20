@@ -15,11 +15,11 @@ import { readSession, writeSession, clearSession, sessionFile } from "../lib/cli
 import { tempHome, writeModule } from "./helpers.js";
 
 /** The module's tools with a fake kernel, fake session store and a clock. */
-async function mod({ checkOk = true, dev = false, person = true } = {}) {
+async function mod({ checkOk = true, dev = false, person = true, space = "" } = {}) {
   /** @type {Record<string, any>} */ const tools = {};
   let t = 1_000_000; const started = [], ended = [];
   const ctx = {
-    now: () => t, kernel: { chain: async () => (person ? { hops: [{ actor: { kind: "person", id: "per_x" } }] } : { hops: [{ actor: { kind: "agent", id: "a" } }] }), proofFrom: () => ({ p: 1 }) }, devStandIn: () => dev, events: { emit: () => {} },
+    config: { name: space }, now: () => t, kernel: { chain: async () => (person ? { hops: [{ actor: { kind: "person", id: "per_x" } }] } : { hops: [{ actor: { kind: "agent", id: "a" } }] }), proofFrom: () => ({ p: 1 }) }, devStandIn: () => dev, events: { emit: () => {} },
     cliSigninPayload: (/** @type {string} */ ask, /** @type {string} */ term) => ({ op: "grant.cli_signin", space: "spc", fields: { ask, terminal: term.slice(0, 4) }, payload_hash: `h(${ask})` }),
     cliSigninCheck: async () => (checkOk ? { ok: true } : { ok: false, why: "bad" }),
     cliSessions: { nodeInUse: (/** @type {string} */ n) => n === "real-node", startStandIn: (/** @type {string} */ n) => { started.push("dev:" + n); return { id: "id1", token: "id12345678.secret0123456789abcdef", expires: t + 1000 }; }, start: (/** @type {string} */ k) => { started.push(k); return { token: "id12345678.secret0123456789abcdef", expires: t + 1000 }; }, end: (/** @type {string} */ k) => { ended.push(k); return 1; } },
@@ -40,6 +40,16 @@ test("signin.ask needs a terminal login and is rate limited; a second ask from t
   assert.match(a.id, /^si_/);
   assert.equal((await m.tools["signin.ask"]({}, { terminal: T })).id, a.id);
   await assert.rejects(() => m.tools["signin.ask"]({}, { terminal: OTHER }), { code: "rate_limited" });
+});
+
+test("in a container the refusal tells the person to use the app, never to open a terminal", async () => {
+  const m = await mod(); const was = process.env.VYRE_SUPERVISOR;
+  try {
+    process.env.VYRE_SUPERVISOR = "docker";
+    await assert.rejects(() => m.tools["signin.ask"]({}, {}), (/** @type {any} */ e) => e.code === "no_terminal" && /container/.test(e.message) && /Vyre app/.test(e.message));
+    delete process.env.VYRE_SUPERVISOR;
+    await assert.rejects(() => m.tools["signin.ask"]({}, {}), (/** @type {any} */ e) => e.code === "no_terminal" && /terminal you are logged in on/.test(e.message));
+  } finally { if (was === undefined) delete process.env.VYRE_SUPERVISOR; else process.env.VYRE_SUPERVISOR = was; }
 });
 
 test("pending shows the card to sign; a yes with a good proof makes the session for that terminal; only that terminal reads the credential, once", async () => {
@@ -72,11 +82,11 @@ test("a bad proof, a no from a label, a no from the person's session, a stale id
   await assert.rejects(() => m.tools["signin.answer"]({ id: a.id, approve: true }, {}), { code: "not_found" });
 });
 
-test("signin.end ends this terminal's sessions and needs a terminal", async () => {
+test("signin.end ends this terminal's sessions, and a password session where no terminal can be read", async () => {
   const m = await mod();
-  await assert.rejects(() => m.tools["signin.end"]({}, {}), { code: "no_terminal" });
-  assert.deepEqual(await m.tools["signin.end"]({}, { terminal: T }), { ended: 1 });
-  assert.deepEqual(m.ended, [T.key]);
+  assert.deepEqual(await m.tools["signin.end"]({}, {}), { ended: 1 }, "a terminal the daemon cannot read ends only a password session");
+  assert.deepEqual(await m.tools["signin.end"]({}, { terminal: T }), { ended: 2 });
+  assert.deepEqual(m.ended, ["password", T.key, "password"]);
 });
 
 test("a command-line session is carried as the bearer header, signed by no key, and honoured only for its own terminal login", t => {
@@ -157,4 +167,45 @@ test("signin.dev makes the walk's person session only on a dev build with the st
   await assert.rejects(() => m.tools["signin.dev"]({ node: "real-node" }, {}), { code: "denied" });
   const r = await m.tools["signin.dev"]({ node: "n1" }, {});
   assert.equal(r.kind, "cookie"); assert.equal(r.method, "stand-in"); assert.deepEqual(m.started, ["dev:n1"]);
+});
+
+test("password sign-in through the space door: only the owner, only a good signature, and the session is pinned to the password node", async () => {
+  const { createLoginService, deriveLogin, loginMessage, registerMessage, bundleHash } = await import("../kernel/identity/space-login.js");
+  const { setLoginService } = await import("../lib/login-door.js");
+  const crypto = await import("node:crypto");
+  const store = new Map();
+  const svc = createLoginService({ space: "tess", store: { get: k => store.get(k), set: (k, v) => void store.set(k, v) }, describe: async (_u, rec) => ({ role: rec.person === "per_owner" ? "owner" : "member" }) });
+  // a login record made the way the app makes one (the salt and login public key come from the password; the test KDF keeps it quick)
+  const kdf = { memoryKiB: 65536, passes: 3, lanes: 1, tagLength: 32 };
+  const salt = crypto.randomBytes(16).toString("base64url");
+  for (const [name, person, pw] of [["ada", "per_owner", "correct horse battery"], ["kit", "per_kit", "another long phrase here"]]) {
+    const d = deriveLogin(pw, salt, kdf);
+    store.set(`login:${name}`, { person, salt, kdf, loginPub: d.loginPub, bundle: {}, at: 1 });
+  }
+  setLoginService(svc);
+  try {
+    const m = await mod({ space: "tess" });
+    const go = async (user, pw, tamper = false) => {
+      const b = await m.tools["signin.password.begin"]({ username: user }, {});
+      const d = deriveLogin(pw, b.salt, b.kdf);
+      const sig = d.sign(loginMessage(b.space, user, tamper ? b.challenge + "x" : b.challenge));
+      return m.tools["signin.password.finish"]({ username: user, challenge: b.challenge, sig }, {});
+    };
+    const ok = await go("ada", "correct horse battery");
+    assert.match(ok.token, /^id12345678\./);
+    assert.deepEqual(m.started, ["password"], "pinned to the password node, not a terminal");
+    await assert.rejects(() => go("ada", "wrong wrong wrong wrong"), { code: "bad_login" });
+    await assert.rejects(() => go("ada", "correct horse battery", true), { code: "bad_login" });
+    await assert.rejects(() => go("kit", "another long phrase here"), { code: "bad_login" }, "a member is not the owner");
+    await assert.rejects(() => go("nobody", "whatever whatever"), { code: "bad_login" });
+    assert.deepEqual(m.started, ["password"], "nothing else started a session");
+  } finally { setLoginService(null); }
+  void registerMessage; void bundleHash;
+});
+
+test("password sign-in on a computer with no space address says so", async () => {
+  const { setLoginService } = await import("../lib/login-door.js");
+  setLoginService(null);
+  const m = await mod();
+  await assert.rejects(() => m.tools["signin.password.begin"]({ username: "ada" }, {}), { code: "unavailable" });
 });

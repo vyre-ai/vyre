@@ -2,8 +2,12 @@
 import { Platform } from "react-native";
 import type { Signer } from "./phone-approve.js";
 import { loadIdentity } from "../identity/store";
+import { sessionSigner } from "./session-signer";
 
 export async function phoneSigner(): Promise<Signer | null> {
+  // While the person is unlocked with their password, their own key says yes with no prompt (session-signer.ts); the hardware key answers only where that is off or the page holds no record.
+  const silent = await sessionSigner();
+  if (silent) return silent;
   if (Platform.OS === "web") return null;
   try {
     const m = (await import("../../modules/vyre-signer")) as unknown as { signPresence?: Signer["signPresence"]; signPresenceMany?: (cards: Parameters<Signer["signPresence"]>[0][]) => Promise<unknown[] | null>; setPersonProvider?: (f: () => Promise<string | null>) => void };

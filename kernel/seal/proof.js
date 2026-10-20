@@ -15,6 +15,13 @@ export const SIGNERS = new Set(["secure_enclave", "tpm", "windows_hello", "stron
 export const SOFTWARE = "software";
 /** Why a presence key's signer class (and a passkey's site) is not one to take, or null. */
 const signerProblem = (/** @type {string} */ signer, /** @type {any} */ rp) => (!SIGNERS.has(signer) && signer !== SOFTWARE ? "bad_signer" : signer === "webauthn_platform" && !RP.test(String(rp || "")) ? "bad_rp" : null);
+/**
+ * The `session` signer class (v0.6.5, password only, until Apple signing): a proof signed by the person's OWN identity key, the Ed25519 key of one of the devices on their pinned list, which the app holds in memory
+ * only while the person is unlocked with their password. It is checked exactly like every other proof (the key is the person's own, the signature covers the same bytes, the decision, chain and payload are this act's,
+ * fresh, used once); the only thing that differs is the class gate: a release server takes it only while its `presence` setting is `silent` (the default; `prompt` brings back hardware-only). It needs no enrolment: the
+ * list pinned by the last sync is the evidence, and a device the list dropped is barred. An agent never holds that key, so no agent can produce one.
+ */
+export const SESSION = "session";
 export const MAX_PROOF_LIFE_MS = 120_000;
 const SPKI_ED25519 = Buffer.from("302a300506032b6570032100", "hex");
 export const UNBOUND_GRACE_MS = 24 * 3_600_000;
@@ -22,7 +29,9 @@ export const NEWCOMER_MS = 24 * 3_600_000;
 
 export class Presence {
   /** @param {() => number} [now] @param {{ verifiers?: Record<string, (att: any, spki: Buffer) => string | null>, allowUnattested?: boolean }} [o] a verifier checks a platform attestation (App Attest, Android key attestation, a TPM quote, WebAuthn) and returns the signer class it proves, or null */
-  constructor(now = Date.now, { verifiers = {}, allowUnattested = false, allowSoftware = false, appattest = null, file = null, custody = null } = {}) {
+  constructor(now = Date.now, { verifiers = {}, allowUnattested = false, allowSoftware = false, appattest = null, file = null, custody = null, sessionOk = false } = {}) {
+    /** Is the `session` class taken? The server's `presence` setting: true while it is `silent` (see SESSION). */
+    this.sessionOk = sessionOk === true;
     this.keys = new Map(); this.joined = new Map(); this.used = new Map(); this.tokens = new Map(); this.now = now; this.since = now(); this.verifiers = verifiers; this.allowUnattested = allowUnattested; this.allowSoftware = allowSoftware; this.appattest = appattest;
     this.file = file; /** @type {WeakSet<object>} proofs a passkey made that preverify checked */ this.waOk = new WeakSet(); this.pins = new Map(); this.barred = new Set(); this.ever = new Set(); this.v = 0; this.recovery = false; this.custody = custody;
     // Enrolled keys, and the persons who ever enrolled one, live in the sealing folder (public keys only), MACed under a key derived from the master and
@@ -118,6 +127,13 @@ export class Presence {
     const why = this.refuse(proof, { op: "presence.revoke", space: ctx.space, fields: { key_id }, ctx });
     if (why) return why === "no_proof" ? "needs_presence" : why;
     this.keys.delete(key_id); if (k.device) this.barred.add(k.device); this.save(); return null;
+  }
+  /** The person's own device key for a `session` proof: from the pinned list, never enrolled. A refusal code (a string) when the class is off or the key is not a listed device of this person. @param {string} key_id @param {string} person */
+  sessionKey(key_id, person) {
+    if (!this.sessionOk) return "session_refused";
+    const raw = this.pins.get(person)?.devices?.[key_id];
+    if (typeof raw !== "string" || this.barred.has(key_id)) return "unknown_key";
+    return { person, signer: SESSION, attested: false, device: key_id, key: crypto.createPublicKey({ key: Buffer.concat([SPKI_ED25519, Buffer.from(raw, "base64url")]), format: "der", type: "spki" }) };
   }
   /** Check a bind against the devices of the pinned chain, synchronously (Ed25519 through node:crypto). */
   bindPinned(pin, person, b, key_id, spki) {
@@ -250,12 +266,13 @@ export class Presence {
   refuse(proof, { op, space, fields, ctx, dry = false }) {
     if (!proof || typeof proof !== "object") return "no_proof";
     if (!ctx.one_person || !ctx.person) return "chain_not_person";
-    const k = this.keys.get(proof.key_id);
+    /** @type {any} */ let k;
+    if (proof.signer === SESSION) { k = this.sessionKey(proof.key_id, ctx.person); if (typeof k === "string") return k; } else k = this.keys.get(proof.key_id);
     if (!k || k.person !== ctx.person || k.signer !== proof.signer) return "unknown_key";
     // The ONE strength rule (strength.js, shared with the registry): a software key satisfies presence only where a dev switch is on, and is marked method software.
     // UY-2: a phone's unattested secure-chip key is admitted on release too, and marked unattested; every other unattested key needs the dev switch
     const unattested = isUnattestedEnclave(k);
-    const why = unattested ? null : strengthRefusal(strengthOf(k.attested), k.signer === SOFTWARE ? this.allowSoftware : this.allowUnattested); if (why) return why; // each dev switch admits only its own kind of key
+    const why = unattested || k.signer === SESSION ? null : strengthRefusal(strengthOf(k.attested), k.signer === SOFTWARE ? this.allowSoftware : this.allowUnattested); if (why) return why; // each dev switch admits only its own kind of key
     // V-3: a key from before the chain was pinned and never bound has a day after the first pin to be bound by a sync; after that it proves nothing.
     const pin = this.pins.get(ctx.person);
     if (!k.device && pin?.first !== undefined && this.now() - pin.first > UNBOUND_GRACE_MS) return "needs_bind";
@@ -268,7 +285,7 @@ export class Presence {
     try {
       // a passkey's assertion was checked in preverify, by the chain's verifier; every other key's signature is ECDSA over the proof's bytes
       const sig = Buffer.from(proof.signature, "base64url");
-      ok = k.signer === "webauthn_platform" ? this.waOk.has(proof) : crypto.verify("sha256", proofBytes(proof), { key: k.key, dsaEncoding: sig.length === 64 ? "ieee-p1363" : "der" }, sig);
+      ok = k.signer === "webauthn_platform" ? this.waOk.has(proof) : k.signer === SESSION ? crypto.verify(null, proofBytes(proof), k.key, sig) : crypto.verify("sha256", proofBytes(proof), { key: k.key, dsaEncoding: sig.length === 64 ? "ieee-p1363" : "der" }, sig);
     } catch { ok = false; }
     if (!ok) return "bad_signature";
     // B2 (App Attest, appattest.js assertProof): the proof also carries the app key's assertion over the same bytes; the new counter is written BEFORE the proof is accepted.
@@ -276,7 +293,7 @@ export class Presence {
     if (!dry) for (const [n, e] of this.used) if (e < t) this.used.delete(n);
     if (this.used.has(proof.nonce) && this.used.get(proof.nonce) >= t) return "replayed";
     if (!dry) this.used.set(proof.nonce, proof.expires_at);
-    this.lastMethod = unattested ? "unattested" : methodOf(strengthOf(k.attested)); this.lastStrength = unattested ? "unattested" : strengthOf(k.attested);
+    this.lastMethod = k.signer === SESSION ? "session" : unattested ? "unattested" : methodOf(strengthOf(k.attested)); this.lastStrength = k.signer === SESSION ? "session" : unattested ? "unattested" : strengthOf(k.attested);
     return null;
   }
 }

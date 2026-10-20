@@ -16,7 +16,8 @@ import { UNLOCK_COPY, WELCOME_TONES as T } from "../first-run/welcome-model.js";
  * It is all keyboard on the web and in the Mac app: the caret is in the password when the cover appears (the app locked itself too) and when the window comes back, Enter unlocks,
  * a refused password stays focused and selected, and Tab goes field, Show, Unlock, the recovery key switch, the theme.
  */
-export function UnlockScreen({ view, username, onDone, onRetry }: { view: "unlock" | "migrate" | "unreachable"; username?: string | null; onDone: () => void; onRetry?: () => void }) {
+export function UnlockScreen({ view, username, onDone, onRetry, still, greeting: fixedGreeting }: { view: "unlock" | "migrate" | "unreachable"; username?: string | null; onDone: () => void; onRetry?: () => void;
+  /** The gallery's picture: no moving dots behind it and a fixed greeting, so the same picture is drawn every time. */ still?: boolean; greeting?: string }) {
   const [mode, setMode] = useState<"password" | "recovery">("password");
   const [text, setText] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -26,9 +27,10 @@ export function UnlockScreen({ view, username, onDone, onRetry }: { view: "unloc
   const [busy, setBusy] = useState(false);
   const [shown, setShown] = useState(false);
   const { phone } = useUiTheme();
-  const [greeting] = useGreeting();
+  const [picked] = useGreeting();
+  const greeting = fixedGreeting ?? picked;
   // The dots at full strength behind the unlock, kept calm around its column once it lays out.
-  useEffect(() => { setWelcome(true); const t = setTimeout(measureCalm, 60); return () => clearTimeout(t); }, []);
+  useEffect(() => { if (still) return; setWelcome(true); const t = setTimeout(measureCalm, 60); return () => clearTimeout(t); }, [still]);
   const form = useRef<View>(null);
   const go = useRef(() => {});
   const web = Platform.OS === "web" && typeof document !== "undefined";
@@ -92,7 +94,7 @@ export function UnlockScreen({ view, username, onDone, onRetry }: { view: "unloc
   const eye = shown ? UNLOCK_COPY.hide : UNLOCK_COPY.show;
   return (
     <View style={{ flex: 1 }}>
-      <HalftoneField phone={phone} />
+      {still ? null : <HalftoneField phone={phone} />}
       <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 24 }}>
         <View ref={form} id={CONTENT_ID} style={{ alignItems: "center", width: "100%", maxWidth: 720 }}>
           <Appear index={0}><WelcomeBrand /></Appear>
@@ -108,14 +110,14 @@ export function UnlockScreen({ view, username, onDone, onRetry }: { view: "unloc
               }}
               extra={recoveryMode ? null : (
                 <Pressable accessibilityRole="button" accessibilityLabel={eye} onPress={() => setShown(!shown)} hitSlop={8}
-                  style={{ width: 36, height: 36, marginRight: 4, alignItems: "center", justifyContent: "center" }} {...({ title: eye } as object)}>
+                  style={{ width: 44, height: 44, marginRight: 2, alignItems: "center", justifyContent: "center" }} {...({ title: eye } as object)}>
                   <Icon name={shown ? "eye-off" : "eye"} size={18} tone={T.link} />
                 </Pressable>
               )} />
             {failure ? <Text size="secondary" tone="err" style={{ marginTop: 10, textAlign: "center" }} accessibilityLiveRegion="polite">{failure}</Text> : null}
           </Appear>
           <Appear index={7} style={{ alignItems: "center", gap: 12, marginTop: 20, maxWidth: 440 }}>
-            <Pressable accessibilityRole="button" onPress={flip}><Text size="secondary" tone="label">{recoveryMode ? UNLOCK_COPY.usePassword : UNLOCK_COPY.useRecovery}</Text></Pressable>
+            <Pressable accessibilityRole="button" onPress={flip} style={{ minHeight: 44, justifyContent: "center" }}><Text size="secondary" tone="label">{recoveryMode ? UNLOCK_COPY.usePassword : UNLOCK_COPY.useRecovery}</Text></Pressable>
             <Text size="caption" tone="label" style={{ textAlign: "center" }}>{UNLOCK_COPY.note}</Text>
           </Appear>
         </View>

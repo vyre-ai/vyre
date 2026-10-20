@@ -33,6 +33,8 @@ import { watchForList } from "./release-watch.js";
 import { readReleaseList } from "../../kernel/modules/release-list.js";
 import { acquire } from "./lock.js";
 import { canonical } from "../../lib/tool-names.js";
+import { ownerKeyCheck } from "../presence/own-key.js";
+import { idDirectory, memorySeen } from "../../lib/identity/directory.js";
 import { Presence, PERSON_ONLY, HUMAN_ONLY, personOnly, fingerprint, parse as parsePresence, core as coreHolder, noPresenceForChain } from "../presence/index.js";
 import { readCoreConfig, coreLink } from "../../lib/vyre-core-client.js";
 import { peerPid, peerHosting, insideClaude, processTable, ancestry, peerIdentity, loginOf, tmuxClients, controllingTty, canReadPeers, verifiedCapsule, signatureOf } from "./peer.js";
@@ -250,7 +252,10 @@ async function startLocked(opts, root, p, release) {
   }
   // DEVELOPMENT ONLY: the automated walk's presence stand-in is on only for a development build whose home holds a file the owner made by hand (never config, never a tool).
   const devStandIn = () => !isPackaged(opts.packageRoot) && fs.existsSync(path.join(root, "dev-presence-stand-in"));
-  const presence = typeof opts.presence === "function" ? opts.presence({ db, events, log }) : opts.presence || new Presence({ db, events, log, role: cfg.machine, standIn: devStandIn, softwareOk: () => devSwitch(process.env.VYRE_SEAL_SOFTWARE, opts.packageRoot), network: () => cfg.network || {} });
+  /** @type {any} */ let ownDir = null;
+  const presence = typeof opts.presence === "function" ? opts.presence({ db, events, log }) : opts.presence || new Presence({ db, events, log, role: cfg.machine, standIn: devStandIn, softwareOk: () => devSwitch(process.env.VYRE_SEAL_SOFTWARE, opts.packageRoot), network: () => cfg.network || {},
+    // the person's own key as their yes (the `own` method): a published full device key of the owner on the identity list
+    ownerKey: ownerKeyCheck({ owner: () => (kernel && kernel.id ? kernel.id.owner : null), directory: () => ownDir ||= (() => { const raw = cfg.names && cfg.names.directory; return idDirectory({ ...(typeof raw === "string" && /^https?:\/\//.test(raw) ? { base: raw } : {}), seen: memorySeen() }); })() }) });
   // Who is the person over the network, not only their device (core/presence/person.js).
   const people = new PersonSessions({ db });
   const started = Date.now();
@@ -1469,7 +1474,9 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   if (socket && people && !policy.caller && !shell.model && /^(cli|local)$/.test(caller) && carried(req.headers)) {
     const t = terminalOf ? await terminalOf(req.socket).catch(() => null) : null;
     const key = t && typeof t === "object" ? t.key : t;
-    const c = key ? people.check({ headers: req.headers, node: `cli:${key}`, method: req.method, path: url.pathname + url.search, raw: "" }) : null;
+    // A session made by username and password (`vyre signin`, core/signin) is pinned to the node `cli:password`, which needs no terminal login: it is what a server in a container has, where no terminal can be read.
+    const check = (/** @type {string} */ node) => people.check({ headers: req.headers, node, method: req.method, path: url.pathname + url.search, raw: "" });
+    const c = (key ? check(`cli:${key}`) : null) || (carried(req.headers) ? check("cli:password") : null);
     if (c && c.ok && c.kind === "cli") { cliSession = true; via.person = { id: c.id, kind: "cli" }; }
   }
   caller = shell.caller;
