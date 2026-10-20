@@ -4334,11 +4334,6 @@
      "component": "shell-menu",
      "press": "[aria-label^='Juniper Studio:']",
      "expect": "Add a Space"
-    },
-    "compact": {
-     "component": "shell-menu",
-     "press": "[aria-label^='Juniper Studio: switch']",
-     "expect": "Add a Space"
     }
    }
   },
