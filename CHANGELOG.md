@@ -2,6 +2,12 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## 0.6.5
+
+- feat(chat): a chat opens with its kept transcript drawn at once. The kept copy is folded when the chat's store is made, not after the first render, so there is no skeleton-then-swap, and the copy is no longer written back doubled (store.ts). A chat with no kept copy that has not opened in 8 seconds says so with Try again instead of an endless skeleton (ChatScreen.tsx).
+- feat(chat): sending shows "Working on it" under the chat at once, and it ends with the turn (working-model.js, StatusLine). A refused send takes it back. A failed turn with no reason from the AI says "Couldn't answer. Nothing came back." with Try again (core/stream/adapter.js failNote, frames.js).
+- feat(chat): New thread, when this device's chat key is not the one on the list, offers one button, Update chat key, that signs the replacing agree op in place (same step as Settings, Account and recovery, Try again), then checks again. The page also draws its composer at once instead of waiting for the Assistant's name.
+
 ## 0.6.4
 
 - fix(computers): one docker events stream for the module's life. The watcher was opened inside the sweep timer, so every tick added a stream; the proxy allows four and answered 429, and the server ran hot retrying. Reconnects now close the old request first, run one at a time, back off with jitter to a minute, and log only when the reason changes.

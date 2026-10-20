@@ -74,6 +74,14 @@ test("an ask opens, then is answered", () => {
   assert.equal(f.item("k:k1")?.decision, "approve");
 });
 
+test("a failed turn the AI gave no reason for says so in plain words, with Try again", () => {
+  cur = 0;
+  const f = createFolder();
+  f.apply(fr("status", { state: "failed", note: "no answer came back" }));
+  assert.equal(f.item(f.rows[0].key)?.text, "Couldn't answer. Nothing came back.");
+  assert.equal(f.item(f.rows[0].key)?.retry, true);
+});
+
 test("status sets the header state and leaves a line only for the ones that end or pause", () => {
   cur = 0;
   const f = createFolder();

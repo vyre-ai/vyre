@@ -11,11 +11,13 @@ const S = StyleSheet.create({
 });
 
 
-export function StatusLine({ presence, state, busy, canStop, stopping, offline, phone, onStop, place, starting }: {
+export function StatusLine({ presence, state, busy, canStop, stopping, offline, phone, onStop, place, starting, working }: {
   /** Where the session runs, with its chip (R031-95): drawn before Stop. */
   place?: React.ReactNode;
   /** "Starting on <computer>..." while the session's process starts on one of the person's computers (thread.placing); it comes before every other word. */
   starting?: string;
+  /** "Working on it" while a message just sent or a turn on a live link is being answered (working-model.js); after the presence line and the offline note. */
+  working?: string;
   presence: string;
   state: string;
   busy: boolean;
@@ -25,7 +27,7 @@ export function StatusLine({ presence, state, busy, canStop, stopping, offline, 
   phone: boolean;
   onStop: () => void;
 }) {
-  const words = starting || presence || (offline ? "Offline, showing what was saved" : state === "asking" ? "Waiting for you" : "");
+  const words = starting || presence || (offline ? "Offline, showing what was saved" : state === "asking" ? "Waiting for you" : working || "");
   return (
     <View accessibilityRole="text" accessibilityLiveRegion="polite" style={{ width: "100%", maxWidth: 760, alignSelf: "center", minHeight: phone ? 44 : 32, flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: phone ? 16 : 24 }}>
       <Text size="caption" tone="label" numberOfLines={1} style={S.s1}>{words}</Text>

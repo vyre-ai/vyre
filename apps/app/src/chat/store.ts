@@ -87,9 +87,9 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
   let looping = false;
   let stopping = false;
   /** @type {Frame[]} */ let frameLog: Frame[] = [];
+  let preloading = false;
   const cached = loadSessionCache(session);
   if (cached?.frames?.length) frameLog = cached.frames as Frame[];
-  let restored = false;
   /** Delta frames waiting to be seen: their message, the length that must show, and when they were emitted. */
   const pending: { key: string; end: number; t: number; first: boolean }[] = [];
   const seenFirst = new Set<string>();
@@ -207,7 +207,7 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
     if (frames.some((f) => isKind(f, "participant-left") && String(f.data?.who) === group.viewer)) messageIndex.drop(session); else indexMessages();
     frameLog = frameLog.concat(frames).slice(-400);
     unsent.settle();
-    saveCache();
+    if (!preloading) saveCache();
   }
   const saveCache = () => saveSessionCache(session, { head: folder.last, frames: frameLog, unsent: unsent.list() });
   function onFrame(f: Frame) {
@@ -250,17 +250,25 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
       return sendPlain(text, { message: o.message, ...(o.mentions?.length ? { mentions: o.mentions } : {}), ...(o.mode ? { mode: o.mode } : {}), ...(o.attachments?.length ? { attachments: o.attachments } : {}) });
   }
 
+  // The kept transcript is folded when the store is made, not when the stream starts: the first render already has its rows, so a chat with a kept copy never draws a skeleton and then swaps. The frames are
+  // not logged twice (frameLog is cleared while they fold), and the cache is not rewritten for a copy it just read.
+  if (frameLog.length) {
+    const kept = frameLog;
+    frameLog = [];
+    for (const f of kept) onFrame(f);
+    preloading = true;
+    flush();
+    preloading = false;
+    frameLog = kept;
+    replay = true; // what the box sends next is history to catch up on, not text to type out
+  }
+  // what the person sent that the box did not take, the last time this chat was open: still here, "Not sent", after the history it followed
+  if (cached?.unsent?.length) unsent.restore(cached.unsent);
+
   const store: ChatStore = {
     session,
     start() {
       if (conn) return;
-      if (frameLog.length && folder.last === 0) {
-        for (const f of frameLog) onFrame(f);
-        flush();
-        replay = true;
-      }
-      // what the person sent that the box did not take, the last time this chat was open: still here, "Not sent", after the history it followed
-      if (cached?.unsent?.length && !restored) { restored = true; unsent.restore(cached.unsent); }
       conn = source.connect({ from: folder.last, onFrame, onState: (s) => { connection = s; bumpMeta(); } });
     },
     stop() { conn?.close(); conn = null; },

@@ -68,6 +68,7 @@ import { useChatKeyLease } from "./useChatKeyLease";
 import { queueFrom } from "./extras.js";
 import { tool } from "../real/box";
 import { secureSecrets } from "./secure-paste.js";
+import { GIVE_UP_MS, idle as idleAwaiting, moved as movedAwaiting, refused as refusedAwaiting, sent as sentAwaiting, workingLine, type Awaiting } from "./working-model.js";
 import { useAttachments } from "./useAttachments";
 import { useAttachDrop } from "./useAttachDrop";
 import { chipLine, defaultWords } from "./attach-model.js";
@@ -147,6 +148,21 @@ export function ChatScreen(p: ChatScreenProps) {
   const insets = useSafeAreaInsets();
   const { store, rows: layoutRows, meta, loading } = useSessionStream(p.sessionId, { source: p.source, perf: p.perf, viewer: p.viewer });
   // steps in a row are one folded line (tool-runs.js); the items behind them stay as they are
+  // A message just sent: "Working on it" shows at once and ends with the turn (working-model.js). A refused send takes it back.
+  const [awaiting, setAwaiting] = useState<Awaiting>(idleAwaiting);
+  useEffect(() => { setAwaiting((a) => movedAwaiting(a, { busy: meta.busy, state: meta.state })); }, [meta.busy, meta.state]);
+  useEffect(() => {
+    if (!awaiting.on) return;
+    const t = setTimeout(() => setAwaiting(idleAwaiting()), GIVE_UP_MS);
+    return () => clearTimeout(t);
+  }, [awaiting.on]);
+  // The skeleton is for a short wait only: a chat with no kept copy that has not opened in a few seconds says so, with Try again, never an endless skeleton.
+  const [waited, setWaited] = useState<"" | "long">("");
+  useEffect(() => {
+    if (!loading) { setWaited(""); return; }
+    const t = setTimeout(() => setWaited("long"), 8000);
+    return () => clearTimeout(t);
+  }, [loading]);
   const rows = useMemo(() => groupToolRuns(layoutRows, (k) => store.item(k)) as unknown as typeof layoutRows, [layoutRows, store]);
   const viewer = store.group.viewer;
   // Who is in this chat before the stream says, and the run's thread for the per-run controls (both from work.chat.get).
@@ -386,12 +402,14 @@ export function ChatScreen(p: ChatScreenProps) {
       // What the person highlighted is quoted into the message they send now, and the chips clear: nothing was sent before this.
       const body = withQuotes(text, highlights);
       setHighlights([]);
+      setAwaiting(sentAwaiting(meta.state));
       const why = (o && (o.to.length || o.fanout)) || parent ? await store.sendTo(body, { to: o?.to ?? [], fanout: o?.fanout ?? false, replyTo: quoted?.message, ...(o?.mode ? { mode: o.mode } : {}), ...(o?.mentions?.length ? { mentions: o.mentions } : {}), ...(sending.attachments.length ? { attachments: sending.attachments } : {}) }) : await store.send(body, { ...(o?.mentions?.length ? { mentions: o.mentions } : {}), ...(o?.mode ? { mode: o.mode } : {}), ...(sending.attachments.length ? { attachments: sending.attachments } : {}) });
       // A send the box did not take stays in the thread as "Not sent", with its reason, Retry and Delete (store.ts), so the composer lets go of it either way.
       att.clear();
+      if (why) setAwaiting(refusedAwaiting());
       if (!why && /^\/later\b/i.test(body.trim())) later.noteFromSend(body.trim());
     },
-    [store, editing, actions, replyTo, highlights, att, later],
+    [store, editing, actions, replyTo, highlights, att, later, meta.state],
   );
   sendRef.current = (text: string) => onSend(text);
   // A thread is named from its first message (a short title, as chat apps do), never left as "New chat": once, when the chat has a first message and no title of its own.
@@ -550,7 +568,12 @@ export function ChatScreen(p: ChatScreenProps) {
       ) : null}
 
       <View style={{ flex: 1, minHeight: 0 }}>
-        {loading ? (
+        {loading && waited === "long" ? (
+          <View accessibilityRole="alert" style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: 12, paddingHorizontal: 24 }}>
+            <Text tone="muted" style={{ textAlign: "center" }}>This chat is taking too long to open.</Text>
+            <Button kind="primary" size="sm" label="Try again" onPress={() => { setWaited(""); store.stop(); store.start(); }} />
+          </View>
+        ) : loading ? (
           <SkeletonThread wide={!phone} />
         ) : (
           <Transcript
@@ -604,6 +627,7 @@ export function ChatScreen(p: ChatScreenProps) {
         busy={meta.busy}
         canStop={meta.canStop}
         stopping={meta.stopping}
+        working={workingLine({ busy: meta.busy, connection: meta.connection, awaiting: awaiting.on })}
         offline={meta.connection === "offline" && meta.saved}
         phone={phone}
         onStop={async () => { const why = await store.interrupt(); if (why) setNote(why); }}
