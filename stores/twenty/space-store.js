@@ -424,7 +424,7 @@ export function withUpgrade(store, fresh, known, log, onUpgrade = () => {}) {
       const v = target[prop];
       if (typeof v !== "function") return v;
       if (typeof prop === "string" && TYPED.has(prop)) return (/** @type {any} */ type, /** @type {any[]} */ ...a) => {
-        if (pending.has(type)) return Promise.reject(Object.assign(new Error(`${upgradeWords(done, total)} The ${type} records are not there yet.`), { code: "unavailable", name: "StoreError" }));
+        if (pending.has(type)) return Promise.reject(Object.assign(new Error(`${upgradeWords(done, total)} The ${type} records are not there until it does.`), { code: "unavailable", name: "StoreError" }));
         return v.call(target, type, ...a);
       };
       return v.bind(target);

@@ -64,7 +64,7 @@ import { tokensOfChars } from "../../lib/tokens.js";
 import { ROLL, contextOf, decide as rollDecide, seedOf, sheetCalls, sheetOf, receiptsOf, indexOf as pointerIndex } from "./rollover.js";
 import { withoutSeed, withoutVyre } from "../../lib/seed.js";
 import { wantsMacs, askMacs, mergeRows, gatedAsk } from "../modules/federate.js";
-import { ACCOUNT_ENV } from "../../lib/credential-env.js"; import { accountNative } from "./account-native.js"; import { withinOrThrow } from "../../lib/within.js"; import { scrubOut } from "./scrub.js"; import { noOwnerMarker, ownerDirect, withAccountProvider, askerOver, busyTurn, chipOver, memberAccount, movesAccount, libraryPerson, hopMovedAway, probeBase, projectMay, projectPerson, revertSettled, runQueuedOver, servesChip, checkLaunch, trustedLaunch } from "./asker-account.js"; import { checkResidency } from "./residency.js";
+import { ACCOUNT_ENV } from "../../lib/credential-env.js"; import { accountNative } from "./account-native.js"; import { withinOrThrow } from "../../lib/within.js"; import { scrubOut } from "./scrub.js"; import { noOwnerMarker, ownerDirect, withAccountProvider, askerOver, busyTurn, chipOver, memberAccount, movesAccount, libraryPerson, hopMovedAway, probeBase, projectMay, projectPerson, revertSettled, runQueuedOver, servesChip, checkLaunch, trustedLaunch, withoutPicked } from "./asker-account.js"; import { checkResidency } from "./residency.js";
 import { closeToAddedModules } from "../../lib/first-party-door.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -904,7 +904,7 @@ export class Switchboard {
         try { const r = /** @type {any} */ (await this.deps.call("runner.recover", { session: this.nativeOf(id) })); if (r && r.data && r.data.turn !== undefined) this.deps.log(`threads: ${String(id).slice(0, 8)} was put back to its last sealed turn (${r.data.turn}) before resuming`); } catch { /* no runner here */ }
       }
       const row = /** @type {any} */ (this.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(id));
-      if (row && row.opts) o = { ...JSON.parse(String(row.opts)), ...o };
+      if (row && row.opts) o = { ...JSON.parse(String(row.opts)), ...o }; if (typeof o.run_as === "string" && o.run_as && !optsOf(row).runas) this.db.prepare("UPDATE threads_runs SET opts = ? WHERE id = ?").run(JSON.stringify({ ...optsOf(row), runas: o.run_as }), id);   // an older thread resumed for its person learns whom it acts as; a kept one never changes
       if (!rec.chat) { at("chat"); await this.ensureChat(id, o.kernelTurn || null); rec = this.must(id); }
       this.ensureSlot(id);
     } else {
@@ -954,7 +954,7 @@ export class Switchboard {
       // A quick answer keeps its facts, so a follow-up after an idle close is answered from them too.
       if (o.purpose === "capsule" && o.append) kept.append = String(o.append).slice(0, 20000);
       // The surface that started it (the Capsule, the Deck, a phone): threads.get says it as origin.
-      if (o.surface) kept.origin = String(o.surface).slice(0, 80);   if (typeof o.run_as === "string" && o.run_as && o.purpose === "job") kept.runas = o.run_as; if (o.flow_origin && typeof o.flow_origin === "object") kept.flow_origin = o.flow_origin;
+      if (o.surface) kept.origin = String(o.surface).slice(0, 80);   if (typeof o.run_as === "string" && o.run_as) kept.runas = o.run_as;   /* a job or a person's own-account thread: its kernel session is that person's */ if (o.flow_origin && typeof o.flow_origin === "object") kept.flow_origin = o.flow_origin;
       // A session carried on here from a paired Mac (threads.continue-here): which machine and thread it came from.
       if (o.continuedFrom) kept.continued_from = { machine: String(o.continuedFrom.machine).slice(0, 80), thread: String(o.continuedFrom.thread).slice(0, 80) };
       // What the provider could do when the thread started, kept for drawing its old items: never edited
@@ -984,7 +984,7 @@ export class Switchboard {
     let acct = null; o = await memberAccount(this, rec, o, id);
     if (o.account) {
       acct = await this.accountFor({ provider: rec.provider || o.provider || "claude", account: o.account, project: rec.project, agent: rec.agent, person: (o.kernelTurn && o.kernelTurn.asker) || hopPersonOf(this, id) || o.person, ...(o.purpose === "job" || o.once === true ? { job: true } : {}) }, o.resume ? rec.id : null);
-      const c = this.deps.accountEnv ? await this.deps.accountEnv(acct, acct.person ? () => lendTurn(this, id, rec, o, acct) : undefined) : { auth: "subscription", env: {} };
+      o = withoutPicked(o, acct); const c = this.deps.accountEnv ? await this.deps.accountEnv(acct, acct.person ? () => lendTurn(this, id, rec, o, acct) : undefined) : { auth: "subscription", env: {} };
       o = { ...o, env: { ...(o.env || {}), ...c.env, ...(ownerDirect(this, o, acct) ? { VYRE_OWNER_ACCOUNT: "1" } : {}) }, accountRun: { id: acct.id, uid: acct.uid, provider: acct.provider, person: acct.person || null, home: this.deps.accountHome ? this.deps.accountHome(acct) : null } };
       this.db.prepare("UPDATE threads_runs SET auth = ? WHERE id = ?").run(c.auth, id);
     }
@@ -3282,7 +3282,7 @@ export class Switchboard {
     const drv = this.deps.providers && this.deps.providers.get(provider);
     const caps = normalizeCaps(drv && drv.capabilities);
     const ok = what === "rewind" ? caps.rewind.conversation : caps.fork;
-    if (!ok) throw Object.assign(new Error(`${providerName(provider)} can't ${words} yet: nothing was changed`), { code: "unsupported", provider, capability: what });
+    if (!ok) throw Object.assign(new Error(`${providerName(provider)} can't ${words} yet: nothing was changed. Use a Claude chat to ${words}`), { code: "unsupported", provider, capability: what });
   }
 
   /** Who wrote this message, from the event that sent or queued it (null when it was not recorded). @param {string} id @param {string} uuid */

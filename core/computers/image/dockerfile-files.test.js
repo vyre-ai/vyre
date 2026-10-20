@@ -40,6 +40,40 @@ test("every relative import of a copied file, and every /opt/agentd/<file> any f
   }
 });
 
+test("the desk: the wallpaper's mark is the app's Vyre mark as given, the window manager's files start nothing, and the image copies both where agentd.js looks", async () => {
+  const { DESK } = await import("./agentd.js");
+  const mark = fs.readFileSync(path.join(DIR, "desk", "mark.png")), icon = fs.readFileSync(path.join(DIR, "../../../site/icon-192.png"));
+  assert.ok(mark.equals(icon), "desk/mark.png is a copy of site/icon-192.png (the mark the site and the app use): copy it again when the mark changes");
+  assert.match(dockerfile, /^COPY desk\/fluxbox \/etc\/vyre-desk\/fluxbox$/m);
+  assert.match(dockerfile, /^COPY desk\/mark\.png \/usr\/share\/vyre-desk\/mark\.png$/m);
+  assert.equal(DESK.fluxbox, "/etc/vyre-desk/fluxbox/init");
+  assert.equal(DESK.mark, "/usr/share/vyre-desk/mark.png");
+  const init = read("desk/fluxbox/init");
+  for (const f of ["menu", "keys", "apps", "overlay", "windowmenu"]) {
+    assert.match(init, new RegExp(`:\\t/etc/vyre-desk/fluxbox/${f}$`, "m"), `init names /etc/vyre-desk/fluxbox/${f}`);
+    assert.ok(fs.existsSync(path.join(DIR, "desk", "fluxbox", f)), `desk/fluxbox/${f} is there`);
+  }
+  assert.match(init, /^session\.screen0\.toolbar\.visible:\tfalse$/m, "no toolbar");
+  // fluxbox runs as the screen's owner (the browser uid): nothing it offers may start a program, and the desktop has no menu
+  const keys = read("desk/fluxbox/keys"), menu = read("desk/fluxbox/menu"), wmenu = read("desk/fluxbox/windowmenu");
+  assert.doesNotMatch(keys, /\b(Exec|ExecCommand|RootMenu|Restart|Reconfigure|CommandDialog)\b/i, "no key starts a program or opens the desktop menu");
+  assert.doesNotMatch(menu + wmenu, /\[(exec|submenu|include|config|stylesdir|workspaces|restart|exit|wallpapers)\]/i, "the menus start nothing");
+  assert.doesNotMatch(wmenu, /\[iconify\]/, "nothing can be minimized to a toolbar that is not there");
+  assert.match(read("desk/fluxbox/overlay"), /^background: none$/m, "fluxbox sets no wallpaper of its own");
+});
+
+test("the dock runs only as an agent's uid, builds its own environment, starts no shell, and reaches Chrome only through the holder's FIFO", () => {
+  const dock = read("agentd-dock.py"), holder = read("agentd-chrome.py");
+  assert.match(dock, /uid < 20000 or uid > 20063 or uid != os\.getuid\(\) or len\(sys\.argv\) != 1/);
+  assert.doesNotMatch(dock, /os\.environ|getenv|shell=True|os\.system|cdp\.sock|browsers\//, "nothing from its environment, no shell, nothing of the browser uid's");
+  assert.match(dock, /HOME = "\/var\/lib\/vyre\/agents\/%s\/home" % USER/);
+  assert.match(dock, /SHOW = "\/var\/lib\/vyre\/x\/%s\/show-chrome" % USER/);
+  assert.match(holder, /SHOW = "\/var\/lib\/vyre\/x\/ag%d\/show-chrome" % N/, "the holder makes the same FIFO, in the folder only the browser uid may write");
+  assert.match(holder, /os\.chmod\(SHOW, 0o620\)/, "the agent's group may write it and nobody else may read it");
+  assert.match(holder, /os\.read\(show, 4096\)\s+# what was written is never looked at/);
+  assert.match(holder, /if show_due and since_nul == 0:/, "the tab request goes between two of the client's messages, never inside one");
+});
+
 test("the chmod line makes every copied python helper readable (root-owned, run by name)", () => {
   const chmod = /chmod 0644 (.*\/opt\/agentd\/package\.json)/.exec(dockerfile);
   assert.ok(chmod, "a chmod 0644 line");

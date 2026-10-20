@@ -27,5 +27,7 @@ export const RELAY_ALLOWED = Object.freeze({
   files: ["agents.level"],
   microsoft: ["gate.request"], google: ["gate.request"], // an agent's send in a person's turn is filed at the Gate as that person: the requester and a standing permission read the relayed chain, as for mail
   mail: ["gate.request"], // standing permissions: the agent's session token reaches the Gate on the filed send
+  // a member adding an AI account that names a key in her own vault: the check that the item is there is asked as her, the same person who is adding it (vault.me.has reads the person from the chain only)
+  sessions: ["vault.me.has"],
   ...FIRST_RUN_RELAY,
 });
