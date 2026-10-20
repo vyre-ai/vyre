@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6.5
 
+- fix(shell): the details pane gives its content the sidebar's side gutter, so a person's or agent's pane never sits flush against its edges.
 - fix(spawner): a session in a chat with no project joins the work folder's group, so it can enter its chat's folder (every plain chat failed its confinement check).
 - fix(threads): a resume of a session that never began starts it fresh; an error result with no text shows its errors.
 - feat(chat): a chat opens with its kept transcript drawn at once. The kept copy is folded when the chat's store is made, not after the first render, so there is no skeleton-then-swap, and the copy is no longer written back doubled (store.ts). A chat with no kept copy that has not opened in 8 seconds says so with Try again instead of an endless skeleton (ChatScreen.tsx).

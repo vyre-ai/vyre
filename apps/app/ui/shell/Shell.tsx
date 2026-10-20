@@ -372,7 +372,7 @@ function SidePane() {
           </Pressable>
         </Tip>
       </View>
-      <View style={{ flex: 1, minHeight: 0 }}>
+      <View style={{ flex: 1, minHeight: 0, paddingHorizontal: RAIL.gutter }}>
         {Pane ? <Pane kind={who.kind} id={who.id} onClose={closeWho} /> : <Text tone="label" style={{ paddingHorizontal: RAIL.gutter, fontSize: RAIL.labelSize }}>Nothing to show here yet.</Text>}
       </View>
       <ResizeHandle edge="left" label="Resize the details pane" width={w.width} onChange={w.set} onReset={w.reset} min={RAIL.panelMin} max={RAIL.panelMax} def={RAIL.panelWidth} />
