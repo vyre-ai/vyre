@@ -43,6 +43,26 @@ test("status of an agent with no place yet says none; wake makes the place and o
   assert.equal((await call(w, "computers.agent.sleep", { agent: "ads" })).state, "asleep");
 });
 
+test("status says firstStart while the Space's computer has never been made, waking while it is being made, and the plain problem when it cannot run", async t => {
+  const db = open(path.join(tempHome(t), "t.db"));
+  t.after(() => db.close());
+  migrate(db, "computers", MIGRATIONS);
+  let space = { starting: false, first: true };
+  /** @type {{ code: string, message: string } | null} */ let problem = null;
+  const users = new AgentUsers({ db, ctl: { createUser: async () => {}, startScreen: async () => {} } });
+  /** @type {Map<string, (i: any, m: any) => Promise<any>>} */ const tools = new Map();
+  registerAgentTools({ tool: (name, _d, _i, run) => tools.set(name, run), users, callers: ["deck"], space: () => space, problem: () => problem,
+    call: async (tool, input) => tool === "agents.level" ? { data: { agent: input.agent, level: "edit" } } : { error: { code: "no_such_tool", message: tool } } });
+  const status = () => /** @type {any} */ (tools.get("computers.agent.status"))({ agent: "ads" }, {});
+  assert.deepEqual(await status(), { agent: "ads", state: "none", firstStart: true });
+  space = { starting: true, first: true };
+  assert.deepEqual(await status(), { agent: "ads", state: "waking", firstStart: true });
+  space = { starting: false, first: false };
+  assert.deepEqual(await status(), { agent: "ads", state: "none" });
+  problem = { code: "computer_unavailable", message: "The agent computer's image isn't on this server yet. Update the server to download it." };
+  assert.deepEqual(await status(), { agent: "ads", state: "none", problem: problem.message, problemCode: "computer_unavailable" });
+});
+
 test("a caller the agents module refuses gets its refusal, and nothing starts", async t => {
   const w = setup(t, { level: "none" });
   for (const name of ["computers.agent.status", "computers.agent.wake", "computers.agent.sleep", "computers.agent.reset", "computers.agent.watch"]) {
