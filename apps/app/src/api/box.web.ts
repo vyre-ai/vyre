@@ -128,5 +128,6 @@ export async function signOut(): Promise<void> {
   else await fetch(`${origin}/v1/person/end`, { method: "POST", credentials: "same-origin" }).catch(() => {});
   const { clearAllSessionCaches } = await import("../chat/session-cache.js");
   clearAllSessionCaches();
+  await import("../state/kept").then((m) => m.forgetKept()).catch(() => {});
   connection.signIn(true);
 }

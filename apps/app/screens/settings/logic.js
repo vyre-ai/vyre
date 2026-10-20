@@ -53,7 +53,7 @@ const ADMIN_ROWS = ["/u/settings/audit", "/u/settings/roles", "/u/settings/group
 const NOT_FOR_TEMP = ["/u/memory", "/u/flows", "/u/settings/seeing", "/u/settings/rules", "/u/settings/assistant-access"];
 
 /**
- * Settings home: four calm groups (You, the Space, Devices, Vyre) and nothing behind an Advanced switch. The pages taken off the list are in archived.js with one line of why each; with Labs on
+ * Settings home: three calm groups (your account in the Space, the Space, Everywhere) and nothing behind an Advanced switch. The pages taken off the list are in archived.js with one line of why each; with Labs on
  * (About, at the bottom) the archived ones come back as a last group, Labs. Every row has its own icon from the family (logic.test.js keeps it so). `space` names the group for the space showing.
  * `role` is the person's role there: a row an owner or admin uses is not offered to others, and a temp member is not offered the space-wide places. No role (All spaces showing, or not known yet)
  * shows every row, and the screen behind each row still decides.
@@ -67,12 +67,13 @@ export function settingsGroups(space, role, opts = {}) {
 
 /** @returns {{ title: string, labs?: boolean, rows: string[][] }[]} */
 function all(/** @type {string} */ space) {
+  // Only the sign-in (username, password, GitHub) and the devices are the same in every Space; everything else is this Space's (owner, 21 Oct 2026).
   return [
-    { title: "You", rows: [
-      ["Account and recovery", "Your name, sign-in, recovery code and GitHub link", "/u/settings/account", "face"],
-      ["AI accounts", "Every AI account your agents use, from any provider", "/u/settings/ai", "spark"],
+    { title: `Your account in ${space}`, rows: [
+      ["Your profile", "The name, look and avatar you show in this Space", "/u/settings/profile", "person"],
+      ["AI accounts", "Every AI account your agents use here, from any provider", "/u/settings/ai", "spark"],
       ["Appearance", "Theme, accent colour, density and font", "/u/appearance", "sun"],
-      ["Notifications", "Choose what can reach you, and when", "/u/settings/notifications", "bell"],
+      ["Notifications", "Choose what can reach you from this Space, and when", "/u/settings/notifications", "bell"],
       ["Sidebar", "Choose and order the places in your sidebar", "/u/sidebar", "menu"],
     ] },
     { title: space, rows: [
@@ -82,13 +83,12 @@ function all(/** @type {string} */ space) {
       ["Connections", "Link services, Google and GitHub", "/u/connections", "link"],
       ["What agents may do", "The areas and tools your agents may use, and what they ask first", "/u/settings/assistant-access", "shield"],
       ["Privacy", "Choose which fields are sealed (admins only)", "/u/settings/privacy", "sealed"],
-    ] },
-    { title: "Devices", rows: [
-      ["Devices and computers", "Your phone and computers; approve a new one, remove one you lost", "/u/settings/devices", "devices"],
-      ["This computer", "What runs on this computer: its hooks, history and shares", "/u/settings/system", "laptop"],
-    ] },
-    { title: "Vyre", rows: [
       ["Updates and backups", "Check for and install a new version, and see what is backed up", "/u/settings/updates", "download"],
+      ["Agent computer", "What runs on this computer for this Space: history, hooks and shares", "/u/settings/system", "laptop"],
+    ] },
+    { title: "Everywhere", rows: [
+      ["Sign-in and recovery", "Your username, password and recovery code, and your GitHub link", "/u/settings/account", "face"],
+      ["Devices and computers", "Your phone and computers; approve a new one, remove one you lost", "/u/settings/devices", "devices"],
       ["About", "Version, who made Vyre, and where to star it", "/u/about", "info"],
     ] },
   ];

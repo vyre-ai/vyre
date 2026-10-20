@@ -23,15 +23,17 @@ export function hostedLine(s: any): string | null {
 
 const ago = (at: number, now: number) => { const m = Math.max(0, Math.round((now - at) / 60000)); return m < 1 ? "just now" : m < 60 ? `${plural(m, "minute")} ago` : m < 1440 ? `${plural(Math.round(m / 60), "hour")} ago` : `${plural(Math.round(m / 1440), "day")} ago`; };
 /** History search: what is indexed and the last pass. */
-export function recallView(s: any, now = Date.now()): { lines: [string, string][]; indexing: boolean; problem: string } {
+export function recallView(s: any, now = Date.now()): { lines: [string, string][]; folders: string[]; indexing: boolean; problem: string } {
   const last = s?.last;
   const v = s?.vectors || {};
   return {
     indexing: !!s?.indexing,
     problem: s?.error ? String(s.error) : "",
+    // the folder paths are for the Details disclosure, never the plain rows
+    folders: Array.isArray(s?.folders) ? s.folders.map(String) : [],
     lines: [
       ["Indexed", `${plural(s?.sessions || 0, "session")}, ${plural(s?.turns || 0, "turn")}`],
-      ["Folders", Array.isArray(s?.folders) && s.folders.length ? s.folders.join(", ") : "None"],
+      ["Folders", Array.isArray(s?.folders) && s.folders.length ? plural(s.folders.length, "folder") + " read" : "None"],
       ["Last pass", last?.at ? `${ago(last.at, now)}: ${[last.added ? `${last.added} added` : "", last.appended ? `${last.appended} appended` : "", `${last.skipped || 0} unchanged`, last.failed ? `${last.failed} failed` : ""].filter(Boolean).join(", ")}` : "Not yet"],
       ["Search by meaning", v.on ? `On, ${v.embedded || 0} embedded, ${v.pending || 0} waiting` : `Off${v.why ? `. ${String(v.why).replace(/^./, (c) => c.toUpperCase())}.` : ""}`],
     ],
@@ -110,14 +112,15 @@ export function auditLines(a: any): { ok: boolean; lines: string[] } {
   return { ok, lines };
 }
 
-/** The agent computer's image and version, and whether it matches this Vyre (computers.update.status, owner only). Null when the box did not answer, so the section is left out. */
-export function computerView(s: any): { rows: [string, string][]; line: string; canUpdate: boolean } | null {
+/** The agent computer against this Vyre (computers.update.status, owner only). Plain words on top; the image and where it was made from are `details`, for the Details disclosure. Null when the box did not answer, so the section is left out. */
+export function computerView(s: any): { rows: [string, string][]; details: [string, string][]; line: string; canUpdate: boolean } | null {
   if (!s || typeof s !== "object" || !s.want || typeof s.want !== "object") return null;
-  const name = (v: unknown) => String(v || "").split("/").pop() || "";
+  const name = (v: unknown) => String(v || "").split("/").pop()!.replace(/@sha256:[0-9a-f]+/i, "") || "";
   const have = s.have && typeof s.have === "object" ? s.have : null;
-  const rows: [string, string][] = [["Image", name(s.want.image)], ["Vyre version", String(s.want.version || "")]];
-  if (have) rows.push(["Made from", `${name(have.image)} (Vyre ${String(have.version || "?")})`]);
-  if (!s.present) return { rows, line: "This Space has no agent computer yet. It is made from the current image the first time an agent needs it.", canUpdate: false };
-  if (s.current) return { rows, line: "The computer matches this version of Vyre.", canUpdate: false };
-  return { rows, line: "A newer image is ready. Updating closes every agent's screen, then replaces the computer. Logins and files stay. A terminal job that is running ends.", canUpdate: true };
+  const rows: [string, string][] = [["Vyre version", String(s.want.version || "")]];
+  const details: [string, string][] = [["Image", name(s.want.image)]];
+  if (have) details.push(["Made from", `${name(have.image)} (Vyre ${String(have.version || "?")})`]);
+  if (!s.present) return { rows, details, line: "This Space has no agent computer yet. It is made from the current image the first time an agent needs it.", canUpdate: false };
+  if (s.current) return { rows, details, line: "The computer matches this version of Vyre.", canUpdate: false };
+  return { rows, details, line: "A newer image is ready. Updating closes every agent's screen, then replaces the computer. Logins and files stay. A terminal job that is running ends.", canUpdate: true };
 }

@@ -23,13 +23,20 @@ export async function projectNames(): Promise<Record<string, string>> {
 }
 
 export async function listReal(): Promise<RealFlow[]> {
-  const names = await projectNames();
-  const rows = await ask<{ id: string; name?: string; label?: string; status: string; active: boolean; versions: number; paused: unknown; level?: string; line?: string; project?: string }[]>("flows.list");
+  // the project names and the list are asked together, never one after the other
+  const [names, rows] = await Promise.all([projectNames(), ask<{ id: string; name?: string; label?: string; status: string; active: boolean; versions: number; paused: unknown; level?: string; line?: string; project?: string }[]>("flows.list")]);
   return Promise.all((Array.isArray(rows) ? rows : []).map(async (r) => {
     const g = await ask<Graph>("flows.graph", { id: r.id }).catch(() => null);
     // the Flow's own words, never its id: flows.list carries the label (the name is the code's)
     return { id: r.id, name: rowName(r), status: r.status, active: r.active, versions: r.versions, paused: r.paused, trigger: g?.trigger ?? "", level: r.level, line: r.line, project: r.project ? names[r.project] || r.project : undefined, sentence: g ? whenDo(g.trigger, (g.nodes || []).filter((n: any) => n.kind !== "trigger").map((n: any) => String(n.label))) : undefined };
   }));
+}
+
+/** One Flow's list row (its project by name, its versions and whether it is paused) without a graph call per Flow: the Flow page needs one row, not the whole list read twice. */
+export async function rowReal(id: string): Promise<RealFlow | null> {
+  const [names, rows] = await Promise.all([projectNames(), ask<{ id: string; name?: string; label?: string; status: string; active: boolean; versions: number; paused: unknown; level?: string; line?: string; project?: string }[]>("flows.list")]);
+  const r = (Array.isArray(rows) ? rows : []).find((x) => x.id === id);
+  return r ? { id: r.id, name: rowName(r), status: r.status, active: r.active, versions: r.versions, paused: r.paused, trigger: "", level: r.level, line: r.line, project: r.project ? names[r.project] || r.project : undefined } : null;
 }
 
 export const graphReal = (id: string) => ask<Graph>("flows.graph", { id });

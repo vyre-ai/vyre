@@ -5,14 +5,13 @@ import { useCallback, useEffect, useState } from "react";
 import { ServerLine } from "./ServerLine";
 import { HIDDEN, claimBlocked } from "../shell/rc";
 import { View } from "react-native";
-import { Avatar, Banner, Button, Card, Chip, Divider, EmptyState, Field, PasswordField, Row, Segmented, Text, markRef, showToast, ErrorState, LoadingState } from "@vyre/ui";
+import { Avatar, Banner, Button, Card, Chip, Divider, EmptyState, PasswordField, Row, Segmented, Text, markRef, showToast, ErrorState, LoadingState } from "@vyre/ui";
 import { AboutCard } from "./AboutCard";
-import { AssistantLookCard } from "./AssistantLookCard";
 import { Group, Page } from "../places/Frame";
 import { GithubCard } from "./GithubCard";
-import { contacts, codeOf, displayNameOk, devices, entryLine, entryTitle, hasCode, identityLine, READ_ONLY_LINE, removable, sealedFields, approvalsLine, type Entry, type Identity, type TypeDef } from "./account-model";
+import { contacts, codeOf, devices, entryLine, entryTitle, hasCode, READ_ONLY_LINE, removable, sealedFields, approvalsLine, type Entry, type Identity, type TypeDef } from "./account-model";
 import { worksLine, type Agent } from "./agents-model";
-import { agentsList, entries as loadEntries, identity as loadIdentity, canSetName, chatSetupProblem, listingProblem, needsPasswordForCode, removeEntry, retryChatSetup, retryListing, replaceCode, setDisplayName, types as loadTypes } from "./real";
+import { agentsList, entries as loadEntries, identity as loadIdentity, chatSetupProblem, listingProblem, needsPasswordForCode, removeEntry, retryChatSetup, retryListing, replaceCode, types as loadTypes } from "./real";
 import { listingLine } from "./account-read.js";
 import { useUpdate } from "../../src/state/update";
 import { aboutButton, aboutLine, appliedLine, askLine } from "./update-model.js";
@@ -22,14 +21,16 @@ import { lockChanged, readLockMinutes, writeLockMinutes } from "../../src/shell/
 import { lockIdentity } from "../unlock/real.js";
 import { callT } from "../../src/real/call-tool";
 import { openExternal } from "../../src/shell/open-external";
+import { useKept } from "../../src/state/kept";
 import { LabsSwitch } from "./labs";
 
 const say = (e: unknown, f = "That did not work.") => (e instanceof Error ? e.message : f);
 
 export function RealAccount() {
-  const [id, setId] = useState<Identity | null>(null);
-  const [es, setEs] = useState<Entry[] | null>(null);
-  const [err, setErr] = useState("");
+  const kept = useKept<{ id: Identity; es: Entry[] }>("account", async () => { const [id, es] = await Promise.all([loadIdentity(), loadEntries().catch(() => [] as Entry[])]); return { id, es }; }, "Account did not answer.");
+  const id = kept.data?.id ?? null;
+  const es = kept.data?.es ?? null;
+  const err = kept.err;
   const [fresh, setFresh] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [pw, setPw] = useState("");
@@ -38,13 +39,11 @@ export function RealAccount() {
   const [listingBusy, setListingBusy] = useState(false);
   const [chatBusy, setChatBusy] = useState(false);
   const tryChat = () => { setChatBusy(true); void retryChatSetup().then((p) => { setChatProblem(p); showToast(p ? "Private chats are still not set up." : "This computer's chat key is updated."); load(); }).catch((e) => { const m = say(e); setChatProblem(m); showToast(m); }).finally(() => setChatBusy(false)); };
-  const [editing, setEditing] = useState(false);
-  const [nameDraft, setNameDraft] = useState("");
   const [autoLock, setAutoLock] = useState("15");
   useEffect(() => { void readLockMinutes().then((m) => setAutoLock(String(m))); }, []);
   const chooseLock = (v: string) => { setAutoLock(v); void writeLockMinutes(v); };
   const lockNow = () => { void lockIdentity().then((r) => { if (r.ok) lockChanged(); else showToast(r.message); }); };
-  const load = useCallback(() => { setErr(""); loadIdentity().then(setId).catch((e) => setErr(say(e, "Account did not answer."))); loadEntries().then(setEs).catch(() => setEs([])); void chatSetupProblem().then(setChatProblem).catch(() => {}); void listingProblem().then(setListing).catch(() => {}); }, []);
+  const load = useCallback(() => { kept.reload(); void chatSetupProblem().then(setChatProblem).catch(() => {}); void listingProblem().then(setListing).catch(() => {}); }, [kept.reload]);
   useEffect(load, [load]);
   const newCode = () => { setBusy(true); replaceCode(pw).then((r) => { const c = codeOf(r); setPw(""); if (c) setFresh(c); else showToast("A new code was made, but Vyre did not return it."); load(); }).catch((e) => showToast(say(e))).finally(() => setBusy(false)); };
   const remove = (e: Entry) => removeEntry(e.eid).then(() => { showToast(`${entryTitle(e)} is off your list.`); load(); }).catch((x) => showToast(say(x)));
@@ -52,28 +51,13 @@ export function RealAccount() {
   const ways = es ? devices(es) : [];
   const cons = es ? contacts(es) : [];
   return (
-    <Page title="Account and recovery" back="/u/settings">
+    <Page title="Sign-in and recovery" back="/u/settings">
       {err ? <Card flush><ErrorState title="Account did not load" reason={err} retry={load} /></Card> : null}
-      {chatProblem ? <Banner icon="refresh"><View className="gap-s2"><Text tone="warn">{`This computer could not finish setting up private chats: ${chatProblem}.`}</Text><View className="self-start"><Button size="sm" label={chatBusy ? "Trying" : "Try again"} disabled={chatBusy} onPress={tryChat} /></View></View></Banner> : null}
+      {chatProblem ? <Banner icon="refresh"><View className="flex-row flex-wrap items-center gap-s3"><View className="min-w-0 flex-1 gap-s1"><Text>Private chats are not finished setting up on this computer.</Text><Text size="caption" tone="label">{chatProblem}</Text></View><Button size="sm" kind="primary" label={chatBusy ? "Fixing" : "Fix it"} disabled={chatBusy} onPress={tryChat} /></View></Banner> : null}
       {listing ? <Banner icon="refresh"><View className="gap-s2"><Text tone="warn">{listingLine(listing)}</Text><View className="self-start"><Button size="sm" label={listingBusy ? "Trying" : "Retry"} disabled={listingBusy} onPress={() => { setListingBusy(true); void retryListing().then((p) => { setListing(p); if (!p) showToast("Your server is on your Space's address. It goes live within a few minutes."); }).catch((e) => setListing(say(e))).finally(() => setListingBusy(false)); }} /></View></View></Banner> : null}
-      {id?.exists ? (
-        <Card className="gap-s2">
-          <Row lead={<Avatar of={markRef("person", id.label || id.name || "you")} size={40} />} title={id.label || id.name || "You"} sub={identityLine(id)} className="px-0"
-            end={canSetName() && !editing ? <Button kind="ghost" size="sm" icon="edit" label="Change name" onPress={() => { setNameDraft(id.label || ""); setEditing(true); }} /> : undefined} />
-          {editing ? (
-            <View className="gap-s2">
-              <Field label="Your name" value={nameDraft} onChangeText={setNameDraft} help="One line of up to 60 characters. Your username stays the same." />
-              <View className="flex-row gap-s2">
-                <Button kind="primary" size="sm" label="Save" disabled={!displayNameOk(nameDraft)} onPress={() => void setDisplayName(nameDraft.trim()).then(() => { setEditing(false); load(); }).catch((e) => showToast(say(e)))} />
-                <Button kind="ghost" size="sm" label="Cancel" onPress={() => setEditing(false)} />
-              </View>
-            </View>
-          ) : null}
-        </Card>
-      ) : null}
+      {id?.exists ? <Card><Row lead={<Avatar of={markRef("person", id.name || "you")} size={40} />} title={id.name || "Your username"} sub="Your username and password are the same everywhere." className="px-0" /></Card> : null}
       {id?.readOnly ? <Banner><Text>{READ_ONLY_LINE}</Text></Banner> : null}
       {id && !id.exists ? <Card><EmptyState title={claimBlocked() ? HIDDEN.claimTitle : "No Vyre name on this device yet"} body={claimBlocked() ? HIDDEN.claimBody : "Choose your Vyre name during setup."} /></Card> : null}
-      {id?.exists ? <AssistantLookCard person={id.label || id.name || "You"} /> : null}
       {es ? (
         <>
           <Group title="Ways in" note="Any one signs you in. Any one can add or remove the others.">
@@ -118,12 +102,12 @@ export function RealAccount() {
 }
 
 export function RealSeeing() {
-  const [list, setList] = useState<Agent[] | null>(null);
-  const [err, setErr] = useState("");
-  useEffect(() => { agentsList().then(setList).catch((e) => setErr(say(e, "Agents did not answer."))); }, []);
+  const k = useKept<Agent[]>("agents", agentsList as () => Promise<Agent[]>, "Agents did not answer.");
+  const list = k.data;
+  const err = k.err;
   return (
     <Page title="What my agents can see" back="/u/settings">
-      {err ? <Card flush><ErrorState title="Agents did not load" reason={err} /></Card> : null}
+      {err ? <Card flush><ErrorState title="Agents did not load" reason={err} retry={k.reload} /></Card> : null}
       {list && !list.length ? <Card><EmptyState title="No agents yet" body="Your agent and any agents you make appear here, with the projects each works in." /></Card> : null}
       {list && list.length ? <Card flush>{list.map((a, i) => <View key={a.name}>{i ? <Divider /> : null}<Row lead={<Avatar of={markRef("agent", a.name, undefined, (a as { look?: string }).look || undefined)} />} title={a.name} sub={`Works in: ${worksLine(a.projects)}`} /></View>)}</Card> : null}
       <Banner>Sealed fields stay hidden from every agent. That includes yours and anyone acting for you. A space's admins decide what is sealed.</Banner>
@@ -132,16 +116,16 @@ export function RealSeeing() {
 }
 
 export function RealPrivacy() {
-  const [ts, setTs] = useState<TypeDef[] | null>(null);
-  const [err, setErr] = useState("");
+  const kt = useKept<TypeDef[]>("types", loadTypes, "Types did not answer.");
+  const ts = kt.data;
+  const err = kt.err;
   const [approvals, setApprovals] = useState<string | null>(null);
-  useEffect(() => { loadTypes().then(setTs).catch((e) => setErr(say(e, "Types did not answer."))); }, []);
   useEffect(() => { callT("presence.keys", {}).then((r) => setApprovals(approvalsLine(r.data))).catch(() => setApprovals(null)); }, []);
   const sealed = ts ? sealedFields(ts) : [];
   return (
     <Page title="Privacy and sealing" back="/u/settings">
       {approvals ? <Banner>{approvals}</Banner> : null}
-      {err ? <Card flush><ErrorState title="Types did not load" reason={err} /></Card> : null}
+      {err ? <Card flush><ErrorState title="Types did not load" reason={err} retry={kt.reload} /></Card> : null}
       {ts ? (
         <Group title="Sealed fields">
           <Card flush>

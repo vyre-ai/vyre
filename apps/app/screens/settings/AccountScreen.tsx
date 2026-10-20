@@ -7,7 +7,6 @@ import { FaceIdSheet, type FaceAsk } from "../shell/FaceIdSheet";
 import { loadAccount } from "./data";
 import { useSettings } from "./state";
 import { RealAccount } from "./RealAccount";
-import { AssistantLookCard } from "./AssistantLookCard";
 
 const A = loadAccount();
 
@@ -16,9 +15,8 @@ function SampleAccountScreen() {
   const { newCode, setNewCode, pin, setPin } = useSettings();
   const [face, setFace] = useState<FaceAsk | null>(null);
   return (
-    <Page title="Account and recovery" back="/u/settings">
-      <Card><Row lead={<Avatar of={markRef("person", A.name)} size={40} />} title={A.name} sub={`${A.vyreName} · ${A.line}`} className="px-0" /></Card>
-      <AssistantLookCard person={A.name} />
+    <Page title="Sign-in and recovery" back="/u/settings">
+      <Card><Row lead={<Avatar of={markRef("person", A.name)} size={40} />} title={A.vyreName} sub={A.line} className="px-0" /></Card>
       <Group title="Ways in" note="Any one signs you in. Any one can add or remove the others.">
         <Card flush>
           {A.ways.map((w, i) => <View key={w.id}>{i ? <Divider /> : null}<Row lead={<Avatar of={markRef("device", w.name)} />} title={w.name} sub={w.line} end={w.here ? <Chip tone="ok">This phone</Chip> : undefined} /></View>)}

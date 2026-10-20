@@ -7,7 +7,9 @@ export function serverLine(o) {
   if (o.pairings.length < 2) return "";
   const nameOf = (/** @type {string | null | undefined} */ box) => {
     const n = o.pairings.findIndex((p) => p.box === box);
-    return n < 0 ? "" : (o.pairings[n].name || "").trim() || `Server ${n + 1}`;
+    const name = (o.pairings[n]?.name || "").trim();
+    // a placeholder name ("Vyre box") is not a name a person gave
+    return n < 0 ? "" : name && !/^vyre( box| server)?$/i.test(name) ? name : `Server ${n + 1}`;
   };
   const at = o.spaceServers[o.showing];
   if (at && nameOf(at)) return `This is for ${nameOf(at)}.`;

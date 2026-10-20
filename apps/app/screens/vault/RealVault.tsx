@@ -1,5 +1,6 @@
 // Vault from the real vyred. A list of the box's own items (names, kinds, who has them, how they were used), and Reveal per field, which is a
 // person's own call: the box asks for presence, the app's person session answers it, and the value lives in this screen's state for 30 seconds.
+import { useKept } from "../../src/state/kept";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Platform, View } from "react-native";
 import { Banner, Button, Card, Chip, Divider, EmptyState, Field, IconTile, Menu, Row, SealedMask, Segmented, Sheet, Tabs, Text, showToast, ErrorState, LoadingState, useRecordsWorld } from "@vyre/ui";
@@ -37,17 +38,19 @@ export default function RealVault() {
   const records = useRecordsWorld();
   const held = records.data ? heldFields(records.data.types, records.data.byType) : [];
   const [heldShown, setHeldShown] = useState<{ id: string; value: string } | null>(null);
-  const [rows, setRows] = useState<ListRow[] | null>(null);
-  const [locked, setLocked] = useState(false);
-  const [err, setErr] = useState("");
+  // the list's names and kinds (never a value) come from this Space's kept copy at once, and the fresh answer replaces it
+  const vl = useKept<{ items: ListRow[]; locked: boolean; personal: string }>("vault-list", listReal, "The vault did not answer.");
+  const rows = vl.data?.items ?? null;
+  const err = vl.err;
+  const personal = vl.data?.personal ?? "none";
   const [sel, setSel] = useState<string | null>(null);
   const [pushed, setPushed] = useState(false);
-  const [personal, setPersonal] = useState("none");
   const [pw, setPw] = useState("");
   const [pwProblem, setPwProblem] = useState("");
   const [unlock, setUnlock] = useState<"passphrase" | "none">("none");
   // a save that went through says the vault is open, whatever the list said before it
   const savedOpen = useRef(false);
+  const locked = Boolean(vl.data?.locked) && !savedOpen.current;
   const [fieldErr, setFieldErr] = useState<Partial<Record<"name" | "username" | "secret" | "url", string>>>({});
   const [pass, setPass] = useState("");
   const [adding, setAdding] = useState<NewItem | null>(null);
@@ -65,12 +68,9 @@ export default function RealVault() {
   const hide = useCallback(() => { if (timer.current) clearTimeout(timer.current); timer.current = null; setShown(null); setHeldShown(null); }, []);
   useEffect(() => hide, [hide]);
 
-  const load = useCallback(() => {
-    setErr("");
-    listReal().then((r) => { setRows(r.items); setLocked(r.locked && !savedOpen.current); setPersonal(r.personal); }).catch((e) => setErr(say(e, "The vault did not answer.")));
-    stateReal().then((s) => { if (s) setUnlock(s.unlock); }).catch(() => {});
-  }, []);
-  useEffect(load, [load]);
+  const readState = useCallback(() => { stateReal().then((s) => { if (s) setUnlock(s.unlock); }).catch(() => {}); }, []);
+  const load = useCallback(() => { vl.reload(); readState(); }, [vl.reload, readState]);
+  useEffect(readState, [readState]);
   useEffect(() => { if (section === "items" && !locked) vaultMore.health().then((h) => setHealth(healthSummary(h))).catch(() => setHealth(null)); }, [section, locked, rows]);
 
   const [query, setQuery] = useState("");
@@ -123,7 +123,7 @@ export default function RealVault() {
     const p = putInput(adding);
     if ("error" in p) { setProblem(p.error); return; }
     setBusy(true); setProblem(""); setFieldErr({});
-    putReal(p.input).then(() => { savedOpen.current = true; setLocked(false); showToast(`${adding.name.trim()} is in the vault.`); setAdding(null); load(); }).catch((e) => setProblem(putRefusal((e as { code?: string }).code, say(e, "")))).finally(() => setBusy(false));
+    putReal(p.input).then(() => { savedOpen.current = true; showToast(`${adding.name.trim()} is in the vault.`); setAdding(null); load(); }).catch((e) => setProblem(putRefusal((e as { code?: string }).code, say(e, "")))).finally(() => setBusy(false));
   };
 
   /** Open an item from another page (Watchtower): the Items section, on that item's tab. */
@@ -225,7 +225,7 @@ export default function RealVault() {
         </>}
       </View></Card> : null}
       {err ? <Card flush><EmptyState title="The vault did not answer" body={err} action={{ label: "Try again", onPress: load }} /></Card> : null}
-      {!err && rows === null ? <Card flush><EmptyState title="Loading" body="Asking your Vyre." /></Card> : null}
+      {!err && rows === null ? <Card flush><LoadingState rows={3} /></Card> : null}
       {!err && rows && locked ? (
         unlock === "passphrase" ? (
           <Card><View className="gap-s3">
@@ -239,7 +239,7 @@ export default function RealVault() {
       ) : null}
       {tab === "Held" ? (
         records.error && !records.data ? <Card flush><EmptyState title="Records did not load" body={records.error.message} action={{ label: "Try again", onPress: () => void records.reload() }} /></Card>
-        : records.loading && !records.data ? <Card flush><EmptyState title="Loading" body="Asking your Vyre." /></Card>
+        : records.loading && !records.data ? <Card flush><LoadingState rows={3} /></Card>
         : <><Text size="caption" tone="label">Some fields on a record, such as a tax ID, are kept here instead. The record shows that one is on file, and an agent sees the same, never the value.</Text><Card flush>
             {held.length ? heldByRecord(held).map((g, gi) => (
               <View key={g.urn}>{gi ? <Divider /> : null}

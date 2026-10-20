@@ -31,6 +31,10 @@ export const deviceKind = (k) => (k === "app" || k === "phone" ? "phone" : k ===
 
 const ALLOWS = { phone: "Does everything you can, until you remove it.", computer: "Opens your projects and your vault, until you remove it.", server: "Runs your spaces and keeps working when your computer sleeps." };
 
+const COMPUTER_NAME = /\b(mac|macbook|imac|windows|linux|desktop|laptop|computer)\b/i;
+/** A device's name with "Mac" said as a computer: "Vyre on Mac" is "Vyre on a computer". @param {string} name */
+export const computerWords = (name) => name.replace(/\bon (a |the )?Mac\b/i, "on a computer").replace(/\bMac\b/g, "computer");
+
 /**
  * relay.devices.list rows as the screens' device rows. `storage` is "software" or "hardware" when the box reports where the key
  * was made; until it does, no software line shows (nothing is invented).
@@ -41,9 +45,10 @@ export function deviceRows(data, now = Date.now()) {
   const list = /** @type {any} */ (data)?.devices;
   if (!Array.isArray(list)) return [];
   return list.filter((d) => d && typeof d.id === "string" && typeof d.name === "string").map((d) => {
-    const device = deviceKind(String(d.kind));
+    // the Mac app reports the same kind as a phone's app: its own name says it is a computer
+    const device = COMPUTER_NAME.test(d.name) ? "computer" : deviceKind(String(d.kind));
     return {
-      id: d.id, kind: /** @type {const} */ ("Device"), device, family: /** @type {const} */ ("device"), name: d.name, allows: ALLOWS[device],
+      id: d.id, kind: /** @type {const} */ ("Device"), device, family: /** @type {const} */ ("device"), name: computerWords(d.name), allows: ALLOWS[device],
       since: dayOf(d.pairedAt), last: agoOf(d.lastSeen, now, d.online === true),
       ...(d.storage === "software" ? { software: true } : {}),
     };

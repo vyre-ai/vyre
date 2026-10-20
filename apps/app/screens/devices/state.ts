@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { MOCK, said, tool } from "../../src/real/box";
 import { loadAccess, loadDeviceSpaces, loadLend, SPACE_NAMES, type AccessItem } from "./data";
+import { within } from "../../src/state/kept-model.js";
 import { deviceRows, deviceSpaces, spaceNames } from "./real.js";
 
 type S = {
@@ -35,7 +36,7 @@ export const useDevices = create<S>((set, get) => ({
     if (MOCK) return;
     set({ loading: true });
     try {
-      const [devices, spaces] = await Promise.all([tool("relay.devices.list"), tool("spaces.list").catch(() => [])]);
+      const [devices, spaces] = await within(Promise.all([tool("relay.devices.list"), tool("spaces.list").catch(() => [])]));
       const items = deviceRows(devices);
       const names = spaceNames(spaces);
       set({ items, spaceNames: names, devSpaces: deviceSpaces(items.map((i) => i.id), names), error: null });

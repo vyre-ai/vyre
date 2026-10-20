@@ -38,12 +38,12 @@ test("three autonomy levels and five budget steps", () => {
   assert.equal(BUDGET_STEPS.length, 5);
 });
 
-test("settings is You, the Space, Devices and Vyre with nothing behind an Advanced switch, and the space group carries the space name", () => {
+test("settings is your account in the Space, the Space and Everywhere with nothing behind an Advanced switch, and the space group carries the space name", () => {
   const g = settingsGroups("Juniper Studio");
-  assert.deepEqual(g.map((x) => x.title), ["You", "Juniper Studio", "Devices", "Vyre"]);
+  assert.deepEqual(g.map((x) => x.title), ["Your account in Juniper Studio", "Juniper Studio", "Everywhere"]);
   assert.ok(g.every((x) => !("advanced" in x)), "no Advanced group: the owner found half-built pages there (owner, 20 Oct)");
   assert.ok(g.flatMap((x) => x.rows).every((r) => r[2].startsWith("/u/")));
-  assert.deepEqual(g.map((x) => x.rows.length), [5, 6, 2, 2], "a short list an owner reads in one look");
+  assert.deepEqual(g.map((x) => x.rows.length), [5, 8, 3], "a short list an owner reads in one look");
 });
 
 test("Skills and plugins is one row, opening the library with its own Personal and Space switch", () => {
@@ -90,4 +90,11 @@ test("every place in Settings has its own icon, and each one is in the family", 
   assert.equal(new Set(icons).size, icons.length, `two places share an icon: ${icons.filter((x, i) => icons.indexOf(x) !== i).join(", ")}`);
   const family = fs.readFileSync(new URL("../../src/ui/icons.generated.ts", import.meta.url), "utf8");
   for (const icon of icons) assert.ok(family.includes(`"${icon}"`), `${icon} is not an icon of the family`);
+});
+
+test("only the sign-in and the devices are the same in every Space; every other page is the Space's", () => {
+  const g = settingsGroups("Juniper Studio");
+  const everywhere = g.find((x) => x.title === "Everywhere").rows.map((r) => r[2]);
+  assert.ok(everywhere.includes("/u/settings/account") && everywhere.includes("/u/settings/devices"));
+  for (const href of ["/u/settings/ai", "/u/settings/notifications", "/u/appearance", "/u/sidebar"]) assert.ok(!everywhere.includes(href), `${href} is per Space`);
 });

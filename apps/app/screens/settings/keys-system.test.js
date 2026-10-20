@@ -95,7 +95,7 @@ test("system: the machine lines, the hosted app, and a name only when the box na
 test("system: history says what is indexed and why search by meaning is off", { skip: !strip }, async () => {
   const m = await import("./system-model.ts");
   const v = m.recallView({ sessions: 1, turns: 2, folders: ["/a"], last: { at: 1000, added: 3, skipped: 4 }, vectors: { on: false, why: "the model is not installed" }, indexing: true }, 3600_000 + 1000);
-  assert.deepEqual(v.lines, [["Indexed", "1 session, 2 turns"], ["Folders", "/a"], ["Last pass", "1 hour ago: 3 added, 4 unchanged"], ["Search by meaning", "Off. The model is not installed."]]);
+  assert.deepEqual(v.lines, [["Indexed", "1 session, 2 turns"], ["Folders", "1 folder read"], ["Last pass", "1 hour ago: 3 added, 4 unchanged"], ["Search by meaning", "Off. The model is not installed."]]);
   assert.equal(v.indexing, true);
   assert.equal(m.recallView({}).lines[2][1], "Not yet");
 });
