@@ -1,5 +1,5 @@
 // @ts-check
-// seal — passphrase encryption for a whole box backup (PLAN.md R8, plans/launch.md's Review
+// seal - passphrase encryption for a whole box backup (PLAN.md R8, plans/launch.md's Review
 // response BLOCKER 3): "export leaks a plaintext-equivalent credential bundle" is fixed by never
 // writing an unencrypted backup file at all.
 //

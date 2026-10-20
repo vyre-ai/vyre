@@ -35,7 +35,7 @@ export function within(p, folders) {
  * user's own surfaces, a module, or a bare session. */
 export const agentOf = caller => AGENT_RE.exec(String(caller || ""))?.[1] || null;
 
-/** @deprecated use chainPerson — kept for callers that still read a boolean. @param {any} ctx @param {any} meta */
+/** @deprecated use chainPerson - kept for callers that still read a boolean. @param {any} ctx @param {any} meta */
 export async function personOf(ctx, meta) {
   const id = await chainPerson(ctx.kernel, meta);
   if (id === null && meta && ctx.kernel) return false;

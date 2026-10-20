@@ -1,5 +1,5 @@
 // @ts-check
-// peers — the seams the move engine (ADR 0042, federation's core/move/index.js) needs to name
+// peers - the seams the move engine (ADR 0042, federation's core/move/index.js) needs to name
 // and reach one of the owner's own OTHER nodes, source-initiated, not the Mac-to-box shape
 // core/link/mac.js and core/link/box.js already cover. Built to federation's own contract
 // (core/move/index.js's header comment, sent to tailnet directly), narrowed 28 Sep after the
@@ -9,19 +9,19 @@
 //
 // Curried factories: call `ownedNode(ctx)` / `openPeer(ctx)` / `selfIdentity(ctx)` ONCE, at
 // core/move's own module start, and store what each returns in `seams.set(ctx.paths.root, {...})`
-// — the returned functions themselves are what federation's own contract signatures
+// - the returned functions themselves are what federation's own contract signatures
 // (`ownedNode(id)`, `openPeer(node)`, `selfIdentity()`) describe, taking no `ctx` of their own.
 //
 //   ownedNode(ctx) -> (id) -> { stableId, staticKey, name } | null
 //     Is `id` one of the owner's own paired nodes? Answered from `relay_devices` (relay.devices.
-//     node, module-only), ADR 0026's own Noise identity for a paired device — never re-derived
+//     node, module-only), ADR 0026's own Noise identity for a paired device - never re-derived
 //     from a live network lookup, and never `link_peers` (a different, older Mac<->box pairing
 //     mechanism with its own key exchange, not this one). This is the authoritative table
 //     federation asked for. `name` is the device's own paired name (already sanitised at pairing
 //     time, core/relay/index.js's `admit()`), for a "Receive a move from <name>" line.
 //   openPeer(ctx) -> (node) -> { call(tool, input) }
 //     A live, source-initiated connection to `node` (the shape ownedNode returned), carried over
-//     the owner's own device link — never the relay's bridge. Needs the target device to have ALSO reported its node
+//     the owner's own device link - never the relay's bridge. Needs the target device to have ALSO reported its node
 //     (relay.devices.path's node_id/node_name);
 //     refuses with `not_reachable` when it has not, same as federation's own default seam.
 //   selfIdentity(ctx) -> () -> { nickname?: string }

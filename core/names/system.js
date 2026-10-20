@@ -1,5 +1,5 @@
 // @ts-check
-// system — installing vyred as a systemd service on a Linux box.
+// system - installing vyred as a systemd service on a Linux box.
 //
 // Planning is pure: `installPlan` and `uninstallPlan` turn what `detect` saw into a list of
 // steps, so every decision is testable on a Mac with no systemd. `apply` is the only thing that

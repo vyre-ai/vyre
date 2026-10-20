@@ -1,5 +1,5 @@
 // @ts-check
-// shared-browser: agent-browsers.md level 2 — one headless Chrome, one context per agent (via cdpmux).
+// shared-browser: agent-browsers.md level 2 - one headless Chrome, one context per agent (via cdpmux).
 //
 // Agents with computer: true reach the shared browser computer through membership (agents.uid as
 // agent_id), not a per-agent desktop checkout. computers.endpoint, helper, watch, takeover and
