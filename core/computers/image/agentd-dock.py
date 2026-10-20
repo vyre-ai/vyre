@@ -156,7 +156,7 @@ canvas.create_image(0, 0, image=panel, anchor="nw")
 pics = {name: {size: tk.PhotoImage(file=os.path.join(PICTURES, "%s-%d.png" % (PICTURE_OF[name], size))) for size in (REST, NEAR, UNDER)} for name in APPS}
 cx = [(BAR_W - SLOT * len(APPS)) // 2 + SLOT * i + SLOT // 2 for i in range(len(APPS))]
 items = [canvas.create_image(cx[i], BASE_Y, image=pics[n][REST], anchor="s") for i, n in enumerate(APPS)]
-dots = [canvas.create_oval(cx[i] - 2, BAR_H - 8, cx[i] + 2, BAR_H - 4, fill=INK, outline="", state="hidden") for i in range(len(APPS))]
+dots = [canvas.create_oval(cx[i] - 3, BAR_H - 9, cx[i] + 3, BAR_H - 3, fill=INK, outline="", state="hidden") for i in range(len(APPS))]
 
 SX = (root.winfo_screenwidth() - BAR_W) // 2
 SY = root.winfo_screenheight() - BAR_H - GAP
