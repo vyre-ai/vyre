@@ -194,9 +194,11 @@ export function createHost(o) {
   /** @param {KeptSpace[]} rows */
   const outRows = (rows) => rows.map((s) => ({ id: s.id, name: s.name, role: s.role, server: s.server }));
   /** Keep the new space and the server it paired with, and make it the current one. */
-  async function keepSpace(/** @type {Kept} */ k, /** @type {KeptSpace} */ row) {
+  async function keepSpace(/** @type {Kept} */ k0, /** @type {KeptSpace} */ row, select = true) {
+    // The record as it stands now: a step that took a while (the claim, the vault, the directory) must not write back the copy it started from, which may lack what was kept meanwhile.
+    const k = (await o.store.load()) || k0;
     const rows = (k.spaces || []).filter((s) => s.id !== row.id && s.name !== row.name);
-    await o.store.save({ ...k, spaces: [...rows, row], current: row.id });
+    await o.store.save({ ...k, spaces: [...rows, row], current: select ? row.id : k.current });
   }
 
 
@@ -404,12 +406,100 @@ export function createHost(o) {
     }
   }
 
+  const SPACE_LABEL = /^[a-z][a-z0-9-]{1,38}$/;
+  /** A bare Space name ("juniper" or "juniper.vyre.run") as its label, or "" when the text is a link or anything else. @param {string} text */
+  const bareLabel = (text) => { const t = String(text || "").trim().toLowerCase().replace(/\.vyre\.run$/, ""); return SPACE_LABEL.test(t) ? t : ""; };
+
+  /** Is this Space name, in the directory, a Space this identity owns? Its chain is read and checked, and one of its owners is this person. @param {string} label @param {any} k */
+  async function ownsOnDirectory(label, k) {
+    try {
+      const res = await f(`${base}/v1/ids/resolve?name=${encodeURIComponent(label)}`, { headers: { accept: "application/json" } });
+      if (!res.ok) return false;
+      /** @type {any} */ const body = await res.json().catch(() => null);
+      const d = body && body.data;
+      if (!d || d.kind !== "space" || !Array.isArray(d.ops)) return false;
+      const state = await C.verifyChain(d.ops, { now: o.now ? o.now() : Date.now(), ownerOps: async (/** @type {string} */ id) => (id === k.id ? k.ops : null) });
+      return state.kind === "space" && (state.entries || []).some((/** @type {any} */ e) => e.kind === "owner" && e.subject === k.id);
+    } catch { return false; }
+  }
+
+  /** The paired server whose name is this Space's (names.status), else the only pairing that holds no name. @param {string} label */
+  async function pairingOfName(label) {
+    if (!o.space) return null;
+    const p = /** @type {any} */ (await o.space.load());
+    if (!p || typeof p.pairings !== "function") return null;
+    /** @type {any[]} */ let list = [];
+    try { list = (await p.pairings()) || []; } catch { list = []; }
+    /** @type {any[]} */ const unnamed = [];
+    for (const it of list) {
+      if (!it || !it.box) continue;
+      /** @type {any} */ let st = null;
+      try { st = await p.call("names.status", {}, String(it.box)); } catch { st = null; }
+      const n = st && typeof st.name === "string" ? st.name.toLowerCase().replace(/\.vyre\.run$/, "") : "";
+      if (n === label) return { it, ports: p };
+      if (!n) unnamed.push(it);
+    }
+    return list.length === 1 && unnamed.length === 1 ? { it: unnamed[0], ports: p } : null;
+  }
+
+  /**
+   * A typed Space name that is a Space this identity owns: it is the owner's own, never "join as a member". Its server is the pairing this device already made; without one the person is told the next step.
+   * @param {string} text @param {any} k @returns {Promise<{ label: string, found: { it: any, ports: any } } | null>}
+   */
+  async function ownSpaceNamed(text, k) {
+    const label = bareLabel(text);
+    if (!label || !(await ownsOnDirectory(label, k))) return null;
+    const found = await pairingOfName(label);
+    if (!found) throw bad(`${label} is your own Space, and this app is not paired with its server. Pair it in Settings, Servers, or run its install line again from Make a new Space.`, "no_pairing");
+    return { label, found };
+  }
+
+  /** Add an owned Space back to the person's list with its pairing (the server this device already enrolled with). @param {string} label @param {{ it: any, ports: any }} found @param {boolean} select */
+  async function adoptOwned(label, found, select) {
+    const { it, ports } = found;
+    let id = "";
+    try {
+      const rows = await ports.call("spaces.list", {}, String(it.box));
+      const list = Array.isArray(rows) ? rows : rows && Array.isArray(rows.spaces) ? rows.spaces : [];
+      const hit = list.find((/** @type {any} */ r) => r && String(r.label || r.name || "").toLowerCase().replace(/\.vyre\.run$/, "") === label) || (list.length === 1 ? list[0] : null);
+      if (hit && /^spc_/.test(String(hit.id))) id = String(hit.id);
+    } catch { id = ""; }
+    const k = await o.store.load();
+    if (!k) return;
+    await keepSpace(k, { id: id || spaceKey("", label), name: label, role: "owner", server: `https://${label}.vyre.run`, paired: { box: String(it.box), route: String(it.route || ""), relay: String(it.relay || ""), name: String(it.name || "") } }, select);
+    trail(`owned Space ${label} added back to this app's list`);
+  }
+
+  /** The repair on unlock: a Space this identity owns in the directory, that this app's list lacks, and that a paired server says is its name, is added back (not selected). */
+  async function ensureOwned() {
+    try {
+      if (!o.space) return;
+      const k = await o.store.load();
+      if (!k) return;
+      const p = /** @type {any} */ (await o.space.load());
+      if (!p || typeof p.pairings !== "function") return;
+      const list = (await p.pairings()) || [];
+      for (const it of list) {
+        if (!it || !it.box) continue;
+        if ((k.spaces || []).some((s) => s && s.paired && s.paired.box === it.box)) continue;
+        /** @type {any} */ let st = null;
+        try { st = await p.call("names.status", {}, String(it.box)); } catch { st = null; }
+        const label = st && typeof st.name === "string" ? st.name.toLowerCase().replace(/\.vyre\.run$/, "") : "";
+        if (!SPACE_LABEL.test(label)) continue;
+        const row = (k.spaces || []).find((s) => s && s.name === label);
+        if (row && row.paired) continue;
+        if (!(await ownsOnDirectory(label, k))) continue;
+        await adoptOwned(label, { it, ports: p }, false);
+      }
+    } catch (e) { trail(`owned Space repair failed ${String(/** @type {any} */ (e) && /** @type {any} */ (e).code || "error")}`); }
+  }
+
   /** The repairs a loaded owner key runs in the background: private chats (ensureAgree), then the Space's server listing (ensureServers). One run at a time; nothing waits on it. */
   let healing = /** @type {Promise<void> | null} */ (null);
   /** @param {Uint8Array} seed @param {{ ask?: boolean }} [opt] */
   function heal(seed, opt = {}) {
     if (healing) return healing;
-    healing = (async () => { try { await ensureAgree(seed); await ensureServers(seed, opt); } finally { healing = null; } })();
+    healing = (async () => { try { await ensureAgree(seed); await ensureOwned(); await ensureServers(seed, opt); } finally { healing = null; } })();
     return healing;
   }
 
@@ -466,6 +556,8 @@ export function createHost(o) {
           await keepSpace(k, { id: w.space || spaceKey("", w.name), name: w.name, role: "owner", server: `https://${w.name}.vyre.run`, paired: p });
           w.saved = true;
           madeHere = String(p.box);
+          // The new Space is listed with the directory now (the owner's signed server-add), not at the next ten-minute repair.
+          if (held) void ensureServers(held, { force: true });
         }
         const row = ((await o.store.load())?.spaces || []).find((s) => s.name === w.name);
         return { ...base, online: true, expired: false, ...(w.vaultPending ? { vaultPending: true } : {}), ...(o.softwareKeyHere ? { noFingerprintYet: true } : {}), space: row ? row.id : spaceKey("", w.name), server: { hostname, address: `https://${w.name}.vyre.run`, space: w.name, name: hostname, route: (p && p.route) || "", box: (p && p.box) || "" }, canRemove: true };
@@ -820,6 +912,8 @@ export function createHost(o) {
       if (!ports.join) throw unsupported();
       const text = String(link || "").trim();
       if (!text) throw bad("That link does not open a space. Ask for a new invite.");
+      const own = await ownSpaceNamed(text, k);
+      if (own) return { link: text, role: "owner", space: own.label, ttlDays: null };
       const inv = await ports.join(await joinLinkOf(text), { id: k.id, name: k.username, pin: k.pin, key });
       const was = invites.get(text);
       if (was) was.close();
@@ -847,6 +941,13 @@ export function createHost(o) {
       if (!ports.join) throw unsupported();
       const text = String(link || "").trim();
       if (!text) throw bad("That link does not open a space. Ask for a new invite.");
+      const mine = await ownSpaceNamed(text, k);
+      if (mine) {
+        await adoptOwned(mine.label, mine.found, true);
+        if (held) await ensureServers(held, { force: true });
+        const kept = ((await o.store.load())?.spaces || []).find((s) => s.name === mine.label);
+        return { joined: true, space: mine.label, id: kept ? kept.id : "", role: "owner", server: `https://${mine.label}.vyre.run`, listed: true };
+      }
       const inv = invites.get(text) || await ports.join(await joinLinkOf(text), { id: k.id, name: k.username, pin: k.pin, key });
       invites.delete(text);
       /** @type {any} */ let r;

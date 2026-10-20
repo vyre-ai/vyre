@@ -22,7 +22,7 @@ type Action = { label: string; onPress: () => void; disabled?: boolean; loading?
  * On the web and in the Mac app the step is a keyboard form (lib/form-keys.js): each new step puts the caret in its first empty field (or on the primary when it has no field),
  * Enter goes to the next field and, in the last one, presses the primary.
  */
-export function FlowStep({ mark = "static", hero, steps, title, lead, failure, onBack, primary, secondary, enterSubmits = true, children }: {
+export function FlowStep({ mark = "static", hero, steps, title, lead, failure, onBack, backLabel = "Back", primary, secondary, enterSubmits = true, children }: {
   /** The flow's steps and the current one (index). The strip is left out when a screen is not a step (the first one). */
   /** `phase` names the phase (Identity, Space, Ready). The default counts "Step 2 of 6". */
   steps?: { labels: string[]; current: number; kind?: "count" | "phase" };
@@ -35,6 +35,8 @@ export function FlowStep({ mark = "static", hero, steps, title, lead, failure, o
   /** What went wrong, in words, with the way forward. Drawn above the actions as an error Banner. */
   failure?: string;
   onBack?: () => void;
+  /** What the back button says: "Cancel" on the first step of a flow opened from the app, which leaves the flow. */
+  backLabel?: string;
   primary?: Action;
   secondary?: Action;
   /** false when the step's body has its own action for its fields (an Add button): Enter in the last field then leaves the primary alone. */
@@ -51,6 +53,15 @@ export function FlowStep({ mark = "static", hero, steps, title, lead, failure, o
     if (!web) return;
     return wireFormKeys(form.current, () => { const { primary: p, enterSubmits: on } = latest.current; if (on && p && !p.disabled && !p.loading) p.onPress(); });
   }, [web]);
+  // Escape leaves the step the same way Back does (on the web and in the Mac app).
+  const backRef = useRef(onBack);
+  backRef.current = onBack;
+  useEffect(() => {
+    if (!web || typeof document === "undefined") return;
+    const key = (e: KeyboardEvent) => { if (e.key === "Escape" && !e.defaultPrevented && backRef.current) { e.preventDefault(); backRef.current(); } };
+    document.addEventListener("keydown", key);
+    return () => document.removeEventListener("keydown", key);
+  }, [web]);
   // The same FlowStep draws one step after another, so a new title is a new step.
   useEffect(() => {
     if (web) focusFirst(form.current, latest.current.primary ? (actions.current as unknown as HTMLElement | null)?.querySelector?.('[role="button"]') : null);
@@ -63,7 +74,7 @@ export function FlowStep({ mark = "static", hero, steps, title, lead, failure, o
       <View ref={form} id="onboard-content" className="w-full max-w-read gap-s5" style={glass}>
         <View className="min-h-control flex-row items-center justify-between">
           {hero ? <View /> : <VyreMark lockup size="sm" state={mark} />}
-          {onBack ? <Button kind="ghost" size="sm" icon="back" label="Back" onPress={onBack} /> : null}
+          {onBack ? <Button kind="ghost" size="sm" icon="back" label={backLabel} onPress={onBack} /> : null}
         </View>
         {hero ? <View className="items-center py-s4"><VyreMark size="lg" state={mark} /></View> : null}
         {steps ? (

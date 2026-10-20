@@ -2,6 +2,13 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## 0.6.4
+
+- fix(app): a Space made with Make a new Space is in the switcher, selected, and listed on the directory at once. The switcher read the Spaces this app made from the server's own list, not from the app's host, so a Space kept only by the host never showed (apps/app/screens/shell/real.ts). The last step also wrote back the copy of the record it started from, and now lists the server (the owner's signed server-add) right after the Space is kept instead of at the next repair (host-core.js keepSpace, pollSpaceOnce).
+- feat(app): on unlock, a Space the person owns in the directory that the app's list lacks, and that a paired server says is its name, is added back with its pairing and listed (host-core.js ensureOwned). It is not selected.
+- fix(app): typing the name of a Space you own ("freeman" or freeman.vyre.run) in Join a Space adds it as your own Space (owner, with the server this app already paired with, selected and listed), not a member join. A Space you own with no pairing says what to do next.
+- fix(app): Make a new Space and Join a Space opened from the Space menu have Cancel on the first step and Back on every other; Escape does the same (FlowStep).
+
 ## 0.6.3
 
 - feat(vault): an item's page has Used with, the hosts its secrets may go to (read with vault.use.find, changed with vault.use.set; the hosts written on the item stay, the ones you allow can be removed), next to its plain fields and Allowed in scripts. No second store. Merged the train's placeholder review fixes with the simple Vault; the four reds of run 39350707365 fixed in place: vault.templates and vault.template.suggest in the presence list, hooks.flow tools in the door's owner list, the web-address bind in kernel/flows/runner.js back to its size, the web-address approver check reads roleAtLeast, and read-tools.generated.js named as a tool-name list.
