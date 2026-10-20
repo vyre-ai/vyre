@@ -236,7 +236,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
    * The kernel's append of a person's message, made once per (chat, client message id): a send that gave up on a slow append (slow_step) leaves it running, and the person's Retry (the same id) is
    * handed that same append, landed or still on its way, instead of a second one, so the kernel holds the message once. Forgotten when the chat's log has the message (a repeat then answers from
    * the log), when the append failed (a retry appends anew), or KEEP_APPEND_MS after it landed. One that has not answered in STALE_APPEND_MS is taken as lost: a retry then appends anew.
-   * @type {Map<string, { p: Promise<any>, at: number, landed: boolean }>}
+   * Kept without a timer of its own (the stream's timers are the replies' waits): what is old is dropped when the next append is made. @type {Map<string, { p: Promise<any>, at: number, landed: number }>}
    */
   const kernelAppends = new Map();
   const KEEP_APPEND_MS = 10 * 60_000;
@@ -245,12 +245,13 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
   const appendOnce = (grp, message, token, body, kind) => {
     const key = `${grp}|${message}`;
     const had = kernelAppends.get(key);
-    if (had && (had.landed || Date.now() - had.at < STALE_APPEND_MS)) return had.p;
-    const e = { p: Promise.resolve().then(() => append(token, body, kind)), at: Date.now(), landed: false };
-    if (!had && kernelAppends.size >= 1000) kernelAppends.delete(/** @type {string} */ (kernelAppends.keys().next().value));
+    const t = Date.now();
+    if (had && (had.landed ? t - had.landed < KEEP_APPEND_MS : t - had.at < STALE_APPEND_MS)) return had.p;
+    for (const [k, x] of kernelAppends) if (x.landed ? t - x.landed >= KEEP_APPEND_MS : t - x.at >= STALE_APPEND_MS) kernelAppends.delete(k);
+    if (kernelAppends.size >= 1000) kernelAppends.delete(/** @type {string} */ (kernelAppends.keys().next().value));
+    const e = { p: Promise.resolve().then(() => append(token, body, kind)), at: t, landed: 0 };
     kernelAppends.set(key, e);
-    const forget = () => { if (kernelAppends.get(key) === e) kernelAppends.delete(key); };
-    e.p.then(() => { e.landed = true; setT(forget, KEEP_APPEND_MS); }, forget);
+    e.p.then(() => { e.landed = Date.now(); }, () => { if (kernelAppends.get(key) === e) kernelAppends.delete(key); });
     return e.p;
   };
   /** The message is in the chat's log now: a repeat answers from the log, so its append is no longer kept. @param {string} grp @param {string} message */
