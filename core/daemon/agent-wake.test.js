@@ -351,3 +351,46 @@ test("a reviewer that cannot be woken is not left in silence: the person who gav
   assert.equal(asked[0].spec.form.fyi, true, "a note for the person, never a task that wakes an agent");
   assert.equal(asked[0].opts.idem, "slot-failed:t1#reviewer:abcdef012345");
 });
+
+// The owner's rule (20 Oct 2026): a task's job runs on the AI account of the person it acts for (who gave the task). With none, the agents module refuses in plain words and nobody else's is used.
+const NO_ACCOUNT = "Connect your own AI account in Settings, AI accounts, to use juno.";
+
+test("a task wake for a member with no AI account of her own is refused, never run on another's: the task is stuck with the next step, and she gets a Needs-you note, once", async () => {
+  const asked = /** @type {any[]} */ ([]), stuck = /** @type {any[]} */ ([]), woke = /** @type {any[]} */ ([]);
+  const gw = { ask: { get: async () => task(), edit: async () => {}, stuck: async (/** @type {any} */ _c, /** @type {string} */ id, /** @type {any} */ info) => { stuck.push({ id, info }); }, request: async (/** @type {any} */ _c, /** @type {any} */ spec, /** @type {any} */ opts) => { asked.push({ spec, opts }); } } };
+  const onEvent = createAgentWake({ space: "s", gw, chain: () => ({}), agentChain: t => ({ for: t.doer.id }), clock: () => NOW, log: () => {},
+    callModule: async (tool, input) => { if (tool === "agents.wake") { woke.push(input); throw Object.assign(new Error(NO_ACCOUNT), { code: "no_account" }); } return {}; } });
+  await onEvent(created("t1"));
+  assert.equal(woke.length, 1);
+  assert.equal(woke[0].approver, "ana", "the wake was for the person who gave the task");
+  assert.equal(stuck.length, 1);
+  assert.match(stuck[0].info.reason, /juno did not start: it runs on the AI account of the person it works for/);
+  assert.equal(stuck[0].info.suggested_fix, `${NO_ACCOUNT} Then retry.`);
+  assert.equal(asked.length, 1, "one note");
+  assert.deepEqual(asked[0].spec.doer, { kind: "person", id: "ana" }, "the note is for her, the person the job acts for");
+  assert.equal(asked[0].spec.title, 'juno could not start "Refund R-9"');
+  assert.match(asked[0].spec.note, /Connect your own AI account in Settings, AI accounts, to use juno\. Then retry the task\./);
+  assert.equal(asked[0].spec.form.fyi, true, "a note, never a task that wakes an agent");
+  assert.equal(asked[0].opts.idem, "no-account:t1:juno");
+});
+
+test("a task wake that fails for any other reason leaves no no-account note; a task requested for a person names her when no person gave it", async () => {
+  const asked = /** @type {any[]} */ ([]);
+  const mk = (/** @type {any} */ t, /** @type {string} */ msg) => createAgentWake({ space: "s", gw: { ask: { get: async () => t, edit: async () => {}, stuck: async () => {}, request: async (/** @type {any} */ _c, /** @type {any} */ spec) => { asked.push(spec); } } }, chain: () => ({}), agentChain: () => ({}), clock: () => NOW, log: () => {},
+    callModule: async tool => { if (tool === "agents.wake") throw new Error(msg); return {}; } });
+  await mk(task(), "no such agent")(created("t1"));
+  assert.deepEqual(asked, [], "not a no-account refusal: no note");
+  await mk(task({ assigned_by: { kind: "agent", id: "assistant" }, requested_for: "ben" }), NO_ACCOUNT)(created("t1"));
+  assert.deepEqual(asked.map(s => s.doer), [{ kind: "person", id: "ben" }]);
+});
+
+test("changes requested on a member's task whose doer cannot run for lack of her own account: she gets the note", async () => {
+  const asked = /** @type {any[]} */ ([]);
+  const t = task({ state: "changes_requested", review: { by: { kind: "person", id: "ana" }, at: 5, result: "changes" } });
+  const onEvent = createAgentWake({ space: "s", gw: { ask: { get: async () => t, edit: async () => {}, request: async (/** @type {any} */ _c, /** @type {any} */ spec, /** @type {any} */ opts) => { asked.push({ spec, opts }); } } }, chain: () => ({}), clock: () => NOW, log: () => {},
+    lend: async () => {}, callModule: async tool => { if (tool === "agents.wake-rounds") return { rounds: 0 }; if (tool === "agents.wake") throw new Error(NO_ACCOUNT); return {}; } });
+  await onEvent({ type: "task.changes-requested", data: { task: { id: "t1" } } });
+  assert.equal(asked.length, 1);
+  assert.deepEqual(asked[0].spec.doer, { kind: "person", id: "ana" });
+  assert.equal(asked[0].opts.idem, "no-account:t1:juno");
+});

@@ -260,7 +260,8 @@ export function createFolder() {
         // A person who joins sees the chat from their own join: the server sends who was there before as `quiet` (the roster, no marker), and the join itself is the one
         // marker a new participant sees, drawn as a quiet line ("Chris joined") with nothing above it.
         // A frame that names nobody and whose id is no readable name (a person's id, a model slot's) makes no line: "Per i44k... joined" tells a person nothing.
-        if (d.quiet || (!names.has(String(d.who)) && /(^|:)per_|^model:|#/.test(String(d.who))) || looksLikeId(names.get(String(d.who)) ?? "")) break;
+        // A model slot is the chat's own AI answering, not someone who joins: it never makes a line, whatever name its run carried (a blank chat once read "Engineer joined" from a run's name).
+        if (d.quiet || /^model:/.test(String(d.who)) || (!names.has(String(d.who)) && /(^|:)per_|#/.test(String(d.who))) || looksLikeId(names.get(String(d.who)) ?? "")) break;
         const key = "p:" + f.cur;
         put(key, "notice", { key, kind: "notice", text: `${nameOf(String(d.who))} ${kind === "participant-joined" ? "joined" : "left"}` });
         out.layout = true;

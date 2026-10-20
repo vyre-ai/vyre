@@ -15,7 +15,7 @@ test("one list: chats, group chats, agents and people; a chat with two or more o
   });
   const kinds = Object.fromEntries(items.map((i) => [i.title, i.kind]));
   assert.equal(kinds.Lease, "group");
-  assert.equal(kinds.Solo, "chat");
+  assert.equal(kinds.Kit, "chat", "a thread with one agent is that agent's row");
   assert.equal(kinds.Ads, "agent");
   assert.equal(kinds.Dee, "person");
 });
@@ -169,7 +169,40 @@ test("an agent is said as its title, in the list and in a chat that is only with
     chats: [chat({ id: "e", title: "engineer", agents: ["engineer"], last: 3 }), chat({ id: "l", title: "Lease review", agents: ["engineer"], last: 2 })],
     agents: [agent({ name: "engineer", title: "Engineer" }), agent({ name: "ads-writer", title: "Ads Writer" })], people: [],
   });
-  assert.deepEqual(items.map((i) => i.title).sort(), ["Ads Writer", "Engineer", "Lease review"]);
+  assert.deepEqual(items.map((i) => i.title).sort(), ["Ads Writer", "Engineer"], "the Lease review thread is one of the Engineer's threads, under Threads in its panel");
   assert.equal(items.find((i) => i.id === "chat:e").title, "Engineer");
   assert.equal(items.find((i) => i.id === "agent:ads-writer").title, "Ads Writer");
+});
+
+test("ONE row per agent: its threads collapse into the row that opens the newest; the others are the panel's Threads", () => {
+  const items = convosFrom({
+    chats: [chat({ id: "t1", title: "New chat", agents: ["engineer"], last: 3 }), chat({ id: "t2", title: "New chat", agents: ["engineer"], last: 9, line: "Add a signup form" }), chat({ id: "t3", title: "New chat", agents: ["engineer"], last: 1 }),
+      chat({ id: "g", title: "Spring", agents: ["engineer"], people: ["Sam"], last: 5 })],
+    agents: [agent({ name: "engineer", title: "Engineer" })], people: [],
+  });
+  const eng = items.filter((i) => i.agent === "engineer" || i.names.includes("engineer"));
+  assert.deepEqual(eng.map((i) => [i.title, i.chat]), [["Engineer", "t2"], ["Spring", "g"]], "one Engineer row (its newest thread) and the group chat, which is not a thread");
+  const row = items.find((i) => i.chat === "t2");
+  assert.equal(row.sub, "Add a signup form", "the second line is the last message");
+  assert.equal(row.threads, 3);
+  assert.equal(row.lone, "agent");
+  assert.equal(items.some((i) => i.id === "agent:engineer"), false, "no second, empty Engineer row");
+});
+
+test("the second line is never the title twice and never New chat: the last message, else nothing", () => {
+  const items = convosFrom({
+    chats: [chat({ id: "a", title: "New chat", people: ["Sam", "Dee"], line: "New chat", last: 2 }), chat({ id: "b", title: "Planning", people: ["Sam", "Dee"], line: "Planning", last: 1 }),
+      chat({ id: "c", title: "New chat", agents: ["scout"], last: 3 })],
+    agents: [agent({ name: "scout", summary: { count: 2, latest: "New chat", at: 3 } })], people: [],
+  });
+  assert.equal(items.find((i) => i.chat === "a").sub, "");
+  assert.equal(items.find((i) => i.chat === "b").sub, "");
+  const scout = items.find((i) => i.chat === "c");
+  assert.equal(scout.title, "Scout", "the agent's name");
+  assert.equal(scout.sub, "2 threads", "an untitled thread is not a second line; how many threads is");
+});
+
+test("the assistant's own chat is drawn as the assistant: an agent face by its id, not initials", () => {
+  const rows = convosFrom({ assistantName: "Qi", assistantAgent: "qi", chats: [chat({ id: "p", title: "Assistant", pinned: "assistant" })], agents: [], people: [] });
+  assert.deepEqual([rows[0].title, rows[0].lone, rows[0].names, rows[0].agent], ["Qi", "agent", ["qi"], "qi"]);
 });
