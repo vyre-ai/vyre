@@ -22,7 +22,7 @@ import { streamSource } from "./stream-source.js";
 import { reason } from "./reason.js";
 import { replyInput } from "./reply.js";
 import { viewerZone } from "../time/show.js";
-import { routeComposerLine } from "../../../../lib/thread-composer-route.js";
+import { routeComposerLine, goesAsMessage } from "../../../../lib/thread-composer-route.js";
 import type { StreamSource } from "./mock-stream";
 
 type Done = Promise<{ ok: true; thread?: string } | { ok: false; reason: string }>;
@@ -154,7 +154,7 @@ export function boxStream(session: string): BoxStream {
       const message = o?.message ?? newUuid();
       const route = routeComposerLine(text);
       const chips = o?.mentions?.slice(0, 8).map((m) => ({ kind: m.kind, id: m.id, name: m.name }));
-      if (route.tool !== "threads.send" || !route.sendAsMessage) {
+      if (!goesAsMessage(route)) {
         const r = await writeVia("threads.slash", { chat: session, line: text, surface: SURFACE, ...(o?.mode ? { mode: o.mode } : {}), ...(chips?.length ? { mentions: chips } : {}) });
         return r.error ? reason(r.error) : null;
       }
@@ -166,7 +166,7 @@ export function boxStream(session: string): BoxStream {
     sendGroupText: async (text, opts = {}) => {
       const message = opts.message ?? newUuid();
       const route = routeComposerLine(text);
-      if (route.tool !== "threads.send" || !route.sendAsMessage) {
+      if (!goesAsMessage(route)) {
         const r = await writeVia("threads.slash", { chat: session, line: text, surface: SURFACE, ...(opts.mode ? { mode: opts.mode } : {}) });
         if (r.error) return { ok: false, reason: reason(r.error) };
         return { ok: true, message, answers: [] };

@@ -206,3 +206,21 @@ test("the assistant's own chat is drawn as the assistant: an agent face by its i
   const rows = convosFrom({ assistantName: "Qi", assistantAgent: "qi", chats: [chat({ id: "p", title: "Assistant", pinned: "assistant" })], agents: [], people: [] });
   assert.deepEqual([rows[0].title, rows[0].lone, rows[0].names, rows[0].agent], ["Qi", "agent", ["qi"], "qi"]);
 });
+
+test("the Engineer is one row: its own chat and the agents list do not both draw it", () => {
+  const rows = convosFrom({
+    chats: [chat({ id: "e", title: "New site", engineer: true, agents: ["engineer"], last: 5 })],
+    agents: [agent({ name: "engineer", title: "Engineer", threads: [{ title: "New site", at: 5 }] })], people: [],
+  });
+  assert.equal(rows.filter((r) => r.title === "Engineer").length, 1);
+  assert.equal(rows.length, 1);
+});
+
+test("one row per agent even when a chat row and an agent row arrive under the same agent from two lists", () => {
+  const rows = convosFrom({
+    chats: [chat({ id: "a", title: "Site", agents: ["engineer"], last: 4 })],
+    agents: [agent({ name: "engineer", title: "Engineer" }), agent({ name: "engineer", title: "Engineer", threads: [{ title: "x", at: 9 }] })], people: [],
+  });
+  assert.equal(rows.filter((r) => r.agent === "engineer").length, 1);
+  assert.equal(rows.find((r) => r.agent === "engineer").chat, "a");
+});

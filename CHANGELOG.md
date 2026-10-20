@@ -6,6 +6,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 - fix(computers): one docker events stream for the module's life. The watcher was opened inside the sweep timer, so every tick added a stream; the proxy allows four and answered 429, and the server ran hot retrying. Reconnects now close the old request first, run one at a time, back off with jitter to a minute, and log only when the reason changes.
 - fix(records): attrsOf remembers a record whose log has no attrs, so Records reads stop scanning the event log once per row (calls took about 9 s on a large database). A create clears the entry.
+- fix(chat): every chat send failed with "This chat has not started yet". A plain line has no sendAsMessage flag, so box-stream sent it to threads.slash, which needs a started session. box-stream now sends every non-command line (plain or a session slash) through stream.send via goesAsMessage in lib/thread-composer-route.js.
+- fix(chat): the Engineer showed twice in the chat sidebar (its own chat, titled by its thread, and the agents list's row for the same agent). convosFrom now draws the Engineer's chat as that agent's row and keeps one row per agent from any source (apps/app/ui/chat/convo-model.js).
+- fix(identity): a device that lost the private half of its chat key can replace its own list entry's key with no other device. Settings, Account, Try again signs an `agree` op that names the point the list holds (`replaces`) with the key held here (kernel/identity/chain.js, apps/app/src/host/host-core.js); only the same entry, only while unlocked, and the other devices are alerted. The names directory needs this build to accept the new op.
 
 ## 0.6.3
 

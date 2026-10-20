@@ -601,8 +601,14 @@ test("the unlock repair never drops the chat key quietly: a store that refused s
   for (let i = 0; i < 100 && !(await later.call("identity.agree.status")).failed; i++) await new Promise((r) => setTimeout(r, 20));
   assert.match((await later.call("identity.agree.status")).failed, /older chat key for this device/);
   assert.equal((await chainEntry(d, "lena")).entry.agree, first, "the list is unchanged");
+  // Try again replaces it: this device signs a replacing agree op for its own entry with the key it holds, no second device
+  assert.deepEqual(await later.call("identity.agree.retry"), { failed: "" });
+  assert.equal((await chainEntry(d, "lena")).entry.agree, now, "the list now holds the point this device keeps");
+  // locked: no replacing, no change
+  await later.call("identity.lock");
+  await assert.rejects(() => later.call("identity.agree.retry"), (e) => e.code === "locked");
   // the same point: nothing to say
-  const same = createHost({ store, directory: d.base, fetch: d.fetch, now: d.now, kdf: FAST, agreePoint: async () => first });
+  const same = createHost({ store, directory: d.base, fetch: d.fetch, now: d.now, kdf: FAST, agreePoint: async () => now });
   await same.call("identity.unlock", { password: PASSWORD });
   assert.deepEqual(await same.call("identity.agree.retry"), { failed: "" });
 });
