@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import { Pressable, View } from "react-native";
 import { allowsMock, Chip, Menu, Text, showToast } from "@vyre/ui";
 import { callT } from "../../src/real/call-tool";
+import { useSpaces } from "../shell/state";
+import { roleKinds } from "./useRoleChips";
 import { freeRoles, roleChips, summaryChips } from "./roles-model.js";
 import { SAMPLE_KINDS, sampleHeld } from "./roles-sample.js";
 import { plainError } from "../../src/real/error-note.js";
@@ -19,14 +21,16 @@ const toneFor = (c: { ended: boolean; tone: string }) => (c.ended ? "plain" : ((
 export function Roles({ urn, onOpen, name }: { urn: string; onOpen: (urn: string) => void; /** The record's name, used only by the sample world (roles-sample.js). */ name?: string }) {
   const [held, setHeld] = useState<Held[] | null>(null);
   const [kinds, setKinds] = useState<Kind[]>([]);
+  const space = useSpaces((s) => s.space) || "home";
   const [plain, setPlain] = useState<{ key: string; label: string; urn: string; ended: boolean; tone: string }[] | null>(null);
   const load = useCallback(() => {
     if (allowsMock()) { setHeld(sampleHeld(name ?? "", urn) as Held[]); setKinds(SAMPLE_KINDS as Kind[]); setPlain(null); return; }
-    void Promise.all([callT<{ roles: Held[] }>("records.roles.summary", { urn }), callT<{ roles: Kind[] }>("records.roles.summary", {})]).then(([mine, all]) => {
-      if (mine.data) { setHeld(mine.data.roles); setKinds(all.data?.roles ?? []); setPlain(null); return; }
+    // the Space's role kinds are the same for every record: kept a minute (useRoleChips.ts), never counted again for each record opened
+    void Promise.all([callT<{ roles: Held[] }>("records.roles.summary", { urn }), roleKinds(space)]).then(([mine, all]) => {
+      if (mine.data) { setHeld(mine.data.roles); setKinds((all ?? []) as Kind[]); setPlain(null); return; }
       return callT<{ roles: any[] }>("records.roles", { urn }).then((q) => { setHeld(null); setPlain(roleChips(q.data?.roles ?? [])); });
     });
-  }, [urn, name]);
+  }, [urn, name, space]);
   useEffect(() => { setHeld(null); setPlain(null); load(); }, [load]);
   const move = async (r: Held, stage: string) => {
     const x = await callT<{ needs?: string[] }>("records.move", { urn: r.urn, stage });

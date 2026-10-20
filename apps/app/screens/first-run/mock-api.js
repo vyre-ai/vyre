@@ -1,6 +1,7 @@
 // @ts-check
 // Mock answers for first-run tools. Used only when EXPO_PUBLIC_VYRE_MOCK=1.
 
+import { sampleAccounts } from "../../src/models/mock-models.js";
 import { GITHUB_MOCK } from "./mock.js";
 
 const mock = { person: /** @type {string | null} */ (null), id: "id_alex", current: /** @type {string | null} */ (null), spaces: /** @type {{ id: string, name: string, role: string, server: string | null }[]} */ ([]) };
@@ -131,7 +132,7 @@ export async function copyAccounts(input) {
 }
 
 export async function listAssistantModels() {
-  return { ok: true, accounts: [{ id: "ac_1", label: "Claude", provider: "claude", models: [{ id: "m_a", label: "Opus" }, { id: "m_b", label: "Sonnet" }] }] };
+  return { ok: true, accounts: sampleAccounts() };
 }
 
 /** @param {string} model */

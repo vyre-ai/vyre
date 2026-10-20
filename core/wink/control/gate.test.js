@@ -337,7 +337,7 @@ test("gate ingress: everything that is not exactly those two shapes is the same 
   const cases = [
     get("/hooks/northwind-orders", "Connection: close\r\n"),                                  // wrong method
     post("/hooks/northwind-orders?x=1", "{}"), post("/hooks/Northwind", "{}"), post("/hooks/a/b", "{}"), post("/hooks/", "{}"), post("/hooks", "{}"), post("/hooks/-a", "{}"),
-    post("/hooks/" + "a".repeat(41), "{}"), post("/hooks/%61bc", "{}"), post("//hooks/abc", "{}"), post("/hooks/abc/", "{}"),
+    post("/hooks/" + "a".repeat(121), "{}"), post("/hooks/%61bc", "{}"), post("//hooks/abc", "{}"), post("/hooks/abc/", "{}"),
     post("/hooks/abc", big),                                                                  // over 256 KB
     "POST /hooks/abc HTTP/1.1\r\nHost: x\r\nContent-Type: text/plain\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}",   // wrong type
     "POST /hooks/abc HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n2\r\n{}\r\n0\r\n\r\n",

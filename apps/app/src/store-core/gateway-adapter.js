@@ -16,7 +16,7 @@ import { placeTag, spaceName } from "../state/space-name.js";
 export const TOOLS = {
   me: "records.me", spaceList: "spaces.list", actors: "records.actors", types: "records.types", define: "records.define",
   list: "records.list", get: "records.get", create: "records.create", update: "records.update",
-  seesAs: "records.sees-as", sealPut: "records.seal-put", reveal: "records.reveal", events: "records.events",
+  seesAs: "records.sees-as", sealPut: "records.seal-put", reveal: "records.reveal", events: "records.events", fieldSeal: "records.field.seal",
   tasks: "tasks.list", task: "tasks.get", request: "tasks.request", decide: "tasks.decide", move: "tasks.move", submit: "tasks.submit", review: "tasks.review",
 };
 
@@ -39,6 +39,22 @@ const one = (d, k) => (d && typeof d === "object" && k in d ? d[k] : d);
 /** The rows of a page. @param {any} d */
 const rowsOf = (d) => (Array.isArray(d) ? d : d?.rows ?? d?.tasks ?? d?.records ?? d?.items ?? []);
 
+/**
+ * What a box event says changed: a record event (`contact.updated`, the kernel's `<type>.<verb>` for every record write) names its type; a records, types or members event may
+ * change anything; any other event (a chat, an agent at work) may not touch records at all, so a reader waits a moment and reads once for the burst.
+ * @param {any} e @returns {import("./contracts.js").ChangeHint | undefined}
+ */
+export function eventHint(e) {
+  const t = String((e && e.type) || "");
+  const m = /^([a-z][a-z0-9_-]*)\.(created|updated|removed|restored)$/.exec(t);
+  if (m && !["records", "types", "members", "grants", "spaces"].includes(m[1])) return { type: m[1] };
+  if (/^(records|types|members|grants|spaces)\./.test(t)) return undefined;
+  return { soon: true };
+}
+
+/** The page a list asks for: records.list's largest. */
+export const LIST_PAGE = 200;
+
 /** The StoreError codes the screens know. */
 const CODES = new Set(["version_conflict", "not_found", "sealed_value_refused", "invalid"]);
 
@@ -54,9 +70,16 @@ export function parseUrn(urn) {
  * @returns {Store}
  */
 export function createGatewayStore({ rpc }) {
-  /** @type {Set<() => void>} */ const subs = new Set();
+  /** @type {Set<(hint?: import("./contracts.js").ChangeHint) => void>} */ const subs = new Set();
   /** @type {null | (() => void)} */ let stop = null;
-  const notify = () => { for (const f of [...subs]) { try { f(); } catch { /* a screen's redraw must not stop the others */ } } };
+  // Inside a batch (an import of many rows) nothing is told until the end, and then once.
+  let quiet = 0, held = false;
+  const notify = (/** @type {import("./contracts.js").ChangeHint | undefined} */ hint = undefined) => {
+    if (quiet) { held = true; return; }
+    for (const f of [...subs]) { try { f(hint); } catch { /* a screen's redraw must not stop the others */ } }
+  };
+  /** The record type a reference names, for the change hint; undefined when it is not a reference. @param {string} urn */
+  const typeOf = (urn) => { try { return { type: parseUrn(urn).type }; } catch { return undefined; } };
   /** @type {any | null} */ let meCache = null;
   const meAnswer = async () => (meCache ??= await rpc.read(TOOLS.me, {}));
   const meId = async () => { const p = (await meAnswer())?.person; return typeof p === "string" ? p : p?.id ?? ""; };
@@ -72,7 +95,7 @@ export function createGatewayStore({ rpc }) {
     return out;
   };
   /** A write, then the screens redraw from the store. */
-  const write = async (/** @type {string} */ tool, /** @type {any} */ input, /** @type {any} */ o = undefined) => { const d = await rpc.write(tool, input, o); notify(); return d; };
+  const write = async (/** @type {string} */ tool, /** @type {any} */ input, /** @type {any} */ o = undefined, /** @type {import("./contracts.js").ChangeHint | undefined} */ hint = undefined) => { const d = await rpc.write(tool, input, o); notify(hint); return d; };
   /** The Space-optional input: only name a space when the screen did. */
   const sp = (/** @type {any} */ space) => (space ? { space } : {});
   const types = async (/** @type {string | undefined} */ space) => { const d = await rpc.read(TOOLS.types, sp(space)); return Array.isArray(d) ? d : d?.types ?? []; };
@@ -93,16 +116,22 @@ export function createGatewayStore({ rpc }) {
       /** @type {any[]} */ const out = [];
       let cursor;
       do {
-        const d = await rpc.read(TOOLS.list, { ...sp(q.space), type, ...(q.filter ? { filter: q.filter } : {}), ...(q.sort ? { sort: q.sort } : {}), ...(cursor ? { cursor } : {}) });
+        // the largest page records.list gives (200): a long type is read in a quarter of the round trips the default page of 50 took, each one a wait on the box and its store
+        const d = await rpc.read(TOOLS.list, { ...sp(q.space), type, ...(q.filter ? { filter: q.filter } : {}), ...(q.sort ? { sort: q.sort } : {}), limit: LIST_PAGE, ...(cursor ? { cursor } : {}) });
         out.push(...rowsOf(d));
         cursor = d?.next_cursor;
       } while (cursor);
       return out;
     },
     async get(urn) { const d = await rpc.read(TOOLS.get, { urn }); const r = one(d, "record"); return r && typeof r === "object" ? r : null; },
-    async create(type, data, opts = {}) { return one(await write(TOOLS.create, { ...sp(opts.space), type, data, ...(opts.why ? { why: opts.why } : {}) }), "record"); },
-    async update(urn, patch, base_version) { return one(await write(TOOLS.update, { urn, patch, base_version }), "record"); },
-    async putSealed(urn, field, value) { return one(await write(TOOLS.sealPut, { urn, field, value }), "record"); },
+    // a record write tells which type changed, so a list re-reads that type and not every type
+    async create(type, data, opts = {}) { return one(await write(TOOLS.create, { ...sp(opts.space), type, data, ...(opts.why ? { why: opts.why } : {}) }, undefined, { type }), "record"); },
+    async update(urn, patch, base_version) { return one(await write(TOOLS.update, { urn, patch, base_version }, undefined, typeOf(urn)), "record"); },
+    async putSealed(urn, field, value) { return one(await write(TOOLS.sealPut, { urn, field, value }, undefined, typeOf(urn)), "record"); },
+    async batch(work) {
+      quiet++;
+      try { return await work(); } finally { quiet--; if (!quiet && held) { held = false; notify(); } }
+    },
     // Human-only: the proof rides in the header, never the body.
     async reveal(urn, field, purpose, proof) { return await rpc.write(TOOLS.reveal, { urn, field, purpose }, { proof }); },
     async seesAs(urn, who) { const d = await rpc.read(TOOLS.seesAs, { urn, who }); return d?.data ?? d?.fields ?? d ?? {}; },
@@ -127,7 +156,7 @@ export function createGatewayStore({ rpc }) {
     async editTask() { throw Object.assign(new Error("Editing a task is not available on this Vyre yet."), { code: "invalid" }); },
     async events(q = {}) { const d = await rpc.read(TOOLS.events, q); return Array.isArray(d) ? d : d?.events ?? []; },
     async define(diff) { return await write(TOOLS.define, { diff }); },
-    // Customize is a definition change: the field is added to, or sealed in, the type's own definition.
+    // Adding a field is a definition change on the type. Sealing one is not: it is the kernel's own migration (records.field.seal), which moves every value into a sealed field and scrubs the old ones.
     async addField(type, spec) {
       /** @type {any} */ let made;
       await changeType(type, (t) => {
@@ -140,14 +169,14 @@ export function createGatewayStore({ rpc }) {
       });
       return made;
     },
-    async sealField(type, field) {
-      /** @type {any} */ let sealed;
-      await changeType(type, (t) => { const f = t.fields.find((/** @type {any} */ x) => x.name === field); if (f) { f.seal = f.seal || { level: "ai", class: "free" }; sealed = f; } return t; });
-      return sealed;
+    // The space is the record's own (the page names it): the migration acts on that space's type, whichever space is showing.
+    async sealField(type, field, space) {
+      const d = await write(TOOLS.fieldSeal, { ...sp(space), type, field });
+      return d && typeof d.sealed_field === "string" ? { name: d.sealed_field, label: field, kind: "sealed" } : undefined;
     },
     subscribe(fn) {
       subs.add(fn);
-      if (!stop && rpc.events) stop = rpc.events(() => { meCache = null; notify(); });
+      if (!stop && rpc.events) stop = rpc.events((e) => { meCache = null; notify(eventHint(e)); });
       return () => { subs.delete(fn); if (!subs.size && stop) { stop(); stop = null; } };
     },
     me: meId,

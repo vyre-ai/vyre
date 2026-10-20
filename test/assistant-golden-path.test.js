@@ -93,7 +93,7 @@ test("the proven assistant takes and submits a task it is the doer of; another a
   // another agent (kit, no grant) reaches nothing of this task: not even its existence
   const kitMove = await w.viaSession("kit", "tasks.move", { id: task.id, to: "working" });
   assert.ok(refused(kitMove), "kit must not move the assistant's task: " + JSON.stringify(kitMove));
-  assert.equal((await w.d.kernel.gateway.ask.get(w.person, task.id)).state, "ready");
+  { const now = await w.d.kernel.gateway.ask.get(w.person, task.id); assert.equal(now.state, "ready", JSON.stringify(now).slice(0, 900)); }
   // the assistant does
   const mv = await w.viaSession("juno", "tasks.move", { id: task.id, to: "working" });
   assert.ok(!refused(mv), "the assistant moves its own task: " + JSON.stringify(mv));

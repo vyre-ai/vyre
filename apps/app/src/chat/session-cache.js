@@ -15,16 +15,17 @@ export function loadSessionCache(session) {
     if (!raw) return null;
     const j = JSON.parse(raw);
     if (!j || !Array.isArray(j.frames)) return null;
-    return { head: Number(j.head) || 0, frames: j.frames };
+    return { head: Number(j.head) || 0, frames: j.frames, unsent: Array.isArray(j.unsent) ? j.unsent : [] };
   } catch { return null; }
 }
 
-/** @param {string} session @param {{ head: number, frames: any[] }} snap */
+/** `unsent` is the person's messages the box did not take (chat/unsent.js): kept so they still show as "Not sent" when the chat is opened again. @param {string} session @param {{ head: number, frames: any[], unsent?: any[] }} snap */
 export function saveSessionCache(session, snap) {
   try {
     if (typeof localStorage === "undefined" || !snap || !Array.isArray(snap.frames)) return;
     const frames = snap.frames.slice(-MAX);
-    localStorage.setItem(KEY(session), JSON.stringify({ head: snap.head | 0, frames, at: Date.now() }));
+    const unsent = Array.isArray(snap.unsent) && snap.unsent.length ? { unsent: snap.unsent.slice(0, 50) } : {};
+    localStorage.setItem(KEY(session), JSON.stringify({ head: snap.head | 0, frames, ...unsent, at: Date.now() }));
   } catch { /* quota or blocked storage */ }
 }
 

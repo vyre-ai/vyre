@@ -26,7 +26,7 @@ export const isSealedField = (f) => f.kind === "sealed" || !!f.seal;
 export const initialsOf = (s) => String(s).split(/[\s.]+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join("");
 
 /** The Space's own bookkeeping (Flow definitions and state, installed Kits and the proposals waiting for a yes, goals, fast fields and layouts, and the Files, Templates and Playbooks that other screens own): records, but never a screen of the person's. @param {any} t a type definition */
-export const isHiddenType = (t) => !!t.internal || /^(def-|flow-|kit-proposal$|kit-install$|goal$|project-template$|quick-field$|record-layout$|template$|playbook$|file-share$|contact_point$|team-member$|member-profile$|skill$|chat-record$)/.test(String(t.name));
+export const isHiddenType = (t) => !!t.internal || /^(def-|flow-|kit-proposal$|kit-install$|goal$|project-template$|quick-field$|record-layout$|template$|playbook$|file-share$|contact_point$|team-member$|member-profile$|member-photo$|skill$|chat-record$)/.test(String(t.name));
 
 /** Only the rows a view's stored `filter` (an Expression over the record's fields) holds for; every row when it has none. @param {any[]} rows @param {string | undefined} filter */
 export const viewRows = (rows, filter) => (filter ? rows.filter((r) => holds(filter, r?.data || {})) : rows);
@@ -158,11 +158,14 @@ export function rowsByDay(rows, dateName, ym) {
 
 // ------------------------------------------------------------------------------------------------------------------------------------ record page
 
-/** The confirm for "Seal this field for all <type>": it names how many records have a value. @param {any} def @param {any} f @param {any[]} pool @param {any} [vd] */
+/** A field the kernel can seal in place (gateway.migrate.sealField): plain text that is not unique, computed, removed, the system's own or a fast field still waiting to be made real. @param {any} f */
+export const canSealField = (f) => !isSealedField(f) && ["text", "rich_text", "url"].includes(f.kind) && !f.unique && !f.computed && !f.hidden && !f.owned_by && !f.read_only && !f.fast;
+
+/** The confirm for "Seal this field for all <type>": it names how many records have a value, and that it cannot be undone. @param {any} def @param {any} f @param {any[]} pool @param {any} [vd] */
 export function sealSpec(def, f, pool, vd = viewDefOf(def)) {
   const n = pool.filter((r) => !isEmpty(val(r, f.name))).length, word = lc(vd.plural);
   return { title: `Seal ${f.label} for all ${word}?`, action: "Seal",
-    body: `${n} of ${pool.length} ${word} ${n === 1 ? "has a value" : "have a value"} for ${lc(f.label)}. Agents will see "${f.label} on file, sealed" on each and will never get the value. You can still reveal it with Face ID.` };
+    body: `${n} of ${pool.length} ${word} ${n === 1 ? "has a value" : "have a value"} for ${lc(f.label)}. Agents will see "${f.label} on file, sealed" on each and will never get the value. You can still reveal it with Face ID. The old values are removed from the history too, so this cannot be undone.` };
 }
 
 /** What the banner says while the person looks as their assistant does. @param {any[]} sealedNow the sealed fields that hold a value on this record */

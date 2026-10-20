@@ -81,3 +81,42 @@ export function quickLook(s, a, shown, selected) {
   }
   return s;
 }
+
+/** The agent folder a Space path is in (agents/<agent id>, or anything under it), or null. Its files are kept on the agent's computer (core/files/agent-folder.js). @param {string} path @returns {string | null} */
+export function agentFolderOf(path) {
+  const m = /^agents\/([A-Za-z0-9_][A-Za-z0-9_-]{0,63})(?:\/|$)/.exec(String(path || ""));
+  return m ? `agents/${m[1]}` : null;
+}
+
+/** The quiet note while the agent's computer starts. */
+export const OPENING_COMPUTER = "Opening this agent's computer…";
+
+/**
+ * What an open agent folder lets the person do, from files.agent.open's answer and the place's own abilities: the files are on the computer, which keeps no versions and makes no links, and
+ * only Can edit changes them. Anything else is not offered (a button the server would refuse is never shown).
+ * @template {{ upload: boolean, versions: boolean, move: boolean, remove: boolean, download: boolean, share: boolean, edit: boolean }} A
+ * @param {A} base @param {string | undefined} can @returns {A}
+ */
+export function agentAbilities(base, can) {
+  const change = can === "edit";
+  return { ...base, versions: false, share: false, upload: change, move: change, remove: change, edit: change, download: true };
+}
+
+/**
+ * One step of opening an agent's folder: files.agent.open answers "waking" until the computer is up (try again after `retryMs`), or "open" with the note to show and the level.
+ * @param {{ state?: string, note?: string, can?: string } | null | undefined} r
+ * @returns {{ ready: boolean, retryMs: number, note: string, can: string }}
+ */
+export function openStep(r) {
+  if (r && r.state === "open") return { ready: true, retryMs: 0, note: String(r.note || ""), can: String(r.can || "use") };
+  return { ready: false, retryMs: 3000, note: String((r && r.note) || ""), can: String((r && r.can) || "use") };
+}
+
+/**
+ * The right-click menu for rows in an agent's folder: no link or version history (the computer keeps neither), and nothing that changes a file unless the person has Can edit.
+ * @template {{ id: string }} I @param {I[][]} groups @param {string | undefined} can @returns {I[][]}
+ */
+export function agentMenu(groups, can) {
+  const never = new Set(["share", "versions"]), change = new Set(["move", "rename", "duplicate", "delete"]);
+  return groups.map((g) => g.filter((i) => !never.has(i.id) && (can === "edit" || !change.has(i.id)))).filter((g) => g.length);
+}

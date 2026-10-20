@@ -23,7 +23,8 @@
 //                                   (working -> needs_check or done: TASK_TRANSITIONS "kernel_after_output_check"). The kernel has no one call for it yet.
 //   move(id, to, by, o)             UI-side. The transitions a person or an assistant makes (start, stuck, skip, fix). TASK_TRANSITIONS says who may.
 //   events(q)                       events.read(chain, { subject_prefix, corr, since, limit })
-//   define(diff) / addField / sealField     records.define(chain, DefineDiff): add or change a type's fields; "seal this field for all records" is a change of its `seal` config
+//   define(diff) / addField         records.define(chain, DefineDiff): add or change a type's fields
+//   sealField(type, field)          migrate.sealField(chain, { type, field, class }) through records.field.seal: "seal this field for all records" moves every value into a sealed field and scrubs the old ones
 //
 // Everything marked UI-side below has no home in the kernel's studs; the gateway adapter derives it (a directory of people and assistants, space colours, the
 // calendar) or the kernel gains it (additive changes only).
@@ -121,13 +122,20 @@
  *   events(q?: { record?: Urn, task?: Uuid, limit?: number }): Promise<EventEnvelope[]>,
  *   define(diff: DefineDiff): Promise<DefineResult>,
  *   addField?(type: string, spec: { label: string, kind: FieldKind, to?: string, options?: string[] }): Promise<FieldDefinition>,
- *   sealField?(type: string, field: string): Promise<FieldDefinition|undefined>,
- *   subscribe(fn: () => void): () => void,
+ *   sealField?(type: string, field: string, space?: string): Promise<FieldDefinition|undefined>,
+ *   subscribe(fn: (hint?: ChangeHint) => void): () => void,
+ *   batch?<T>(work: () => Promise<T>): Promise<T>,
  *   me?(): Promise<string>,
  *   calendar?(q?: { day?: number }): Promise<{ id: string, at: number, title: string, sub?: string, record?: Urn }[]>,
  * }} Store
  * Optional (UI-side, until the kernel has them): `me` (the actor id of the person using this Deck; the chain's first hop), `calendar` (today's events; Now shows an
- * empty calendar when it is missing), `addField` and `sealField` (both are records.define calls).
+ * empty calendar when it is missing), `addField` (a records.define call) and `sealField` (records.field.seal, the kernel's migration). `batch` runs many writes (an import) with one change told at the end.
+ */
+
+/**
+ * What a change touched, when the store knows: `type` is the one record type that changed (a reader may re-read that type only), `soon` is a change from the box that
+ * may not touch records at all (a reader may wait a moment and read once for a burst). No hint: anything may have changed.
+ * @typedef {{ type?: string, soon?: boolean }} ChangeHint
  */
 
 /**

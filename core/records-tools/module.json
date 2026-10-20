@@ -4,7 +4,7 @@
   "description": "The app's way into a Space's records: one tool per Store call over the kernel's gateway, each under the caller's own chain in the Space it names. Nothing here decides; the kernel does.",
   "roles": ["box", "local"],
   "requires": [],
-  "needs": { "kernel": { "actions": ["records.read"] }, "daemon": ["devStandIn"] },
+  "needs": { "kernel": { "grants": [{ "prefix": "*/*", "actions": ["records.read"] }, { "prefix": "member-photo/*", "actions": ["records.read", "records.remove"] }] }, "daemon": ["devStandIn"] },
   "does": {
     "tools": [
       { "name": "records.workspace.create", "reach": "modules" },
@@ -53,6 +53,7 @@
       { "name": "records.kits.library", "effect": "read", "reach": "person" },
       { "name": "records.kits.get", "effect": "read", "reach": "person" },
       { "name": "records.forget", "effect": "write", "reach": "person" },
+      { "name": "records.field.seal", "effect": "write", "reach": "person" },
       { "name": "records.forget.propose", "effect": "write", "reach": "person" },
       { "name": "records.seal-put", "effect": "write", "reach": "person" },
       { "name": "records.reveal", "effect": "write", "reach": "person" },

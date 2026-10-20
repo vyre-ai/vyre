@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { Pressable, View } from "react-native";
+import { Platform, Pressable, View } from "react-native";
 import { Text } from "../components/Text";
+import { ID_NOTE, isRecordIdField, recordIdOf } from "../records/record-id.js";
 import { Card, Divider } from "../components/Card";
 import { GroupedList } from "../components/GroupedList";
 import { RelatedSection } from "../records/RelatedSection";
-import { groupRelated, viaOf } from "../records/logic.js";
+import { groupRelated, isInternalField, isLockedField, viaOf } from "../records/logic.js";
 import { Row } from "../components/Row";
 import { Chip } from "../components/Chip";
 import { Banner } from "../components/Banner";
@@ -28,11 +29,18 @@ import type { FieldEnv } from "../fields/types";
 import { theirTimeOf } from "../../src/time/show.js";
 import { useShowEmpty } from "../../src/state/record-prefs";
 import { ASSISTANT_MARK } from "../../src/store-core/kernel-view.js";
-import { actorWords, ago, assistantNote, eventWhat, fieldStates, filesOf, isSealedField, newFieldSpec, relatedRecords, sealSpec, stageField, timelineLine, titleOf, val, viewDefOf } from "./logic.js";
+import { actorWords, ago, assistantNote, canSealField, eventWhat, fieldStates, filesOf, isSealedField, newFieldSpec, relatedRecords, sealSpec, stageField, timelineLine, titleOf, val, viewDefOf } from "./logic.js";
 import type { RecordsWorld } from "./shared";
 import { plainError } from "../../src/real/error-note.js";
 
 const errText = (e: unknown) => plainError(e, "That did not save.");
+
+/** Copy a record's ID: the browser's clipboard on the web, the phone's otherwise. */
+async function copyId(text: string) {
+  if (Platform.OS === "web") { if (typeof navigator !== "undefined" && navigator.clipboard) { await navigator.clipboard.writeText(text); return; } throw new Error("no clipboard"); }
+  const mod = await import("expo-clipboard");
+  await mod.setStringAsync(text);
+}
 
 /**
  * The record page: all the fields in order (press one to change it), the stage steps, You or Your assistant sees, Add a field, the timeline from the Event log,
@@ -77,7 +85,7 @@ export function RecordPage({ def, rec, world, events, env, onOpen, story, onNew,
   };
   const sealAll = async () => {
     if (!confirm) return;
-    try { await store.sealField?.(def.name, confirm.f.name); setConfirm(null); } catch (e) { showToast(errText(e)); }
+    try { await store.sealField?.(def.name, confirm.f.name, String(rec.urn).split("/")[2] || undefined); setConfirm(null); showToast(`${confirm.f.label} is sealed for all ${vd.plural.toLowerCase()}.`); } catch (e) { showToast(errText(e)); }
   };
   const sf = stageField(def);
   const stages: string[] = sf ? [...(sf.options || [])] : [];
@@ -85,30 +93,50 @@ export function RecordPage({ def, rec, world, events, env, onOpen, story, onNew,
   const related = relatedRecords(world.types, world.byType, def, rec);
   const files = filesOf(def, rec);
   const pool = world.byType[def.name] || [rec];
-  // The stage strip above is the stage field's renderer, so the list leaves it out; empty fields wait behind one line, except the one being edited.
-  const listed = def.fields.filter((f: any) => (!sf || f.name !== sf.name) && states[f.name]?.visible !== false);
+  // The stage strip above is the stage field's renderer, so the list leaves it out; so are the system's own fields (the bag, removed ones, ones hidden from every role, bookkeeping). Empty fields wait behind one line,
+  // except the one being edited; an empty field only the system writes is not offered to fill.
+  const listed = def.fields.filter((f: any) => (!sf || f.name !== sf.name) && !isInternalField(f, def.name) && states[f.name]?.visible !== false);
   const isBlank = (f: any) => !showEmpty && f.kind !== "sealed" && isEmpty(val(rec, f.name)) && editing !== f.name && !states[f.name]?.required;
   const filled = listed.filter((f: any) => !isBlank(f));
-  const empty = listed.filter(isBlank);
+  const empty = listed.filter((f: any) => isBlank(f) && !isLockedField(f));
 
   const fieldRow = (f: any) => {
+    // The record's ID is Vyre's (record-id.js): a quiet line with a copy button, never an editor, never sealed.
+    if (isRecordIdField(f)) {
+      const id = recordIdOf(rec);
+      return (
+        <View key={f.name} className={cn("gap-s1 px-s4 py-s3", !phone && "flex-row items-center gap-s3")}>
+          <View className={cn("flex-row flex-wrap items-center gap-s2", !phone && "flex-1")}><Text tone="label">{f.label}</Text></View>
+          <View className={cn("min-w-0 flex-row items-center gap-s2", !phone && "flex-[3]")}>
+            <Text selectable>{id || "Given when saved"}</Text>
+            {id ? <IconButton icon="copy" label={`Copy ${f.label}`} onPress={() => void copyId(id).then(() => showToast(`${f.label} copied.`), () => showToast("Copying did not work here. Select the text and copy it."))} /> : null}
+            <Text size="caption" tone="label">{ID_NOTE}</Text>
+          </View>
+        </View>
+      );
+    }
     const isEditing = editing === f.name && !ai;
     const value = valueFor(f);
     const sealed = isSealedField(f);
-    const plainEditable = !ai && f.kind !== "sealed" && f.kind !== "link" && f.kind !== "ref" && f.kind !== "file";
+    // A field Vyre keeps (the kernel's own, computed, read-only, an ID, a weighted value) is shown, never edited, and never offered to be sealed (isLockedField includes isKeptField).
+    const locked = isLockedField(f);
+    const plainEditable = !ai && !locked && f.kind !== "sealed" && f.kind !== "link" && f.kind !== "ref" && f.kind !== "file";
     const shown = renderField({ kind: f.kind, definition: f, value, mode: "view", read_only: true, reveal: ai ? undefined : revealFor(f) }, env);
-    const items = [
+    const items = locked ? [] : [
       { label: "Edit", onPress: () => { setEditing(f.name); setDraft(undefined); } },
-      ...(sealed || !canSeal ? [] : [{ label: `Seal this field for all ${vd.plural.toLowerCase()}`, onPress: () => setConfirm({ f }) }]),
+      ...(sealed || !canSeal || !canSealField(f) ? [] : [{ label: `Seal this field for all ${vd.plural.toLowerCase()}`, onPress: () => setConfirm({ f }) }]),
     ];
     // Desktop: the menu shows on hover (or while the row is being edited). Phone: tap the row to edit, long-press for the menu.
+    // a locked field has nothing to offer: its menu keeps its place, unseen and not pressable, so the rows line up
     const menuNode = !ai && !phone ? (
-      <View className="flex-none" style={{ opacity: hover === f.name || isEditing ? 1 : 0 }}>
-        <Menu trigger={<IconButton icon="more" label={`${f.label}, more`} />} items={items} />
-      </View>
+      items.length ? (
+        <View className="flex-none" style={{ opacity: hover === f.name || isEditing ? 1 : 0 }}>
+          <Menu trigger={<IconButton icon="more" label={`${f.label}, more`} />} items={items} />
+        </View>
+      ) : <View className="flex-none" style={{ opacity: 0 }} pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants"><IconButton icon="more" label={`${f.label}, more`} /></View>
     ) : null;
     return (
-      <Pressable key={f.name} disabled={ai || !phone || isEditing} onPress={plainEditable ? () => { setEditing(f.name); setDraft(undefined); } : undefined} onLongPress={() => setRowMenu({ f, items })}
+      <Pressable key={f.name} disabled={ai || !phone || isEditing} onPress={plainEditable ? () => { setEditing(f.name); setDraft(undefined); } : undefined} onLongPress={items.length ? () => setRowMenu({ f, items }) : undefined}
         onHoverIn={() => setHover(f.name)} onHoverOut={() => setHover((h) => (h === f.name ? null : h))}
         className={cn("gap-s1 px-s4 py-s3", !phone && "flex-row items-center gap-s3")}>
         <View className={cn("flex-row flex-wrap items-center gap-s2", !phone && "flex-1")}>
@@ -127,7 +155,7 @@ export function RecordPage({ def, rec, world, events, env, onOpen, story, onNew,
             </View>
           ) : plainEditable ? (
             <Pressable accessibilityRole="button" accessibilityLabel={`Edit ${f.label}`} onPress={() => { setEditing(f.name); setDraft(undefined); }} className="self-start">{shown}</Pressable>
-          ) : sealed && !ai ? (
+          ) : sealed && !ai && !locked ? (
             <View className="gap-s2">
               {shown}
               <View className="flex-row flex-wrap items-center gap-s2">
@@ -174,13 +202,15 @@ export function RecordPage({ def, rec, world, events, env, onOpen, story, onNew,
           </View>
         ) : null}
       </Card>
-      {story}
-      <Card title="Changes" actions={<Text size="caption" tone="label">Every field change, who and why</Text>}>
-        {events.length ? events.map((e) => {
-          const l = timelineLine(e);
-          return <TimelineItem key={l.id} actor={actorWords(l.actor, world, (world as { me?: string }).me)} what={eventWhat(l.what)} mark={l.via ? ASSISTANT_MARK : undefined} at={ago(l.at, env.now ?? Date.now())} why={l.why} />;
-        }) : <Text tone="label">Nothing has happened yet.</Text>}
-      </Card>
+      {/* One history on the page: the screen's own (History, with its filters and Undo) when it gives one, else the change list from the Event log. */}
+      {story ?? (
+        <Card title="Changes" actions={<Text size="caption" tone="label">Every field change, who and why</Text>}>
+          {events.length ? events.map((e) => {
+            const l = timelineLine(e);
+            return <TimelineItem key={l.id} actor={actorWords(l.actor, world, (world as { me?: string }).me)} what={eventWhat(l.what)} mark={l.via ? ASSISTANT_MARK : undefined} at={ago(l.at, env.now ?? Date.now())} why={l.why} />;
+          }) : <Text tone="label">Nothing has happened yet.</Text>}
+        </Card>
+      )}
     </View>
   );
   const side = (

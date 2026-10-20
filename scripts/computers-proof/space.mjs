@@ -43,6 +43,22 @@ let code = 0;
 try {
   let r = await person("agents.create", { name: AGENT, computer: true });
   check(!r.error && r.data && r.data.computer === true, "agents.create kit computer:true", r.error || { name: r.data.name });
+  // A fresh box, before any agent used a browser: no computer exists, and the Computer tab is told this is a first start (no problem, no driver words). The person presses Wake, and that makes it.
+  const before = await person("computers.agent.status", { agent: AGENT });
+  check(!before.error && before.data.firstStart === true && !before.data.problem, "before Wake: status says the computer's first start, and names no problem", before.error || before.data);
+  const none = shOk(["ps", "-a", "--filter", `name=${PREFIX}-`, "--format", "{{.Names}}"]);
+  check(none === "", "before Wake: no computer exists", none);
+  const woke = await person("computers.agent.wake", { agent: AGENT });
+  check(!woke.error, "the person presses Wake", woke.error || woke.data);
+  let live = null;
+  for (let i = 0; i < 40 && !(live && live.state === "live"); i++) {
+    const s = await person("computers.agent.status", { agent: AGENT });
+    live = s.data || null;
+    if (!(live && live.state === "live")) await new Promise(r => setTimeout(r, 3000));
+  }
+  check(Boolean(live && live.state === "live" && !live.problem && !live.firstStart), "after Wake: the agent's computer is live, with no problem and no longer a first start", live);
+  const made = shOk(["ps", "-a", "--filter", `name=${PREFIX}-`, "--format", "{{.Names}}|{{.Status}}"]).split("\n").filter(Boolean);
+  check(made.length === 1 && made[0].startsWith(SHARED + "|Up"), "Wake made the Space's one computer, through the real driver and the restricted proxy", made);
   r = await person("computers.checkout", { agent: AGENT, why: "csproof" });
   check(!r.error && r.data.model === "computer", "computers.checkout says the model that served it: the Space's computer", r.error || r.data);
   const ps = shOk(["ps", "-a", "--filter", `name=${PREFIX}-`, "--format", "{{.Names}}|{{.Status}}"]).split("\n").filter(Boolean);

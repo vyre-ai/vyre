@@ -16,11 +16,21 @@ export type FieldRow = Partial<Draft> & { name: string; label: string; kind: str
  * The fields of a type as calm rows: the name, what it is on one line, and the badges that matter (Required, Unique, Link to Contact, Sealed, Hidden). The template token, the key and moving a field are behind one "..." menu,
  * so a row reads as a person's field and not as developer text. Press a row to edit it.
  */
-export function FieldRows({ fields, types, selected, onOpen, onMove, tokens, onCopy }: { fields: FieldRow[]; types: TypeRef[]; selected?: string; onOpen: (name: string) => void; onMove?: (name: string, dir: -1 | 1) => void; tokens?: Record<string, RowToken>; onCopy?: (text: string, what: string) => void }) {
+export function FieldRows({ fields, types, selected, onOpen, onMove, tokens, onCopy, locked }: { fields: FieldRow[]; types: TypeRef[]; selected?: string; onOpen: (name: string) => void; onMove?: (name: string, dir: -1 | 1) => void; tokens?: Record<string, RowToken>; onCopy?: (text: string, what: string) => void; /** A field Vyre keeps (the record's ID): what its row says instead of opening the editor. */ locked?: (f: FieldRow) => string | undefined }) {
   return (
     <Card flush>
       {fields.map((f, i) => {
         const tok = tokens?.[f.name];
+        const kept = locked?.(f);
+        if (kept) {
+          // shown, never edited: no editor, no move, only its key to copy
+          return (
+            <View key={f.name}>
+              {i ? <Divider /> : null}
+              <Row title={f.label} sub={kept} end={<View className="flex-row items-center justify-end gap-s1"><Chip>Automatic</Chip>{onCopy ? <Menu trigger={<IconButton icon="more" label={`More for ${f.label}`} />} items={[{ label: "Copy key", onPress: () => onCopy(f.name, "Key") }]} /> : null}</View>} />
+            </View>
+          );
+        }
         const items: MenuItem[] = [
           ...(tok && onCopy ? [{ label: "Copy token", onPress: () => onCopy(tok.token || tok.nested?.form || "", "Token") }] : []),
           ...(onCopy ? [{ label: "Copy key", onPress: () => onCopy(f.name, "Key") }] : []),

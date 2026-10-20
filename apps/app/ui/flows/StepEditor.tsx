@@ -6,6 +6,8 @@ import { Chip } from "../components/Chip";
 import { Field } from "../components/Field";
 import { Row } from "../components/Row";
 import { Select } from "../components/Select";
+import { ModelPicker } from "../components/ModelPicker";
+import { parsePick } from "../../src/models/model-choice.js";
 import { Switch } from "../components/Switch";
 import { Text } from "../components/Text";
 import { SkillsPicker } from "../components/SkillsPicker";
@@ -379,6 +381,7 @@ export function StepEditor({ s, setStep, draft, options, inHandler }: { s: Draft
           <ValueField label="The text to read" value={s.input ?? ""} onChange={(input) => set({ input })} placeholder="For example {message}" draft={draft} stepId={s.id} options={options} />
           <Field label="Groups, separated by commas" value={s.labels ?? ""} onChangeText={(labels) => set({ labels })} placeholder="For example Urgent, Routine" />
           <Text size="caption" tone="label">An AI step picks one group. Later steps read it as steps.{s.id}.label.</Text>
+          <AiStepModel s={s} set={set} options={options} />
         </>
       ) : null}
       {s.kind === "extract" ? (
@@ -395,6 +398,7 @@ export function StepEditor({ s, setStep, draft, options, inHandler }: { s: Draft
             </View>
           ))}
           <View className="flex-row"><Button kind="ghost" size="sm" icon="plus" label="Add a fact" onPress={() => set({ fields: [...(s.fields ?? []), { name: "", kind: "text" }] })} /></View>
+          <AiStepModel s={s} set={set} options={options} />
         </>
       ) : null}
       {s.kind === "connection" ? (
@@ -495,5 +499,18 @@ function Followers({ s, options, onChange }: { s: DraftStep; options: Options; o
       {choices.length ? <Select value="" options={choices} placeholder="Add a follower" onChange={(v) => onChange({ followers: [...list, v] })} /> : null}
       {list.length ? <ContextBox label="Note for the followers" value={s.followerNote ?? ""} onChange={(followerNote) => onChange({ followerNote })} options={options} placeholder="What they should know" /> : null}
     </View>
+  );
+}
+
+/**
+ * The model an AI step runs on, from the one model picker: the person's own AI accounts and what each can run. The step keeps it as `provider/model`; with none it runs on the default model of the
+ * Flow's "Runs on" person. The account that pays is always theirs, never the editor's.
+ */
+function AiStepModel({ s, set, options }: { s: any; set: (p: any) => void; options: any }) {
+  const now = s.model ? parsePick(String(s.model)) : null;
+  return (
+    <ModelPicker label="Model" groups={options.models ?? null} details={false} value={now ? { provider: now.provider, model: now.model } : {}}
+      onChange={({ model }) => set({ model: model.key })}
+      note={s.model ? "Runs on the AI account of the Flow's Runs on person." : "None chosen: it runs on the default model of the Flow's Runs on person."} />
   );
 }

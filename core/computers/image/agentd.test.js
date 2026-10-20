@@ -5,7 +5,7 @@ import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { planCreate, planStartScreen, planStopScreen, planWipeHome, planRemove, planFolders, FOLDERS, asAgent, execute, tolerant, homeOf, socketOf } from "./agentd.js";
+import { DESK, deskDots, deskNameOf, wallpaperArgv, planCreate, planStartScreen, planStopScreen, planWipeHome, planRemove, planFolders, FOLDERS, asAgent, execute, tolerant, homeOf, socketOf } from "./agentd.js";
 
 const U = { user: "ag20000", uid: 20000, display: 20 };
 const B = { user: "ag20001", uid: 20001, display: 21 };
@@ -31,7 +31,7 @@ test("every agent process runs through setpriv as that uid, with absolute paths:
 });
 
 test("the screen is the browser uid's: its own display on a unix socket (no TCP port), its password a file in the browser's folder, never on the command line; the agent gets only an untrusted cookie", () => {
-  const [rm, trusted, mode, xvnc, untrusted, chmodU, wm, chrome] = planStartScreen(U);
+  const [rm, nameFile, trusted, mode, xvnc, untrusted, chmodU, wm, chrome] = planStartScreen(U);
   const s = xvnc.join(" ");
   assert.match(s, / \+extension SECURITY/, "the untrusted cookie the agent gets is a SECURITY extension authority: without the extension there is none");
   assert.match(s, /^\/usr\/bin\/setpriv --reuid=21000 --regid=21000 /, "Xvnc runs as the browser uid, not the agent's");
@@ -63,7 +63,7 @@ test("the desk: a wallpaper made and set by the screen's owner, a dock that runs
   const after = steps.slice(steps.findIndex(s => s.join(" ").includes("agentd-chrome.py")) + 1);
   const wall = after.find(s => s.includes("/usr/bin/convert")), set = after.find(s => s.includes("/usr/bin/display")), dock = after.find(s => s.join(" ").includes("agentd-dock.py"));
   assert.ok(wall && set && dock);
-  assert.match(wall.join(" "), /^\/usr\/bin\/setpriv --reuid=21000 .* \/usr\/bin\/convert -size 1440x900 xc:#0E0D0C \( \/usr\/share\/vyre-desk\/mark\.png -resize 112x112 \) -gravity center -composite PNG24:\/var\/lib\/vyre\/browsers\/agb21000\/wallpaper\.png$/);
+  assert.match(wall.join(" "), /^\/usr\/bin\/setpriv --reuid=21000 .* \/usr\/bin\/convert -size 1440x900 xc:#0E0D0C .* \/usr\/share\/vyre-desk\/vyre-mark\.png -resize 450x450 .* PNG24:\/var\/lib\/vyre\/browsers\/agb21000\/wallpaper\.png$/, "the big clean mark, on a screen of this size");
   assert.equal(/** @type {any} */ (wall).tolerate, true, "a wallpaper that cannot be made costs the picture only");
   assert.match(set.join(" "), /^\/usr\/bin\/setpriv --reuid=21000 .* DISPLAY=:20 XAUTHORITY=\/var\/lib\/vyre\/browsers\/agb21000\/xauth \/usr\/bin\/display -window root \/var\/lib\/vyre\/browsers\/agb21000\/wallpaper\.png$/);
   assert.match(dock.join(" "), /^\/usr\/bin\/setpriv --reuid=20000 --regid=20000 .* DISPLAY=:20 XAUTHORITY=\/var\/lib\/vyre\/x\/ag20000\/xauth \/usr\/bin\/python3 -I \/opt\/agentd\/agentd-dock\.py$/, "the dock is the agent's, with the untrusted cookie only");
@@ -92,9 +92,9 @@ test("the agent's folder: Inbox, Work, Done, Scripts and Notes made when missing
 });
 
 test("the long-running steps are marked in the plan, and the others are not", () => {
-  const [, trusted, mode, xvnc, untrusted, chmodU, wm, chrome] = planStartScreen(U);
+  const [, nameFile, trusted, mode, xvnc, untrusted, chmodU, wm, chrome] = planStartScreen(U);
   for (const step of [xvnc, wm, chrome]) assert.equal(/** @type {any} */ (step).detach, true);
-  for (const step of [trusted, mode, untrusted, chmodU]) assert.equal(/** @type {any} */ (step).detach, undefined);
+  for (const step of [nameFile, trusted, mode, untrusted, chmodU]) assert.equal(/** @type {any} */ (step).detach, undefined);
   for (const step of [...planStopScreen(U), ...planWipeHome(U), ...planCreate(U), ...planRemove(U)]) assert.equal(/** @type {any} */ (step).detach, undefined, step.join(" "));
 });
 
@@ -173,4 +173,34 @@ test("sleep keeps the Chrome profile: stopping only signals processes, the profi
   assert.match(fs.readFileSync(new URL("./agentd-chrome.py", import.meta.url), "utf8"), /Browser\.close/);
   assert.ok(planWipeHome(U).some(x => x.includes("-delete") && x.includes("/var/lib/vyre/browsers/agb21000")), "only a reset empties the browser profile");
   assert.ok(planRemove(U).some(x => x.includes("-delete")));
+});
+
+test("the wallpaper: the screen's size, the halftone dots, the large clean mark, and only the agent's name as text, which can steer nothing in ImageMagick", () => {
+  const argv = wallpaperArgv("1920x1080", "Ada's desk", 20003, "/x/wall.png");
+  assert.deepEqual(argv.slice(1, 4), ["-size", "1920x1080", `xc:${DESK.background}`], "drawn at the screen's size");
+  assert.equal(argv.at(-1), "PNG24:/x/wall.png");
+  assert.ok(argv.includes(DESK.mark) && argv.includes("540x540"), "the mark is half the screen's height");
+  assert.equal(argv.filter(a => a === "-annotate").length, 2, "the monogram of the face and the name, and no other text");
+  assert.equal(argv[argv.indexOf("-annotate", argv.indexOf("-annotate") + 1) + 2], "Ada's desk");
+  assert.ok(argv.filter(a => a === "-draw").length > 20, "rows of dots");
+  const dots = deskDots(1440, 900);
+  assert.ok(dots.length > 400 && dots.every(d => d.x > 0 && d.x < 1440 && d.y > 0 && d.y < 900 && d.a >= 0.055 && d.a <= 0.42 && d.r < 3.3));
+  const centre = dots.filter(d => Math.abs(d.x - 720) < 120 && Math.abs(d.y - 414) < 120), bottom = dots.filter(d => d.y > 800);
+  assert.ok(centre.every(d => d.a < 0.11) && dots.some(d => d.a > 0.2), "calm behind the mark: its dots are barely there, and the field is brighter elsewhere");
+  assert.ok(bottom.filter(d => d.y > 850).every(d => d.a < 0.14), "calm over the dock");
+  // no name: no text at all. A hostile name: nothing that ImageMagick would read as a file or a format string.
+  assert.equal(wallpaperArgv("1440x900", "", 20000, "/x").includes("-annotate"), false);
+  assert.equal(deskNameOf("@/etc/passwd %[fx:1] \\n"), "etcpasswd fx1 n");
+  assert.equal(deskNameOf("  A   B  "), "A B");
+  assert.equal(deskNameOf("x".repeat(80)).length, 32);
+  assert.equal(deskNameOf(42), "");
+  for (const bad of ["@/etc/passwd", "%[fx:1]", "a\\nb", "label:x"]) assert.doesNotMatch(wallpaperArgv("1440x900", bad, 20000, "/x").join("\u0000"), /\u0000-annotate\u0000[^\u0000]*\u0000[@%\\]/);
+});
+
+test("the agent's name reaches its desk: the start step writes it into the browser uid's own folder, cleaned, and a missing name writes an empty file", () => {
+  const step = planStartScreen({ ...U, name: "Ada <script>" })[1];
+  assert.match(step.join(" "), /^\/usr\/bin\/setpriv --reuid=21000 .* \/usr\/bin\/tee \/var\/lib\/vyre\/browsers\/agb21000\/agent-name$/);
+  assert.equal(/** @type {any} */ (step).input, "Ada script");
+  assert.equal(/** @type {any} */ (step).tolerate, true);
+  assert.equal(/** @type {any} */ (planStartScreen(U)[1]).input, "");
 });

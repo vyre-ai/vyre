@@ -39,9 +39,11 @@ export default function ChatsScreen() {
           </View>
         </Banner>
       ) : null}
+      {chats.note && view.body === "list" && !phone ? <Text size="caption" tone="label">This is the last list. It did not refresh.</Text> : null}
       {view.body === "unsupported" ? <Card><EmptyState title={UNSUPPORTED} body="This app and your server ship together. Update the server, then come back." /></Card>
         : view.body === "gap" && gap ? <Card><EmptyState title={gap.title} body={gap.line} {...(gap.action && gap.route ? { action: { label: gap.action, onPress: () => go(gap.route as string) } } : {})} /></Card>
         : view.body === "loading" ? <LoadingState rows={4} />
+        : view.body === "failed" ? <Card><EmptyState title="Your chats did not load" body="Your Vyre did not send the list. Nothing was lost." action={{ label: "Try again", onPress: chats.retry }} /></Card>
         : view.body === "offline" ? <Card><EmptyState title="Your Vyre has not answered yet" body="Check that it is on and online. Nothing was lost." action={{ label: "Try again", onPress: () => refresh() }} /></Card>
         : phone ? <View className="gap-s3"><ChatsSidebarHeader /><ChatsSidebar /></View>
         : <Card><EmptyState title={view.body === "empty" ? "No chats yet" : "Pick a chat"} body={view.body === "empty" ? "Start one with an agent or a teammate." : "Your chats are in the list on the left."} action={{ label: "New chat", onPress: () => go("/u/chats/new") }} /></Card>}

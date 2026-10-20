@@ -47,14 +47,14 @@ const RECORDS: PanelDef = {
   after: <><SidebarRow label="All types" icon="records" tone="label" /><SidebarRow label="New view" icon="plus" tone="label" /></>,
 };
 
-/** The real Shell around a sample page, in the state asked for: main, folded, or a place's panel. */
-export function ShellSample({ state = "main", logo = true }: { state?: "main" | "folded" | "projects" | "records" | "projects-folded"; logo?: boolean }) {
+/** The real Shell around a sample page, in the state asked for: main, folded, or a place's panel. folded-account and folded-space are the folded rail for the picture tests that press its face or its Space. */
+export function ShellSample({ state = "main", logo = true }: { state?: "main" | "folded" | "projects" | "records" | "projects-folded" | "folded-account" | "folded-space"; logo?: boolean }) {
   const spaces = logo ? SPACES : SPACES.map((s) => ({ ...s, logo: null }));
   const panel = state === "projects" || state === "projects-folded" ? PROJECTS : state === "records" ? RECORDS : null;
   const current = panel ? (panel.id === "projects" ? "/u/project/p2" : "/u/records/contact") : "/u/projects";
   return (
     <View style={{ width: 880, height: 700, overflow: "hidden", borderRadius: 16 }}>
-      <Shell {...NAV} panel={panel} folded={state === "folded" || state === "projects-folded"} onSearch={() => {}} current={current} onNavigate={() => {}} spaces={spaces} space="spc_juniperstudi" onSpace={() => {}} user={{ name: "Alex Morgan", sub: "alex.vyre.run" }}>
+      <Shell {...NAV} panel={panel} folded={state === "folded" || state === "projects-folded" || state.startsWith("folded-")} onSearch={() => {}} current={current} onNavigate={() => {}} spaces={spaces} space="spc_juniperstudi" onSpace={() => {}} user={{ name: "Alex Morgan", sub: "alex.vyre.run" }}>
         <View style={{ padding: RAIL.contentPad, gap: 20 }}>
           <Text size="page" strong>Projects</Text>
           <Text tone="muted">Matters your team and its agents are working on.</Text>

@@ -403,9 +403,22 @@ test("box update: a pulled image (no compose.build.yml) is tagged vyre:prev and 
   assert.equal(r.code, 0, r.out);
   assert.ok(b.calls().includes("compose pull"));
   assert.match(b.read(path.join(b.FAKE, "cosign")), /verify --certificate-identity-regexp .*release\\\.yml@refs\/tags\/.* --certificate-oidc-issuer https:\/\/token\.actions\.githubusercontent\.com ghcr\.io\/vyre-ai\/vyre@sha256:a{64}/, "the image was checked by cosign before the pull");
+  // the agents' computers' image is pulled too (not a service of the stack, so compose pull leaves it out), after cosign checked it
+  const calls = b.calls();
+  assert.ok(calls.includes(`pull -q ${COMPUTER_REF}`), calls.join("\n"));
+  assert.ok(calls.indexOf("compose pull") < calls.indexOf(`pull -q ${COMPUTER_REF}`), "after the stack's own pull");
+  assert.ok(b.read(path.join(b.FAKE, "cosign")).includes(` ${COMPUTER_REF}`), "the computer image was checked by cosign before the pull");
   assert.equal(b.image("vyre:prev"), "orig");
   assert.equal(b.read(path.join(b.DIR, "src", "marker")).trim(), "old");
   assert.ok(!b.hits.includes("/dl/v0.2.0/vyre.tgz"));
+});
+
+test("box update: a box that already has the computer image does not pull it again", async t => {
+  const b = await box(t, { releases: [{ tag: "v0.2.0", images: true }], build: false });
+  fs.writeFileSync(path.join(b.FAKE, "images", COMPUTER_REF.replace(/[/:]/g, "_")), "have");
+  const r = /** @type {any} */ (await b.run(["update"]));
+  assert.equal(r.code, 0, r.out);
+  assert.ok(!b.calls().includes(`pull -q ${COMPUTER_REF}`), b.calls().join("\n"));
 });
 
 test("box update: a box whose compose.yml names the image by digest keeps THAT image as vyre:prev, never a stale :latest", async t => {

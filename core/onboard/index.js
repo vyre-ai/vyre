@@ -580,7 +580,10 @@ export default {
       if (!a.made) return { name: null, display: a.display, thread: null, why: a.why };
       if (!ob().claude) return { name: a.name, display: a.display, thread: null };
       try {
-        const r = await call("agents.ask", { agent: a.name, text: GREETING, wait: false, surface: "onboard" });
+        // asked as the person finishing onboarding (Rule 2: no person, no agent work): a call with no person proved is refused and onboarding finishes without the greeting
+        const g = await ctx.call("agents.ask", { agent: a.name, text: GREETING, wait: false, surface: "onboard" }, { relay: true });
+        if (g.error) throw new Error(g.error.message);
+        const r = g.data;
         save({ onboard: { greeted: { agent: a.name, thread: r.thread } } });
         return { name: a.name, display: a.display, thread: r.thread };
       } catch (e) {

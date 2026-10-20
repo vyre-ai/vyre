@@ -187,17 +187,39 @@ export function createProxy({ socket = "/var/run/docker.sock", policy, config, b
   if (!policy || !config || !config.network || !config.image || !config.labelPrefix) {
     throw new Error("createProxy needs the policy and the box's computers network, image and label prefix");
   }
-  if (typeof bearer !== "string" || bearer.length < 16) {
+  // The bearer is a fixed token, or a source that reads the file vyred writes (lib/bearer watch()): the box's docker-api starts before vyred
+  // has written it on a fresh install, and vyred makes a new one if the file is lost, so the source is asked again when a request's bearer
+  // does not match. Until there is a token every request is refused: there is still no unauthenticated mode.
+  const source = typeof bearer === "string" ? null : bearer;
+  if (source ? (typeof source.current !== "function" || typeof source.refresh !== "function") : (typeof bearer !== "string" || bearer.length < 16)) {
     throw new Error("createProxy needs a bearer token (16+ chars) -- there is no unauthenticated mode");
   }
-  const bearerBuf = Buffer.from(bearer, "utf8");
+  /** @param {string | null} t */
+  const usable = t => typeof t === "string" && t.length >= 16 ? t : null;
+  const current = () => source ? usable(source.current()) : /** @type {string} */ (bearer);
   /** Constant-time: refuses early (a bad length is itself timing-safe info an attacker cannot
    * use to guess the token faster) but never short-circuits on the token's own content. */
+  const matches = (/** @type {Buffer} */ given, /** @type {string | null} */ token) => {
+    if (!token) return false;
+    const want = Buffer.from(token, "utf8");
+    return given.length === want.length && crypto.timingSafeEqual(given, want);
+  };
   const authorized = header => {
     const m = /^Bearer (.+)$/.exec(String(header || ""));
     if (!m) return false;
     const given = Buffer.from(m[1], "utf8");
-    return given.length === bearerBuf.length && crypto.timingSafeEqual(given, bearerBuf);
+    const held = current();
+    if (matches(given, held)) return true;
+    if (!source) return false;
+    // the file may be new (first boot) or made again since it was read: read it once more (the source limits how often)
+    const fresh = usable(source.refresh());
+    return fresh !== held && matches(given, fresh);
+  };
+  /** Refuse a request whose bearer does not match; with no token yet, say so (503), so vyred can tell "not ready" from "wrong". */
+  const mustAuthorize = header => {
+    if (authorized(header)) return;
+    if (!current()) refuse("no bearer yet: vyred has not set agents' computers up on this server", 503);
+    refuse("missing or wrong bearer", 401);
   };
   const prefix = config.labelPrefix;
   const agentdPolicy = typeof policy.allowAgentdExec === "function" && policy.AGENTD_EXEC ? { allowAgentdExec: policy.allowAgentdExec, AGENTD_EXEC: policy.AGENTD_EXEC } : null;
@@ -317,7 +339,7 @@ export function createProxy({ socket = "/var/run/docker.sock", policy, config, b
 
   /** @param {http.IncomingMessage} req @param {http.ServerResponse} res */
   const handle = async (req, res) => {
-    if (!authorized(req.headers.authorization)) refuse("missing or wrong bearer", 401);
+    mustAuthorize(req.headers.authorization);
     const method = String(req.method);
     const url = new URL(String(req.url), "http://docker");
     const v = /^\/v1\.\d{1,2}(?=\/)/.exec(url.pathname);
@@ -504,7 +526,7 @@ export function createProxy({ socket = "/var/run/docker.sock", policy, config, b
   /** @param {http.IncomingMessage} req @param {import("node:net").Socket} sock @param {Buffer} head */
   const tunnel = async (req, sock, head) => {
     if (!agentdPolicy) refuse("connection upgrades are refused");
-    if (!authorized(req.headers.authorization)) refuse("missing or wrong bearer", 401);
+    mustAuthorize(req.headers.authorization);
     const url = new URL(String(req.url), "http://docker");
     const v = /^\/v1\.\d{1,2}(?=\/)/.exec(url.pathname);
     const ver = v ? v[0] : "";

@@ -1,16 +1,19 @@
 import { useEffect, useState } from "react";
 import { ScrollView, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { Banner, Button, EmptyState, Text, titleOf, ErrorState, LoadingState, PageHeader, RecordForm, createPayload, prefillFromLink, formErrors, showToast, useFieldEnv, useRecordsWorld, useStore, viewDefOf } from "@vyre/ui";
+import { Banner, Button, EmptyState, Text, titleOf, ErrorState, LoadingState, PageHeader, RecordForm, createPayload, prefillFromLink, formErrors, personFields, showToast, taskRequestOf, useFieldEnv, useRecordsWorld, useStore, viewDefOf } from "@vyre/ui";
 
 import { findDupes } from "./dupes.js";
 import { plainError } from "../../src/real/error-note.js";
 
 const say = (e: unknown) => plainError(e, "That did not save.");
 
-/** /u/record/new?type=<name>: the create form of any type, drawn from its definition, in its groups. A sealed value is put after the record exists, through the same putSealed a sealed field always used. */
+/**
+ * /u/record/new?type=<name>: the create form of any type, drawn from its definition, in its groups. A sealed value is put after the record exists, through the same putSealed a sealed field always used.
+ * A task is made through tasks.request (the kernel writes its status), done by the person, and about the record it was started from (`about`, a record's address).
+ */
 export function RecordNewScreen() {
-  const { type, via, to } = useLocalSearchParams<{ type: string; via?: string; to?: string }>();
+  const { type, via, to, about } = useLocalSearchParams<{ type: string; via?: string; to?: string; about?: string }>();
   const router = useRouter();
   const store = useStore();
   const { data: world, loading, error, reload } = useRecordsWorld();
@@ -26,7 +29,7 @@ export function RecordNewScreen() {
   if (loading && !world) return <View className="min-h-0 flex-1"><PageHeader title="New" onBack={back} /><LoadingState rows={4} /></View>;
   const def = world?.types.find((t: any) => t.name === type);
   if (!def) return <EmptyState title="That type is not here" body={`This space has no record type called "${type}".`} action={{ label: "Go back", onPress: back }} />;
-  const fields = def.fields.map((f: any) => ({ ...f, sealed: f.kind === "sealed" || !!f.seal }));
+  const fields = personFields(def).map((f: any) => ({ ...f, sealed: f.kind === "sealed" || !!f.seal }));
   const errors = tried ? formErrors(fields, values) : {};
   const noun = def.label.toLowerCase();
   // Someone who looks like the person being typed: shown as a hint above the form, never in the way.
@@ -36,7 +39,9 @@ export function RecordNewScreen() {
     const { plain, sealed } = createPayload(fields, values);
     setBusy(true);
     try {
-      const rec: any = await store.create(def.name, plain);
+      const rec: any = def.name === "task"
+        ? await store.request(taskRequestOf(plain, { doer: (await store.me?.()) ?? "", ...(about ? { about: String(about) } : {}) }) as never).then((t: any) => ({ ...t, urn: `vyre://${t.space}/task/${t.id}` }))
+        : await store.create(def.name, plain);
       for (const [name, v] of Object.entries(sealed)) await store.putSealed(rec.urn, name, String(v));
       showToast(`${def.label} created.`);
       if (another) { setValues({}); setTried(false); setBusy(false); return; }

@@ -720,14 +720,16 @@ export class FlowRunner {
 
   /**
    * An inbound web call. The host (the Ingress door) has already authenticated it and labelled its trust; the body is data and the run is tainted
-   * unless the host says `member`. `key` makes a retried delivery the same run.
-   * @param {string} path @param {{ body?: any, key?: string, trust?: 'member'|'external'|'untrusted' }} [req]
+   * unless the host says `member`. `key` makes a retried delivery the same run. `flow` binds the call to one Flow by id (its own web address, core/hooks): only that Flow's trigger that asked for an
+   * address answers, and the path is not read.
+   * @param {string} path @param {{ body?: any, key?: string, trust?: 'member'|'external'|'untrusted', flow?: string }} [req]
    */
   async handleWeb(path, req = {}) {
-    const f = (await this.#triggerFlows()).find(x => x.flow.trigger.on === "web" && x.flow.trigger.path === path);
+    const byId = typeof req.flow === "string" && req.flow ? req.flow : null;
+    const f = (await this.#triggerFlows()).find(x => x.flow.trigger.on === "web" && (byId ? x.id === byId && x.flow.trigger.address === true : x.flow.trigger.path === path));
     if (!f) throw Object.assign(new Error("no Flow answers that address"), { code: "not_found" });
     const trust = req.trust || "untrusted";
-    return this.#start(f, { kind: "web", key: req.key || newId("web_"), input: req.body ?? {}, path }, { trust, data: req.body ?? {} });
+    return this.#start(f, { kind: "web", key: req.key || newId("web_"), input: req.body ?? {}, path: f.flow.trigger.path }, { trust, data: req.body ?? {} });
   }
 
   /**
@@ -1901,7 +1903,7 @@ export class FlowRunner {
     const need = { action: "model.call", resource: `vyre://${ctx.cat.space}/model/*` };
     return this.#effect(ctx, s, key, need, async () => {
       if (ctx.dry) return { dry: true, label: null };
-      const m = this.ports.model || { provider: "default", model: "default" };
+      const m = typeof s.model === "string" && /^[a-z][a-z0-9-]{0,39}\/[A-Za-z0-9][A-Za-z0-9._:\/\[\]-]{0,119}$/.test(s.model) ? { provider: s.model.slice(0, s.model.indexOf("/")), model: s.model.slice(s.model.indexOf("/") + 1) } : this.ports.model || { provider: "default", model: "default" };   // the step's own model (provider/model, the one picker's key), else the Space's
       // AI is metered: a step may spend little, a run a bit more, a Space a day's worth (an admin sets it; kernel/flows `flows.budget`). Refused plainly before anything is sent.
       await this.#aiGuard(ctx);
       const text = String(val(s.input) ?? "").slice(0, 16_000);
@@ -1926,7 +1928,7 @@ export class FlowRunner {
     return this.#effect(ctx, s, key, need, async () => {
       const names = s.fields.map((/** @type {any} */ f) => f.name);
       if (ctx.dry) return { dry: true, fields: Object.fromEntries(names.map((/** @type {string} */ n) => [n, null])) };
-      const m = this.ports.model || { provider: "default", model: "default" };
+      const m = typeof s.model === "string" && /^[a-z][a-z0-9-]{0,39}\/[A-Za-z0-9][A-Za-z0-9._:\/\[\]-]{0,119}$/.test(s.model) ? { provider: s.model.slice(0, s.model.indexOf("/")), model: s.model.slice(s.model.indexOf("/") + 1) } : this.ports.model || { provider: "default", model: "default" };   // the step's own model (provider/model, the one picker's key), else the Space's
       await this.#aiGuard(ctx);
       const text = String(val(s.input) ?? "").slice(0, 16_000);
       const spec = s.fields.map((/** @type {any} */ f) => `${f.name} (${f.kind || "text"})${f.description ? `: ${f.description}` : ""}`).join("\n");

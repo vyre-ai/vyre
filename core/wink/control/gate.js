@@ -215,7 +215,8 @@ export function createGate(o) {
     const url = String(req.url || "");
     if (url.includes("?") || req.headers.upgrade || req.headers["transfer-encoding"] || req.headers.expect) return null;
     const m = req.method, cl = req.headers["content-length"];
-    if (HOOK_PATH.test(url) && url.length <= 7 + 40 && m === "POST") {
+    // a route name of up to 40 and a 64-character token make a Flow's own address (core/hooks/listener.js NAME_MAX)
+    if (HOOK_PATH.test(url) && url.length <= 7 + 120 && m === "POST") {
       const n = /^\d{1,7}$/.test(String(cl)) ? Number(cl) : -1;
       const type = String(req.headers["content-type"] || "").split(";")[0].trim().toLowerCase();
       return n >= 0 && n <= INGRESS_BODY_LIMIT && HOOK_TYPES.has(type) ? "hooks" : null;

@@ -130,23 +130,26 @@ const lead = (name: IconName) => <View style={{ width: 20, alignItems: "center" 
  * Your profile, AI accounts and Settings; the theme (Light, Match this device, Dark, a check on the one in use); then folding the sidebar, Lock and Sign out. Folded, only the face shows and the name is
  * its tip (the tip sits outside the menu, so the face itself is the menu's trigger). No name yet reads "You". Every section's sidebar has this same foot.
  */
-function RailFoot({ p, folded, toggle }: { p: RailProps; folded: boolean; toggle: () => void }) {
-  const { color } = useUiTheme();
-  const theme = useAppearance((s) => s.person.theme) ?? "system";
-  const cur = p.spaces.find((s) => s.id === p.space) ?? p.spaces[0];
-  const { name, handle } = accountHeader(p.user);
-  const sub = handle || cur?.name || "";
-  const THEME_ICON = { paper: "sun", system: "laptop", dark: "moon" } as const;
-  const items: MenuItem[] = [
+const THEME_ICON = { paper: "sun", system: "laptop", dark: "moon" } as const;
+
+/** The account menu's choices, the same on the rail's foot and on the phone's title row: Your profile, AI accounts, Settings, the theme, folding the sidebar (the rail only), Lock and Sign out. */
+function accountItems(p: ShellProps, theme: string, fold?: { folded: boolean; toggle: () => void }): MenuItem[] {
+  return [
     { id: "profile", label: "Your profile", lead: lead("person"), onPress: () => p.onNavigate(ACCOUNT_HREF.profile) },
     { id: "ai", label: "AI accounts", lead: lead("spark"), onPress: () => p.onNavigate(ACCOUNT_HREF.ai) },
     { id: "settings", label: "Settings", lead: lead("settings"), onPress: () => p.onNavigate(ACCOUNT_HREF.settings) },
     ...THEME_CHOICES.map(([v, l], i) => ({ id: `theme:${v}`, label: l, divider: i === 0, selected: theme === v, lead: lead(THEME_ICON[v]), onPress: () => { useAppearance.getState().setPerson({ theme: v }); p.onTheme?.(v); } })),
-    { id: "fold", label: folded ? "Expand sidebar" : "Collapse sidebar", divider: true, lead: lead("menu"), onPress: toggle },
-    ...(p.onLock ? [{ id: "lock", label: "Lock", lead: lead("lock"), onPress: p.onLock }] : []),
+    ...(fold ? [{ id: "fold", label: fold.folded ? "Expand sidebar" : "Collapse sidebar", divider: true, lead: lead("menu"), onPress: fold.toggle }] : []),
+    ...(p.onLock ? [{ id: "lock", label: "Lock", divider: !fold, lead: lead("lock"), onPress: p.onLock }] : []),
     ...(p.onSignOut ? [{ id: "out", label: "Sign out", lead: lead("back"), onPress: p.onSignOut }] : []),
   ];
-  const header = (
+}
+
+/** The account menu's header: your face, your name and your username. */
+function AccountHeader({ p }: { p: ShellProps }) {
+  const { color } = useUiTheme();
+  const { name, handle } = accountHeader(p.user);
+  return (
     <View style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 12, paddingTop: 8, paddingBottom: 10, marginBottom: 4, borderBottomWidth: 1, borderColor: color.edge }}>
       <Avatar of={markRef("person", name, undefined, p.user.look)} size={32} />
       <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
@@ -155,7 +158,19 @@ function RailFoot({ p, folded, toggle }: { p: RailProps; folded: boolean; toggle
       </View>
     </View>
   );
-  const label = `${name}: your profile, AI accounts, settings, theme, lock and sign out`;
+}
+
+const accountLabel = (name: string) => `${name}: your profile, AI accounts, settings, theme, lock and sign out`;
+
+function RailFoot({ p, folded, toggle }: { p: RailProps; folded: boolean; toggle: () => void }) {
+  const { color } = useUiTheme();
+  const theme = useAppearance((s) => s.person.theme) ?? "system";
+  const cur = p.spaces.find((s) => s.id === p.space) ?? p.spaces[0];
+  const { name, handle } = accountHeader(p.user);
+  const sub = handle || cur?.name || "";
+  const items = accountItems(p, theme, { folded, toggle });
+  const header = <AccountHeader p={p} />;
+  const label = accountLabel(name);
   const face = <Avatar of={markRef("person", name, undefined, p.user.look)} size={RAIL.face} />;
   if (folded) {
     return (
@@ -209,7 +224,9 @@ function Rail(p: RailProps) {
   const w = useStoredWidth("rail", RAIL.width, RAIL.minWidth, RAIL.maxWidth);
   const enter = reduced ? undefined : (panel ? SlideInRight : SlideInLeft).duration(RAIL.slideMs);
   return (
-    <View role="navigation" accessibilityLabel="Places" style={{ width: railWidth(folded, w.width), flexShrink: 0, flexGrow: 0, borderRightWidth: 1, borderColor: color.edge, backgroundColor: color.bg }}>
+    // zIndex 1: on the web every View is its own stacking layer (react-native-web gives each z-index 0), so without it the main pane, drawn after the rail, covers what the rail draws past its edge:
+    // the folded rail's name tips sat under the page, a white sliver beside the face.
+    <View role="navigation" accessibilityLabel="Places" style={{ width: railWidth(folded, w.width), flexShrink: 0, flexGrow: 0, zIndex: 1, borderRightWidth: 1, borderColor: color.edge, backgroundColor: color.bg }}>
       {/* The top bar: the space switcher on the left, the section's + on the right. */}
       <View style={{ height: RAIL.topH, flexDirection: "row", alignItems: "center", justifyContent: folded ? "center" : "space-between", paddingHorizontal: folded ? 0 : RAIL.gutter }}>
         <RailSwitcher p={p} folded={folded} />
@@ -239,6 +256,19 @@ function Tab({ it, on, onPress }: { it: NavItem | null; on: boolean; onPress: ()
   );
 }
 
+/** On a phone, your face at the end of the title row: it opens the same account menu as the rail's foot (Your profile, AI accounts, Settings, the theme, Lock, Sign out). */
+function PhoneAccount({ p }: { p: ShellProps }) {
+  const theme = useAppearance((s) => s.person.theme) ?? "system";
+  const { name } = accountHeader(p.user);
+  return (
+    <Menu align="end" side="bottom" header={<AccountHeader p={p} />} items={accountItems(p, theme)} trigger={
+      <Pressable accessibilityRole="button" accessibilityLabel={accountLabel(name)} hitSlop={8} style={{ minWidth: 44, minHeight: 44, alignItems: "center", justifyContent: "center" }}>
+        <Avatar of={markRef("person", name, undefined, p.user.look)} size={32} />
+      </Pressable>
+    } />
+  );
+}
+
 function PhoneShell(p: ShellProps) {
   const [more, setMore] = useState(false);
   const inset = useSafeAreaInsets();
@@ -251,8 +281,9 @@ function PhoneShell(p: ShellProps) {
     <View className="flex-1 bg-bg" style={{ paddingTop: inset.top + 8 }}>
       {/* The switcher shows on the tab bar's own places only; a page opened from More (Vault, Drive, Settings, Spaces) is pushed and has its own title row. */}
       {isTopLevel(p.current, all) && !inMore ? (
-        <View className="flex-row items-center px-s4">
+        <View className="flex-row items-center justify-between px-s4">
           <SpaceSwitcher spaces={p.spaces} space={p.space} onSpace={p.onSpace} onOpen={p.onNavigate} compact />
+          <PhoneAccount p={p} />
         </View>
       ) : null}
       <View className="min-h-0 flex-1">{p.children}</View>

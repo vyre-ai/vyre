@@ -46,6 +46,8 @@
    "expo-document-picker": "choose a password export from Files on a phone (nothing else in the app opens the system file picker)",
    "expo-font": "expo peer: fonts",
    "expo-haptics": "touch feedback",
+   "expo-image-manipulator": "crops, resizes and re-encodes a profile photo on the device (WebP or JPEG, about 512 px, under 200 KB, which also drops EXIF and location) on the web, iOS and Android; nothing here draws an image again on a phone (Expo, MIT, loaded only when a photo is picked)",
+   "expo-image-picker": "opens the phone's own photo picker for a profile photo (Photos on iOS with no permission asked, the system photo picker on Android, a file chooser on the web); expo-document-picker opens Files, where an iPhone's photos are not (Expo, MIT, loaded only when a photo is picked)",
    "expo-linking": "deep links for pairing",
    "expo-local-authentication": "Face ID and fingerprint for the one yes",
    "expo-router": "file-based navigation",

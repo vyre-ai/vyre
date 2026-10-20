@@ -34,7 +34,7 @@ import { createMirror } from "./mirror.js";
 import { agentDir } from "../../lib/files/layout.js";
 import { orientation } from "../../lib/orientation.js";
 import { dataBlock } from "../../lib/prompt-data.js";
-import { connectOwn } from "../../lib/own-account.js";
+import { connectOwn, noPerson } from "../../lib/own-account.js";
 import { MIGRATIONS as CONFIG_MIGRATIONS, register as registerConfig } from "./config.js";
 
 export /** What a woken agent is told about closing its task: the real tools and states (core/tasks-tools), so a task is never left open in silence and the next step of a Flow starts when the agent is done. */
@@ -118,6 +118,18 @@ const MIGRATIONS = [
 ];
 /** The most jobs one agent runs at once and starts in an hour (agents.wake_max_concurrent and agents.wake_max_hourly settle it per Space): a runaway Flow cannot start an agent without end. */
 export const WAKE_CAPS = Object.freeze({ concurrent: 5, hourly: 40 });
+/**
+ * Rule 2 (no person means no agent work): a call whose chain is only the home's own services (a module's own call, a timer) names nobody, so it starts no agent and runs no AI turn. The few calls below are
+ * the home's own upkeep, which runs no AI turn for anyone; only they read such a chain as the owner's, and each says why. Anything else with that chain is refused (personOf).
+ */
+export const OWNER_UPKEEP = Object.freeze({
+  "agents.create": "the row's maker when a module makes an agent (onboarding's assistant, a plugin's agent): it writes the agent's row and starts no thread",
+  "agents.update": "the name on the version a module's change writes (onboarding hands the assistant its sign-in): it changes the row and starts no thread",
+  "agents.docs.set": "the name on a new version of an agent's AGENTS.md: it writes a file and starts no thread",
+  "agents.context.link": "who linked a folder to an agent, and whose project reads it is judged by: it records a link and starts no thread",
+  "agents.vault.assign": "who put a Vault item on an agent's list: it records the name and starts no thread",
+  "agents.access.set": "who shared an agent, named on the grant it makes: it changes who may use the agent and starts no thread",
+});
 
 /**
  * The Engineer: a built-in assistant that helps an admin change the shape of their Space. It only PROPOSES. Its model session reaches these tools and no others (the registry holds it to
@@ -173,6 +185,9 @@ const ASK_WAIT_MS = 590_000;
 /** A setup token and an API key look different; the Vault item says which it is only by its value. */
 export const envFor = (value, as) => (as === "api-key" ? { ANTHROPIC_API_KEY: value } : { CLAUDE_CODE_OAUTH_TOKEN: value });
 
+/** What every agent is told about the work it can set up for itself. Words only; the tools decide what is allowed. */
+export const OWN_WORK = "When the person asks you to do something at set times (\"every weekday at 9, summarise my inbox\"), set up a Routine for yourself: it starts you at its time, for them, and you post the result here. When they ask you to tell them when something new appears (\"tell me when an invoice from Northwind arrives\"), set up a Watcher for yourself: it checks a source and wakes you only when there is something new. Use the write-a-watcher skill, only when their own words asked, then confirm in one plain line what you set up.";
+
 /**
  * What an agent's thread is told about itself, after Claude Code's own system prompt.
  * @param {any} a an agent record
@@ -187,6 +202,8 @@ export function preamble(a, { withWords = true } = {}) {
        "To drive a thread for the user (\"tell the site thread to run the tests and report back\"), call tools_call threads_send, then set that watch. If another surface holds the thread's keyboard, that call says who; tell the user rather than taking it.",
        "When a watch fires, the user sees it in Lumen and on their devices. Do not poll tools_call threads_get to wait for it."]
     : [`You are ${a.name}, an agent in Vyre. You may use context from ${scope}, and from nothing outside it.`];
+  // Both kinds set up their own Routines and Watchers when a person asks (core/watchers, the write-a-watcher skill).
+  lines.push(OWN_WORK);
   // the instructions are the agent's AGENTS.md, read from its folder (named by the orientation); copied here only when there is no folder to read them from
   if (a.instructions && withWords) lines.push("", String(a.instructions));
   return lines.join("\n");
@@ -536,10 +553,13 @@ export default {
     const CHANGEABLE = ["instructions", "skills", "model", "effort", "tags"];
     const snapOf = a => ({ instructions: a.instructions ?? null, skills: a.skills || [], model: a.model ?? null, effort: a.effort ?? null, tags: a.tags || "" });
     const hashOf = o => createHash("sha256").update(JSON.stringify(o)).digest("hex").slice(0, 24);
-    /** The person a call is for: its chain's first hop when that is a person, else the Space's owner (the CLI and the Deck are the owner's). */
-    // A chain that cannot be read, or one whose first hop is not a person while an agent or a person is on it, is no one's call: refused, never the owner's (whose account and grants it would otherwise spend).
-    // Only a chain of the home's own services (the owner's surfaces with no session, the daemon, a module's own call) is the owner's.
-    const personOf = async meta => {
+    /**
+     * The person a call is for: its chain's first hop, which must be a person. A chain that cannot be read, or one whose first hop is not a person while an agent or a person is on it, is no one's call. A chain made
+     * only of the home's own services (a module's own call, a timer, a surface with no person proved) names nobody either: Rule 2, no person means no agent work, so it is refused and never read as the owner's
+     * (whose account and grants it would otherwise spend). `upkeep` names one of OWNER_UPKEEP, the home's own upkeep that runs no AI turn: only there is such a chain the owner's.
+     * @param {any} meta @param {keyof typeof OWNER_UPKEEP} [upkeep] @returns {Promise<string>}
+     */
+    const personOf = async (meta, upkeep) => {
       if (!K) return "";
       const nobody = () => Object.assign(new Error("Vyre could not tell which person this call is for, so nothing was done. Sign in again, then retry."), { code: "denied" });
       let c; try { c = await K.chain(meta); } catch { throw nobody(); }
@@ -547,7 +567,8 @@ export default {
       const h = hops[0];
       if (h && h.actor && h.actor.kind === "person") return h.actor.id;
       if (hops.some((/** @type {any} */ x) => !x || !x.actor || x.actor.kind !== "service")) throw nobody();
-      return String(K.owner || "");
+      if (upkeep && Object.prototype.hasOwnProperty.call(OWNER_UPKEEP, upkeep)) return String(K.owner || "");
+      throw Object.assign(new Error(noPerson()), { code: "denied" });
     };
     /**
      * Whether a call may see an agent's whole row (its instructions, tools, projects, credentials' mode): a call with no person on its chain (the owner's surfaces, the daemon), the owner, or an admin. Any other
@@ -811,7 +832,7 @@ export default {
         const now = Date.now();
         db.prepare(`INSERT INTO agents_agents (name, kind, projects, auth, instructions, skills, computer, model, effort, created_at, updated_at, uid, owner)
           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(i.name, kind, JSON.stringify(projects), JSON.stringify(i.auth || {}), i.instructions || null,
-          JSON.stringify(i.skills || []), i.computer ? 1 : 0, i.model || null, i.effort || null, now, now, uid, who ?? await personOf(meta));
+          JSON.stringify(i.skills || []), i.computer ? 1 : 0, i.model || null, i.effort || null, now, now, uid, who ?? await personOf(meta, "agents.create"));
         if (i.personal === true && kind !== "assistant") db.prepare("UPDATE agents_agents SET personal = 1 WHERE name = ?").run(i.name);
         // The look is stored whole (its parts filled in from the name when it left them out) so a rename never changes how the agent looks.
         db.prepare("UPDATE agents_agents SET look = ? WHERE name = ?").run(fullLook(i.look, i.name), i.name);
@@ -877,7 +898,7 @@ export default {
           if (!target) throw Object.assign(new Error(`${a.name} has no version ${n} (agents.versions lists its versions)`), { code: "not_found" });
           after = target; note = `rolled back to version ${n}`;
         }
-        const person = await personOf(meta);
+        const person = await personOf(meta, "agents.update");
         writeVersion(a, after, { by: person, approved_by: person, note });
         // a model picked anew names its provider, or none (Claude's): written after the version, which clears a provider left from an earlier pick
         if (i.rollback === undefined && (i.model !== undefined || i.model_provider !== undefined)) db.prepare("UPDATE agents_agents SET model_provider = ? WHERE name = ?").run(i.model_provider ? providerName(i.model_provider) : null, a.name);
@@ -901,7 +922,9 @@ export default {
         if (!isPerson(caller) && !meta0.firstParty && !meta0.agent && /^(?:mcp|harness)(?::|$)/.test(String(caller || ""))) throw Object.assign(new Error("an unnamed model session asks no agent: it has no agent grants of its own to act under; ask the person to put the question to the agent"), { code: "denied" });
         // HD-9: a model's words go out as this module, which skips the thread scope checks, so a session may not use them to reach a wider agent than itself: the assistant (every project)
         // is the person's and the verified assistant's to ask, and an agent only reaches agents whose projects are within its own grant.
-        if (!isPerson(caller) && !meta0.firstParty && meta0.agentKind !== "assistant") {
+        // A call whose kernel chain is a person and no agent (onboarding's greeting, relayed as the person finishing it: core/modules/relay-context.js) is that person's own ask, not a model's words.
+        const ownAsk = !isPerson(caller) && !meta0.firstParty && K ? await (async () => { try { const c = await K.chain(meta0); const hops = c && Array.isArray(c.hops) ? c.hops : []; return hops.length > 0 && hops[0].actor && hops[0].actor.kind === "person" && hops.every((/** @type {any} */ x) => x && x.actor && x.actor.kind !== "agent"); } catch { return false; } })() : false;
+        if (!isPerson(caller) && !meta0.firstParty && !ownAsk && meta0.agentKind !== "assistant") {
           const target = get(String(i.agent));
           const within = target && Array.isArray(target.projects) && (!Array.isArray(meta0.granted) || target.projects.every(p => meta0.granted.includes(p)));
           if (target && !within) throw Object.assign(new Error(`${target.name} sees more than this session does: ask the person, who can ask it directly`), { code: "denied" });
@@ -1010,6 +1033,8 @@ export default {
         if (i.project && a.projects !== "*" && !a.projects.includes(i.project)) throw Object.assign(new Error(`${a.name} has no access to ${i.project}: the person must give it that project first`), { code: "denied" });
         // the schedule's maker: the job runs as them and on their own account (the owner's own for the owner); a maker with none is refused, never run on the owner's
         const forPerson = typeof i.person === "string" && i.person ? i.person : undefined;
+        // a schedule with nobody recorded (one made before Vyre kept its maker) runs as no one: Rule 2, never as the owner's (the planner pauses it until a person turns it on as themselves)
+        if (!forPerson && K) throw Object.assign(new Error(noPerson("Turn the schedule on again as yourself, then it runs as you.")), { code: "denied" });
         const own = await accountFor(a, forPerson);
         const t = await launch(a, { prompt: i.prompt, job: true, project: i.project, ...(forPerson ? { forPerson, runAs: forPerson } : {}), ...(own ? { own } : {}) });
         return { agent: a.name, thread: t.id };
@@ -1019,13 +1044,51 @@ export default {
     // A task given to an agent: wake it with the task as the prompt. Once per (task, agent); the claim is written first. The job is for the approver (the asker gate judges them, so it is never wider than
     // they may use) and sits in the task's project only when the agent reaches it. It is not marked done here: the agent starts and submits the task itself.
     const wakeCfg = () => (ctx.config && ctx.config.agents) || {};
+    /**
+     * An agent's own Routine or Watcher is due (the watchers module asks): its words go into the chat the person asked in, as a turn of the agent's, so the agent
+     * answers there. It runs for that person on that person's own AI account (accountFor: anyone but the owner needs one of their own, and is told how to connect one),
+     * and the thread must be this agent's; else the person's own thread with the agent, or a new one for them. The watcher's text is built and quoted by the
+     * watchers module (outside data in markers); this adds nothing to it.
+     * @param {any} i @param {unknown} caller
+     */
+    const watcherWake = async (i, caller) => {
+      if (String(caller || "") !== "module:watchers") throw Object.assign(new Error("only the watchers module wakes an agent for its own Routine or Watcher"), { code: "denied" });
+      const a = must(i.agent);
+      const text = String(i.text || "").trim();
+      if (!text) throw Object.assign(new Error("a wake needs the text to post"), { code: "bad_input" });
+      const person = typeof i.approver === "string" && i.approver ? i.approver : undefined;
+      const own = await accountFor(a, person);
+      const from = `watcher:${String(i.watcher).slice(0, 60)}`;
+      // the chat it was asked in, when that is this agent's thread; else the thread this person talks to the agent in
+      let thread = null;
+      if (typeof i.thread === "string" && i.thread) {
+        const t = await ctx.call("threads.get", { thread: i.thread, limit: 1 }).catch(() => null);
+        if (t && !t.error && t.data && t.data.thread && t.data.thread.agent === a.name) thread = String(i.thread);
+      }
+      if (!thread) {
+        const row = own ? /** @type {any} */ (db.prepare("SELECT thread FROM agents_person_threads WHERE agent = ? AND person = ?").get(a.name, String(person))) : null;
+        const id = own ? (row ? String(row.thread) : null) : a.thread;
+        const cur = id ? (await ctx.call("threads.get", { thread: id, limit: 1 })).data?.thread : null;
+        thread = cur ? String(cur.id) : (await launch(a, { forPerson: person, own, ...(own ? { runAs: person } : {}) })).id;
+      }
+      // threads.post brings a stopped thread back the way agents.resume does: as the person whose thread it is, on their own account
+      const r = await ctx.call("threads.post", { thread, text, kind: "watcher.item", from });
+      if (r.error) throw new Error(r.error.message || "the chat did not take the message");
+      return { agent: a.name, thread, sent: r.data ? r.data.sent !== false : true };
+    };
     ctx.tool("agents.wake", {
-      description: "Wake an agent for a task it was given: one job thread with the task's title, instructions and record as the prompt. Once per task and agent. For the Flows host.",
+      description: "Wake an agent for a task it was given: one job thread with the task's title, instructions and record as the prompt. Once per task and agent. For the Flows host. With watcher (the watchers module only): wake an agent for its own Routine or Watcher, in the chat it was asked in, for that person.",
       internal: true, callers: ["module"],
-      input: { type: "object", required: ["task", "agent", "title"], properties: { task: { type: "string" }, task_id: { type: "string" }, slot: { type: "string", enum: ["reviewer", "approver", "changes"] }, agent: { type: "string" }, title: { type: "string" }, instructions: { type: "string" }, info: { type: "object" }, record: { type: "string" }, project: { type: "string" }, approver: { type: "string" }, flow: { type: "string" }, origin: { type: "object" } } },
+      input: { type: "object", required: ["task", "agent", "title"], properties: { task: { type: "string" }, task_id: { type: "string" }, watcher: { type: "string" }, text: { type: "string" }, thread: { type: "string" }, slot: { type: "string", enum: ["reviewer", "approver", "changes"] }, agent: { type: "string" }, title: { type: "string" }, instructions: { type: "string" }, info: { type: "object" }, record: { type: "string" }, project: { type: "string" }, approver: { type: "string" }, flow: { type: "string" }, origin: { type: "object" } } },
       run: async (i, { caller }) => {
+        if (i.watcher !== undefined) return watcherWake(i, caller);
         if (String(caller || "") !== "module:vyred") throw Object.assign(new Error("only the Space's own host wakes an agent for a task"), { code: "denied" }); // internal-word: the caller label, not shown text
+        // The kernel's own "assistant" actor is the home's assistant slot, whatever name the person gave it (the daemon's kernel sessions act as it): a task given to it is worked from the person's own chat
+        // (tasks.list), not by a job, so it wakes nothing and is never marked stuck, whether or not the assistant happens to be named "assistant". An agent of another kind under that name is woken as any agent.
+        if (i.agent === "assistant") { const slot = get("assistant"); if (!slot || slot.kind === "assistant") return { agent: "assistant", thread: null, already: false, chat: true }; }
         const a = must(i.agent);
+        // Rule 2: a task's job runs for the person it is for (who gave it, a Flow's run_as). A task with nobody (no approver, assigned_by or requested_for) starts nothing, and no wake is claimed: the host marks it stuck
+        if (!i.approver && K) throw Object.assign(new Error(noPerson("Give the task again from your own signed-in Vyre, so it runs for you.")), { code: "denied" });
         const task = String(i.task);
         const claim = db.prepare("INSERT OR IGNORE INTO agents_wakes (task, agent, at) VALUES (?,?,?)").run(task, a.name, Date.now());
         // a retry: a wake that failed may be claimed again, once

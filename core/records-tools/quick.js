@@ -86,6 +86,7 @@ export function registerQuick({ tool, obj, str, refuse, addLink }) {
       // a type made before the bag existed gets it once, now (one definition change)
       if (!hasBag) await d.gateway.records.define(d.chain, { change_types: [{ ...t, fields: [...t.fields, { name: "extra", kind: "text", label: "Extra fields" }] }] });
       const row = await d.gateway.records.create(d.chain, "quick-field", { type, name, label: String(i.label).trim(), kind, options: JSON.stringify(options), state: "bag" });
+      forgetQuick(d.space);
       return { field: { name, label: String(i.label).trim(), kind, options, state: "bag", id: row.id } };
     });
   tool("records.field.status", "The fast fields of a type and where each is: bag (kept with the record), promoting or real (a field of the store). { type } -> [{ name, label, kind, state }].",
@@ -94,9 +95,11 @@ export function registerQuick({ tool, obj, str, refuse, addLink }) {
     obj({ space: str, type: str, name: str }, ["type", "name"]), async (/** @type {any} */ i, /** @type {any} */ d) => {
       admin(d);
       const type = String(i.type), name = String(i.name);
-      const q = (await quickRows(d, type)).find((r) => r.data.name === name);
+      const q = (await quickRows(d, type, { fresh: true })).find((r) => r.data.name === name);
       if (!q) throw refuse(`${type} has no fast field called ${name}. Pick one of the fields shown on its page.`, "not_found");
       const f = { name, label: q.data.label, kind: q.data.kind, options: JSON.parse(q.data.options || "[]") };
+      // the row the store gave is frozen: its version is kept here (a promote had never run, so writing it onto the row went unnoticed)
+      let version = q.version;
       if (q.data.state === "bag") {
         const t = ((await d.gateway.definitions(d.chain)) || []).find((/** @type {any} */ x) => x.name === type);
         if (!t) throw refuse(`There is no record type called ${type}. Pick one of the types shown in Records.`, "not_found");
@@ -104,7 +107,8 @@ export function registerQuick({ tool, obj, str, refuse, addLink }) {
           const real = { name, kind: f.kind, label: f.label, ...(f.kind === "choice" ? { options: f.options } : {}) };
           await d.gateway.records.define(d.chain, { change_types: [{ ...t, fields: [...t.fields, real] }] });
         }
-        q.version = (await d.gateway.records.update(d.chain, "quick-field", q.id, { state: "promoting" }, q.version)).version;
+        version = (await d.gateway.records.update(d.chain, "quick-field", q.id, { state: "promoting" }, version)).version;
+        forgetQuick(d.space);
       }
       let done = 0, failed = 0, total = 0, cursor = undefined;
       for (;;) {
@@ -120,17 +124,64 @@ export function registerQuick({ tool, obj, str, refuse, addLink }) {
         if (!cursor) break;
       }
       const state = failed ? "promoting" : "real";
-      if (!failed) await d.gateway.records.update(d.chain, "quick-field", q.id, { state: "real" }, q.version);
+      if (!failed) await d.gateway.records.update(d.chain, "quick-field", q.id, { state: "real" }, version);
+      forgetQuick(d.space);
       return { state, done, total, failed };
     });
 }
 
-/** The quick-field rows of a type. @param {any} d @param {string} type */
-export async function quickRows(d, type) {
+// Every records list, get, create and update asks for its type's fast fields first, which was a store read (on Twenty a round trip) before the call itself. The rows are kept for
+// QUICK_MS per Space and caller (what a member may read is hers), and forgotten for the whole Space when a fast field is added or promoted here, the only writers of quick-field rows.
+export const QUICK_MS = 15_000;
+/** @type {Map<string, { at: number, rows: Promise<any[]> }>} */ const kept = new Map();
+/** @param {any} d */
+const keyOf = (d) => `${d.space}|${((d.chain && d.chain.hops) || []).map((/** @type {any} */ h) => `${h.actor && h.actor.kind}:${h.actor && h.actor.id}`).join(">")}`;
+/** Forget the Space's kept rows: a fast field was added or changed. @param {string} space */
+export function forgetQuick(space) { for (const k of [...kept.keys()]) if (k.startsWith(`${space}|`)) kept.delete(k); }
+
+/** Every quick-field row the caller may read, kept QUICK_MS; `fresh` reads them now (a change that writes one needs its current version). @param {any} d @param {{ fresh?: boolean }} [o] */
+async function allQuick(d, o = {}) {
+  const key = keyOf(d);
+  const k = kept.get(key);
+  if (!o.fresh && k && Date.now() - k.at < QUICK_MS) return k.rows;
   // no filter on the data field `type`: it came back empty for a member (see layout.js); the rows are few
-  try { return ((await d.gateway.records.query(d.chain, "quick-field", { page: { limit: 200 } })).rows || []).filter((/** @type {any} */ r) => r.data && r.data.type === type); } catch { return []; }
+  const rows = Promise.resolve(d.gateway.records.query(d.chain, "quick-field", { page: { limit: 200 } })).then((/** @type {any} */ r) => (r && r.rows) || []);
+  kept.set(key, { at: Date.now(), rows });
+  // a failed read is not kept
+  rows.catch(() => { if (kept.get(key)?.rows === rows) kept.delete(key); });
+  return rows;
+}
+
+/** The quick-field rows of a type. @param {any} d @param {string} type @param {{ fresh?: boolean }} [o] */
+export async function quickRows(d, type, o = {}) {
+  try { return (await allQuick(d, o)).filter((/** @type {any} */ r) => r.data && r.data.type === type); } catch { return []; }
+}
+/** One quick-field row in the shape the helpers use. @param {any} r */
+const shapeOf = (r) => { let options = []; try { options = JSON.parse(r.data.options || "[]"); } catch { /* none */ } return { name: r.data.name, label: r.data.label, kind: r.data.kind, options, state: r.data.state }; };
+/**
+ * The fields records.types lists for a type: its own, then each fast field that is not a real field yet, marked `fast: true` with its state, so a column added a moment ago shows at once. A fast field that is
+ * real is in the type's own fields already. @param {any} t @param {any[]} quick the type's quick fields
+ */
+export function withFastFields(t, quick) {
+  const own = new Set((t.fields || []).map((/** @type {any} */ f) => f.name));
+  const fast = quick.filter((f) => f.state !== "real" && !own.has(f.name)).map((f) => ({ name: f.name, label: f.label, kind: f.kind, ...(f.kind === "choice" ? { options: f.options } : {}), fast: true, state: f.state }));
+  return fast.length ? { ...t, fields: [...(t.fields || []), ...fast] } : t;
+}
+/** A definition change without the fast fields records.types added: they are rows of quick-field, never fields of the store, until records.field.promote makes them so. @param {any} diff */
+export function withoutFastFields(diff) {
+  if (!diff || typeof diff !== "object") return diff;
+  const strip = (/** @type {any} */ list) => (Array.isArray(list) ? list.map((t) => (t && Array.isArray(t.fields) && t.fields.some((/** @type {any} */ f) => f && f.fast === true) ? { ...t, fields: t.fields.filter((/** @type {any} */ f) => !(f && f.fast === true)) } : t)) : list);
+  return { ...diff, ...(diff.add_types ? { add_types: strip(diff.add_types) } : {}), ...(diff.change_types ? { change_types: strip(diff.change_types) } : {}) };
+}
+/** Every type's quick fields from one read of the rows. @param {any} d @returns {Promise<Map<string, any[]>>} */
+export async function quickFieldsByType(d) {
+  /** @type {Map<string, any[]>} */ const out = new Map();
+  let rows = [];
+  try { rows = await allQuick(d); } catch { return out; }
+  for (const r of rows) if (r && r.data && typeof r.data.type === "string") { const list = out.get(r.data.type) || []; list.push(shapeOf(r)); out.set(r.data.type, list); }
+  return out;
 }
 /** The quick fields of a type in the shape the helpers use. @param {any} d @param {string} type */
 export async function quickFieldsOf(d, type) {
-  return (await quickRows(d, type)).map((r) => { let options = []; try { options = JSON.parse(r.data.options || "[]"); } catch { /* none */ } return { name: r.data.name, label: r.data.label, kind: r.data.kind, options, state: r.data.state }; });
+  return (await quickRows(d, type)).map(shapeOf);
 }

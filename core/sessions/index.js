@@ -45,17 +45,12 @@ const MODEL = /^[A-Za-z0-9._:\[\]-]{1,80}$/;
 /** A project's default permission mode for new sessions (sessions.mode.set): "Doesn't ask" included. */
 const MODES_MIGRATION = `CREATE TABLE IF NOT EXISTS sessions_modes (project TEXT PRIMARY KEY, mode TEXT NOT NULL, by TEXT, at INTEGER NOT NULL)`;
 const SESSION_MODES = ["default", "acceptEdits", "plan", "bypassPermissions"];
-/** The model aliases Claude Code takes, the box's one list (surfaces read it from sessions.models.get). */
-export const MODEL_ALIASES = Object.freeze([
-  { id: "opus", label: "Opus", description: "The most capable" },
-  { id: "sonnet", label: "Sonnet", description: "Fast and capable" },
-  { id: "haiku", label: "Haiku", description: "The fastest" },
-]);
 import { installed, install, VERSION, DOWNLOAD_MB } from "./sdk.js";
 import { Slots, KINDS, BOX_DEFAULTS } from "./slots.js";
 import { createAccountsService } from "./accounts-service.js";
 import { memberAccountBases, memberBaseOk, memberBases } from "./member-endpoints.js";
 import { freeItemName, itemNameOf } from "../../lib/vault-item-name.js";
+import { modelView, entriesForAccount } from "../../lib/model-registry.js";
 
 /** Per-project concurrency limits a person set (sessions.limits.set). */
 const LIMITS_MIGRATION = `CREATE TABLE IF NOT EXISTS sessions_limits (project TEXT NOT NULL, kind TEXT NOT NULL, value INTEGER NOT NULL, PRIMARY KEY (project, kind))`;
@@ -208,36 +203,43 @@ export default {
       async i => i.purpose === "capsule" ? composeIq({ own: prompts.current("capsule") })
         : prompts.compose({ agent: i.agent || null, agentKind: i.agent_kind || null, project: i.project || null }));
 
-    // The models a person can pick for a thread (chat's model picker), from the one list: core/models (what each provider and login reported, joined with price and context). Claude Code's own aliases come first
-    // for Claude; when the registry has nothing yet they are the list. Any others a person configured (sessions.models_offered: [{id, label}]) follow.
+    // The models a person can pick, from the one model service: core/models (each provider's own list, what a CLI or a sign-in reported, and OpenRouter's catalogue, with every detail it gives), in the
+    // one shape a picker shows (lib/model-registry.js modelView). No list of model names lives here. Any others a person configured (sessions.models_offered: [{id, label}]) follow.
+    const registry = async (/** @type {Record<string, unknown>} */ q) => ctx.call("models.list", { available: true, limit: 500, ...q }).then(r => (r && r.data && Array.isArray(r.data.models) ? r.data.models : [])).catch(() => []);
+    const offered = (/** @type {string} */ provider, /** @type {Set<string>} */ seen) => (ctx.config && ctx.config.sessions && Array.isArray(ctx.config.sessions.models_offered) ? ctx.config.sessions.models_offered : [])
+      .filter(m => m && typeof m.id === "string" && !seen.has(m.id)).map(m => modelView({ id: String(m.id), label: String(m.label || m.id), provider }));
     const modelsOf = async (/** @type {string} */ provider) => {
-      const extra = ctx.config && ctx.config.sessions && Array.isArray(ctx.config.sessions.models_offered) ? ctx.config.sessions.models_offered : [];
-      const base = provider === "claude" ? MODEL_ALIASES.map(({ id, label }) => ({ id, label })) : [];
-      const reg = await ctx.call("models.list", { provider, available: true, limit: 500 }).then(r => (r && r.data && Array.isArray(r.data.models) ? r.data.models : [])).catch(() => []);
-      const seen = new Set(base.map(m => m.id));
-      const fromRegistry = reg.filter(m => m && typeof m.id === "string" && !seen.has(m.id)).map(m => ({ id: String(m.id), label: String(m.label || m.id) }));
-      for (const m of fromRegistry) seen.add(m.id);
-      return [...base, ...fromRegistry, ...extra.filter(m => m && typeof m.id === "string" && !seen.has(m.id)).map(m => ({ id: String(m.id), label: String(m.label || m.id) }))];
+      const rows = (await registry({ provider })).map(m => modelView({ ...m, label: m.name || m.label }));
+      return [...rows, ...offered(provider, new Set(rows.map(m => m.id)))];
     };
-    tool("sessions.models", "The models a thread can switch to (threads.model): id and label, from the registry of every model Vyre knows; the aliases Claude Code takes first.",
+    /** What one AI account can run (lib/model-registry.js entriesForAccount): its own key's list, a sign-in's reported or catalogue models, each in the one shape, naming the account. @param {any} a */
+    const modelsOfAccount = async a => {
+      const [all, listed] = await Promise.all([registry({ provider: String(a.provider) }), a.kind === "api-key" ? registry({ provider: String(a.provider), account: String(a.id) }) : Promise.resolve([])]);
+      const ids = new Set(listed.map(m => m.id));
+      const rows = entriesForAccount({ id: String(a.id), provider: String(a.provider), kind: a.kind }, all.map(m => ({ ...m, label: m.name || m.label, ...(ids.has(m.id) ? { accounts: [String(a.id)] } : {}) }))).map(m => modelView(m, [String(a.id)]));
+      // an OpenAI-compatible server whose list was not read yet still runs the model its account names
+      if (!rows.length && a.model) rows.push(modelView({ id: String(a.model), label: String(a.model), provider: String(a.provider) }, [String(a.id)]));
+      return [...rows, ...offered(String(a.provider), new Set(rows.map(m => m.id)))];
+    };
+    tool("sessions.models", "The models a thread can switch to (threads.model), with name, version, context, price and capabilities, from the one model registry.",
       { type: "object", properties: { provider: { type: "string", description: "Whose models: claude (default), codex, grok ..." } } },
       async i => modelsOf(i && typeof i.provider === "string" && i.provider ? i.provider : "claude"));
 
-    tool("sessions.accounts.models", "The models one AI account offers: { account } -> { models: [{ id, label }] }. Only an account you may see.",
+    tool("sessions.accounts.models", "The models one AI account of yours can run, each with name, provider, version, context, max output, price, capabilities and effort levels.",
       { type: "object", required: ["account"], properties: { account: str } },
       async (i, meta) => {
         const row = accounts.list(undefined, await personOf(meta)).find(a => a.id === String(i.account));
         if (!row) throw Object.assign(new Error("no such account (sessions.accounts.list shows the ones you may use)"), { code: "not_found" });
-        return { account: row.id, provider: row.provider, kind: row.kind, models: await modelsOf(String(row.provider)) };
+        return { account: row.id, provider: row.provider, kind: row.kind, models: await modelsOfAccount(row) };
       });
 
-    tool("sessions.models.get", "Which model each session purpose and project runs on, and where it comes from, plus the model aliases to offer. An agent's own model wins.",
+    tool("sessions.models.get", "Which model each session purpose and project runs on, and where it comes from. An agent's own model wins.",
       { type: "object", properties: {} },
       async (_i, meta) => {
         const person = await personOf(meta), who = person && person !== accounts.owner() ? person : null;
         const projects = Object.fromEntries(/** @type {any[]} */ (db.prepare("SELECT scope, model FROM sessions_models WHERE scope LIKE 'project:%'").all()).map(r => [String(r.scope).slice(8), String(r.model)]));
         if (who) for (const r of /** @type {any[]} */ (db.prepare("SELECT scope, model FROM sessions_models WHERE scope LIKE ?").all(`person:${who}/project:%`))) projects[String(r.scope).slice(`person:${who}/project:`.length)] = String(r.model);
-        return { aliases: MODEL_ALIASES, purposes: Object.fromEntries(PURPOSES.map(p => [p, modelFor({ purpose: p, person })])), projects };
+        return { purposes: Object.fromEntries(PURPOSES.map(p => [p, modelFor({ purpose: p, person })])), projects };
       });
 
     tool("sessions.models.set", "Set the model for a purpose (purpose:<chat|agent|project|teammate|capsule|job|memory|planner|learn|helper>) or a project (project:<slug>): an alias (opus, sonnet, haiku) or a full model id. model null removes the override. Applies from the next session.",
@@ -341,7 +343,7 @@ export default {
       input: { type: "object", properties: {} },
       run: async (_i, meta) => { const who = await personOf(meta); return Promise.all(PROVIDERS.map(async p => ({ ...p,
         accounts: await Promise.all(accounts.list(p.id, who).map(async a => ({ id: a.id, label: a.label, kind: a.kind, plan: accountPlan(p.id, a.id), ...(p.id === "grok" ? { privacy: a.privacy } : {}), signed_in: a.kind === "login" ? (a.synthetic ? true : a.signed_in_at != null) : !a.vault_item ? true : (await vaultHas(a.vault_item)) !== false, default: a.is_default }))),
-        models: p.id === "claude" ? MODEL_ALIASES : providerModels(p.id),
+        models: providerModels(p.id),
         capabilities: p.id === "claude" ? { streaming: true, resume: true, interrupt: true, modes: true, questions: true, transcripts: true } : /** @type {any} */ (drivers)[p.id].capabilities }))); },
     });
 

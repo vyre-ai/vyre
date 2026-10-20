@@ -6,14 +6,14 @@
 /** @typedef {{ name: string, label: string }} Named */
 /** @typedef {{ name: string, label: string, kind?: string, options?: string[] }} FieldOpt  a field of an object; `kind` is its type ("date" and "datetime" are written as people read them inside text) */
 /** @typedef {{ name: string, label: string, fields?: FieldOpt[] }} TypeOpt  an object (record table) and its fields */
-/** @typedef {{ kind: string, type?: string, stage?: string, every?: string, at?: string, event?: string, watcher?: string, route?: string, path?: string, field?: string, again?: string, raw?: any, where?: string }} Trigger  `field` and `again` belong to "changed": the field to watch, and what a second change does ("replace" starts over, "keep" keeps both runs) */
+/** @typedef {{ kind: string, type?: string, stage?: string, every?: string, at?: string, event?: string, watcher?: string, route?: string, path?: string, address?: boolean, field?: string, again?: string, raw?: any, where?: string }} Trigger  `address` is false only for a form, sign-up or webhook trigger saved before Flows had their own webhook address (it is kept as it was until the person gives it one); `route` is a webhook route opened by hand (the older way). `field` and `again` belong to "changed": the field to watch, and what a second change does ("replace" starts over, "keep" keeps both runs) */
 /** @typedef {{ id: string, kind: string, [k: string]: any }} DraftStep */
 /** @typedef {{ name: string, id?: string, group?: string, trigger: Trigger, steps: DraftStep[], moreTriggers?: Trigger[], onFailure?: DraftStep[], rest?: Record<string, any> }} Draft  `moreTriggers` is every trigger after the first (stored as `triggers`, any of them starts a run); `id` is the stored name (kept when a stored Flow is edited); `onFailure` is the steps to run when the run is about to fail (stored as `on_failure`); `rest` is every other key the stored Flow had, kept as is */
 /** @typedef {{ id: string, name: string, stages: { name: string, tasks: { title: string, doer: string }[] }[] }} TemplateOpt */
 /** @typedef {{ id: string, name: string, provider: string, step: string }} Cred  a vault item a Send step can use (never its value); `step` is the action that uses it */
 /** @typedef {{ name: string, label: string, staff?: boolean }} AgentOpt  `staff`: made by an owner or an admin, the only agents that may approve */
 /** @typedef {{ action: string, label: string, risk: string, inputs: Record<string, string> }} ActionOpt */
-/** @typedef {{ actions?: ActionOpt[], documents?: { name: string }[], placeholdersOf?: (template: string) => Promise<string[]>, events?: { type: string, module?: string }[], zone?: string, types: TypeOpt[], agents: AgentOpt[], templates: TemplateOpt[], roles: Named[], people: Named[], flows?: Named[], connections?: Named[], addConnection?: (c: { label: string, base_url: string, how: string, header?: string, item: string, check: string }) => Promise<Named>, vaultItems?: Named[], credentials?: { email: Cred[], sms: Cred[] } | null, recordsOf?: (type: string) => Promise<{ urn: string, label: string }[]>, filesOf?: (query: string) => Promise<{ path: string, name: string }[]> }} Options  `recordsOf` lists some records of an object for the tag picker */
+/** @typedef {{ actions?: ActionOpt[], documents?: { name: string }[], placeholdersOf?: (template: string) => Promise<string[]>, events?: { type: string, module?: string }[], zone?: string, types: TypeOpt[], agents: AgentOpt[], templates: TemplateOpt[], roles: Named[], people: Named[], flows?: Named[], connections?: Named[], addConnection?: (c: { label: string, base_url: string, how: string, header?: string, item: string, check: string }) => Promise<Named>, vaultItems?: Named[], credentials?: { email: Cred[], sms: Cred[] } | null, recordsOf?: (type: string) => Promise<{ urn: string, label: string }[]>, filesOf?: (query: string) => Promise<{ path: string, name: string }[]>, models?: import("../../src/models/model-choice.js").ModelGroup[] | null }} Options  `recordsOf` lists some records of an object for the tag picker; `models` the person's own models for an AI step */
 
 import { findStep, flat, lanesOf, laneSteps } from "./tree.js";
 import { formulaProblem } from "./preview.js";
@@ -28,12 +28,11 @@ export const TRIGGERS = /** @type {const} */ ([
   { id: "changed", icon: "records", label: "A record is created or updated", hint: "For example an appointment is booked or moved" },
   { id: "removed", icon: "trash", label: "A record is removed", hint: "For example a client is deleted" },
   { id: "stage", icon: "board", label: "A record moves to a stage", hint: "For example a matter enters Drafting" },
-  { id: "signup", icon: "person", label: "A person signs up", hint: "From your sign-up form" },
-  { id: "form", icon: "list", label: "A form is submitted", hint: "Any form or link that calls the Flow" },
+  { id: "signup", icon: "person", label: "A person signs up", hint: "Your sign-up form posts to the Flow's own address" },
+  { id: "form", icon: "list", label: "A form is submitted", hint: "A form posts to the Flow's own address" },
   { id: "schedule", icon: "clock", label: "At a set time", hint: "Every few minutes, every day or weekday at a time, every Monday, every month" },
   { id: "event", icon: "bolt", label: "Something happens in Vyre", hint: "A document is signed, a message is sent or held" },
-  { id: "watcher", icon: "eye", label: "Something new arrives", hint: "An email in a watched mailbox, or a file in a watched folder" },
-  { id: "webhook", icon: "globe", label: "A webhook is called", hint: "Another service calls a web address, checked by its signature" },
+  { id: "webhook", icon: "globe", label: "A webhook is called", hint: "Another service posts to the Flow's own address" },
   { id: "manual", icon: "play", label: "I press Run", hint: "A person or an agent presses Run" },
 ]);
 
@@ -99,6 +98,15 @@ const lc = (/** @type {string} */ s) => (s && /^[A-Z]/.test(s) && !/[A-Z]/.test(
 /** @param {Options} o */
 export const emptyOptions = (o = /** @type {any} */ ({})) => ({ ...(typeof o.zone === "string" ? { zone: o.zone } : {}), ...(Array.isArray(o.actions) ? { actions: o.actions } : {}), ...(Array.isArray(o.documents) ? { documents: o.documents } : {}), ...(typeof o.placeholdersOf === "function" ? { placeholdersOf: o.placeholdersOf } : {}), ...(Array.isArray(o.events) ? { events: o.events } : {}), types: o.types || [], agents: o.agents || [], templates: o.templates || [], roles: o.roles || [], people: o.people || [], ...(o.recordsOf ? { recordsOf: o.recordsOf } : {}) });
 
+/** A Flow an older build started from a watcher: the engine still runs it, the builder shows it under Advanced and keeps it as stored. @param {any} raw */
+export const isWatcherTrigger = (raw) => Boolean(raw && typeof raw === "object" && raw.on === "watcher" && typeof raw.watcher === "string");
+/** What the trigger editor says about a trigger it cannot show. @param {Trigger} t */
+export function advancedWords(t) {
+  return isWatcherTrigger(t.raw)
+    ? `Advanced: this Flow starts when the watcher ${String(t.raw.watcher)} finds something new. It is kept as it is. Watchers now belong to agents: ask an agent in chat to set one up.`
+    : "This Flow starts in a way the builder cannot show yet. It is kept as it is.";
+}
+
 /** @param {Trigger} t @param {Options} o  "a record is created in RefundRequests" */
 export function triggerPhrase(t, o) {
   const type = named(o.types, t.type);
@@ -109,11 +117,11 @@ export function triggerPhrase(t, o) {
     case "stage": return `${type ? `a ${type} record` : "a record"} enters ${t.stage || "a stage"}`;
     case "event": return (EVENT_CHOICES.find(([v]) => v === t.event)?.[1] || "something happens in Vyre").replace(/^A /, "a ").replace(/^An /, "an ");
     case "watcher": return t.watcher ? `the watcher ${t.watcher} finds something new` : "a watcher finds something new";
-    case "webhook": return t.route ? `the webhook /hooks/${t.route} is called` : "a webhook is called";
+    case "webhook": return t.route ? `the webhook /hooks/${t.route} is called` : "its webhook address is called";
     case "signup": return "a person signs up";
     case "form": return t.path ? `the form ${t.path} is submitted` : "a form is submitted";
     case "schedule": return t.every ? `it is ${t.every.toLowerCase()}${TIMED.has(t.every) ? ` at ${t.at || "09:00"}` : ""}` : "it is time";
-    case "advanced": return "it starts in a way the builder cannot show yet";
+    case "advanced": return isWatcherTrigger(t.raw) ? `the watcher ${String(t.raw.watcher)} finds something new` : "it starts in a way the builder cannot show yet";
     default: return "someone runs it";
   }
 }
@@ -259,7 +267,7 @@ export function triggerProblems(t) {
   if (t.kind === "removed" && !t.type) out.push("Choose the object that starts it.");
   if (t.kind === "event" && !t.event) out.push("Choose what happens.");
   if (t.kind === "watcher" && !(t.watcher || "").trim()) out.push("Name the watcher.");
-  if (t.kind === "webhook" && !/^[a-z0-9][a-z0-9-]*$/.test((t.route || "").trim())) out.push("Choose the webhook route that starts it.");
+  if (t.kind === "webhook" && t.route !== undefined && !/^[a-z0-9][a-z0-9-]*$/.test((t.route || "").trim())) out.push("Choose the webhook route that starts it.");
   return out;
 }
 
@@ -481,10 +489,11 @@ function triggerBase(t) {
     case "removed": return { on: "event", event: `${t.type}.removed` };
     case "event": return { on: "event", event: String(t.event) };
     case "watcher": return { on: "watcher", watcher: String(t.watcher).trim() };
-    case "webhook": return { on: "web", path: webhookPath(String(t.route).trim()) };
+    // The Flow's own address (core/hooks opens it while the Flow is on, bound to it by id); a route opened by hand keeps the older path hook-<route>.
+    case "webhook": return t.route !== undefined ? { on: "web", path: webhookPath(String(t.route).trim()) } : { on: "web", path: "hook", address: true };
     case "stage": return { on: "stage", type: String(t.type), stage: String(t.stage) };
-    case "signup": return { on: "web", path: "signup" };
-    case "form": return { on: "web", path: slug(t.path || "form").replace(/_/g, "-") };
+    case "signup": return { on: "web", path: "signup", ...(t.address === false ? {} : { address: true }) };
+    case "form": return { on: "web", path: slug(t.path || "form").replace(/_/g, "-"), ...(t.address === false ? {} : { address: true }) };
     case "schedule": { const e = EVERY[t.every || ""] ? t.every || "" : "Every day"; return EVERY[e].every_ms ? { on: "time", every_ms: EVERY[e].every_ms } : { on: "time", cron: TIMED.has(e) ? cronAt(e, t.at) : EVERY[e].cron }; }
     default: return { on: "manual" };
   }
@@ -654,8 +663,8 @@ function kindDefinition(s, d) {
     case "web": return { id: s.id, kind: "service", connector: s.connector, method: s.method || "GET", path: (s.path || "/").trim() || "/", ...(driveOf(s) ? { drive: driveOf(s) } : {}), ...(namedRows(s.query) ? { query: namedRows(s.query) } : {}), ...(namedRows(s.headers) ? { headers: namedRows(s.headers) } : {}), ...((s.method || "GET") !== "GET" && (s.method || "GET") !== "HEAD" && (s.body || "").trim() ? { body: val(s.body) } : {}) };
     case "formula": return { id: s.id, kind: "fn", language: "js", source: FORMULA_SOURCE, hash: FORMULA_HASH, inputs: { value: { expr: (s.formula || "").trim() || "0" } }, outputs: ["value"] };
     case "sms": return { id: s.id, kind: "call", action: "comms.send", resource: "vyre://space/comms", input: { via: "sms", to: valAddr(s.to), body: val(s.body) } };
-    case "classify": return { id: s.id, kind: "classify", input: val(s.input), labels: String(s.labels || "").split(",").map((x) => x.trim()).filter(Boolean) };
-    case "extract": return { id: s.id, kind: "extract", input: val(s.input), fields: (s.fields || []).filter((/** @type {any} */ f) => f.name && f.name.trim()).map((/** @type {any} */ f) => ({ name: slug(f.name), kind: f.kind || "text", ...((f.description || "").trim() ? { description: f.description.trim() } : {}) })) };
+    case "classify": return { id: s.id, kind: "classify", input: val(s.input), labels: String(s.labels || "").split(",").map((x) => x.trim()).filter(Boolean), ...(s.model ? { model: String(s.model) } : {}) };
+    case "extract": return { id: s.id, kind: "extract", input: val(s.input), fields: (s.fields || []).filter((/** @type {any} */ f) => f.name && f.name.trim()).map((/** @type {any} */ f) => ({ name: slug(f.name), kind: f.kind || "text", ...((f.description || "").trim() ? { description: f.description.trim() } : {}) })), ...(s.model ? { model: String(s.model) } : {}) };
     case "subflow": return { id: s.id, kind: "subflow", flow: s.flow, input: pairs(s.fields) };
     case "connection": { const input = Object.fromEntries((s.fields || []).filter((/** @type {any} */ f) => f.field && f.field.trim()).map((/** @type {any} */ f) => [f.field.trim(), val(f.value)])); return { id: s.id, kind: "service", connection: s.connection, operation: (s.operation || "").trim(), ...(Object.keys(input).length ? { input } : {}) }; }
     case "action": { const input = Object.fromEntries((s.fields || []).filter((/** @type {any} */ f) => f.field && f.field.trim()).map((/** @type {any} */ f) => [f.field.trim(), val(f.value)])); return { id: s.id, kind: "call", action: (s.action || "").trim(), resource: (s.resource || "").trim(), ...(Object.keys(input).length ? { input } : {}) }; }
@@ -835,11 +844,12 @@ function triggerFromKind(t) {
     if (t.kind === "changed" && keys(t, ["kind", "type"])) return { kind: "changed", type: t.type, ...(t.field ? { field: t.field } : {}), again: t.again === "keep" ? "keep" : "replace" };
     if (t.kind === "removed" && keys(t, ["kind", "type"])) return { kind: "removed", type: t.type };
     if (t.kind === "event" && keys(t, ["kind", "event"])) return { kind: "event", event: t.event };
-    if (t.kind === "watcher" && keys(t, ["kind", "watcher"])) return { kind: "watcher", watcher: t.watcher };
-    if (t.kind === "webhook" && keys(t, ["kind", "route"])) return { kind: "webhook", route: t.route };
+    // a watcher trigger (Watchers belong to agents now): kept exactly as stored, under Advanced
+    if (t.kind === "watcher" && keys(t, ["kind", "watcher"])) return { kind: "advanced", raw: { on: "watcher", watcher: t.watcher } };
+    if (t.kind === "webhook" && keys(t, ["kind", "route"])) return t.route === undefined ? { kind: "webhook" } : { kind: "webhook", route: t.route };
     if (t.kind === "stage" && keys(t, ["kind", "type", "stage"])) return { kind: "stage", type: t.type, stage: t.stage };
-    if (t.kind === "signup" && keys(t, ["kind"])) return { kind: "signup" };
-    if (t.kind === "form" && keys(t, ["kind", "path"])) return { kind: "form", path: t.path };
+    if (t.kind === "signup" && keys(t, ["kind", "address"])) return t.address === false ? { kind: "signup", address: false } : { kind: "signup" };
+    if (t.kind === "form" && keys(t, ["kind", "path", "address"])) return t.address === false ? { kind: "form", path: t.path, address: false } : { kind: "form", path: t.path };
     if (t.kind === "schedule") return { kind: "schedule", every: t.every, at: t.at };
     if (t.kind === "advanced" && keys(t, ["kind", "raw"])) return { kind: "advanced", raw: t.raw };
   }
@@ -854,8 +864,11 @@ function triggerFromKind(t) {
     const m = /^([a-z][a-z0-9_]*)\.created$/.exec(t.event || ""), r = /^([a-z][a-z0-9_]*)\.removed$/.exec(t.event || "");
     return m ? { kind: "created", type: m[1] } : r ? { kind: "removed", type: r[1] } : raw;
   }
-  if (t.on === "watcher" && keys(t, ["on", "watcher"]) && typeof t.watcher === "string") return { kind: "watcher", watcher: t.watcher };
-  if (t.on === "web" && keys(t, ["on", "path"])) return t.path === "signup" ? { kind: "signup" } : { kind: "form", path: t.path };
+  // a stored watcher trigger falls through to Advanced below: Watchers belong to agents now, a Flow no longer picks one
+  // the Flow's own address: "hook" is a webhook, "signup" a sign-up, any other path a form
+  if (t.on === "web" && t.address === true && keys(t, ["on", "path", "address"])) return t.path === "hook" ? { kind: "webhook" } : t.path === "signup" ? { kind: "signup" } : { kind: "form", path: t.path };
+  // saved before Flows had their own address: kept as it was until the person gives it one
+  if (t.on === "web" && keys(t, ["on", "path"])) return t.path === "signup" ? { kind: "signup", address: false } : { kind: "form", path: t.path, address: false };
   if (t.on === "time" && keys(t, ["on", "every_ms"])) { const hit = Object.entries(EVERY).find(([, v]) => v.every_ms === t.every_ms); return hit ? { kind: "schedule", every: hit[0] } : raw; }
   if (t.on === "time" && keys(t, ["on", "cron"]) && typeof t.cron === "string") {
     for (const [name, v] of Object.entries(EVERY)) {
@@ -971,8 +984,8 @@ function stepFromKind(s) {
       return typeof s.connector === "string" && typeof s.path === "string" && ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"].includes(s.method) && keys(s, ["id", "kind", "connector", "method", "path", "query", "headers", "body", "drive", "label"]) && (s.body === undefined || unval(s.body) !== null) && q !== null && h !== null && dv !== null
         ? { id: s.id, kind: "web", connector: s.connector, method: s.method, path: s.path, body: s.body === undefined ? "" : unval(s.body), ...(q.length ? { query: q } : {}), ...(h.length ? { headers: h } : {}), ...dv } : adv;
     }
-    case "classify": return keys(s, ["id", "kind", "input", "labels", "label"]) && unval(s.input) !== null ? { id: s.id, kind: "classify", input: unval(s.input), labels: (s.labels || []).join(", ") } : adv;
-    case "extract": return keys(s, ["id", "kind", "input", "fields", "label"]) && unval(s.input) !== null ? { id: s.id, kind: "extract", input: unval(s.input), fields: (s.fields || []).map((/** @type {any} */ f) => ({ name: f.name, kind: f.kind || "text", ...(typeof f.description === "string" && f.description ? { description: f.description } : {}) })) } : adv;
+    case "classify": return keys(s, ["id", "kind", "input", "labels", "label", "model"]) && unval(s.input) !== null ? { id: s.id, kind: "classify", input: unval(s.input), labels: (s.labels || []).join(", "), ...(typeof s.model === "string" && s.model ? { model: s.model } : {}) } : adv;
+    case "extract": return keys(s, ["id", "kind", "input", "fields", "label", "model"]) && unval(s.input) !== null ? { id: s.id, kind: "extract", input: unval(s.input), fields: (s.fields || []).map((/** @type {any} */ f) => ({ name: f.name, kind: f.kind || "text", ...(typeof f.description === "string" && f.description ? { description: f.description } : {}) })), ...(typeof s.model === "string" && s.model ? { model: s.model } : {}) } : adv;
     case "subflow": return typeof s.flow === "string" && keys(s, ["id", "kind", "flow", "input", "label"]) && rowsOf(s.input || {}) ? { id: s.id, kind: "subflow", flow: s.flow, fields: rowsOf(s.input || {}) } : adv;
     case "fn": return s.source === FORMULA_SOURCE && exprOf(s.inputs && s.inputs.value) !== null && keys(s, ["id", "kind", "language", "source", "hash", "inputs", "outputs", "label"]) ? { id: s.id, kind: "formula", formula: exprOf(s.inputs.value) } : adv;
     case "decide": {

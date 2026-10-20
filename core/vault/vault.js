@@ -49,7 +49,7 @@ import { Release, RELEASE_BODY_MIGRATION, GRANT_REQUEST_KIND_MIGRATION } from ".
 import { MCP_PASSES_MIGRATION } from "./passmcp.js";
 import { Links } from "./links.js";
 import { Emergency, EMERGENCY_MIGRATION, EMERGENCY_MACED } from "./emergency.js";
-import { SAID_MIGRATION, SAID_MACED } from "./said.js";
+import { SAID_MIGRATION, SAID_MACED } from "./said.js"; import { USE_MIGRATION, USE_MACED } from "./use.js";
 import { CONNECTIONS_MIGRATION, CONNECTIONS_PICKER_MIGRATION, CONNECTION_MACED, DEFAULT_SUGGEST_MIGRATION } from "./connections.js";
 import { newId as newUuid } from "../../lib/id.js";
 
@@ -152,7 +152,7 @@ export const MIGRATIONS = [
   // The Vault MCP: passes made for outside agents, and what they asked to see (passmcp.js).
   MCP_PASSES_MIGRATION,
   // What was converted once to kernel grants (a credential's scope): so it is made, and logged, once (access.js). Then the Space member a person is linked to, last so earlier steps keep their numbers (share.js).
-  CONVERSIONS_MIGRATION, GRANT_REQUEST_KIND_MIGRATION, NAMED_MIGRATION, ...MEMBER_MIGRATIONS,
+  CONVERSIONS_MIGRATION, GRANT_REQUEST_KIND_MIGRATION, NAMED_MIGRATION, ...MEMBER_MIGRATIONS, USE_MIGRATION, // then each item's own rules for agents: Used with, Allowed in scripts, plain fields (use.js)
 ];
 
 /** The two classes of vault (ADR 0006 decision 1), and the key version each is on. */
@@ -185,7 +185,7 @@ export const MACED = {
   // Which connection a row is, what it can do, and which surfaces may use it (ADR 0028, 9b).
   vault_connections: CONNECTION_MACED,
   // What the person said to send, post or pay, and whether it still stands (said.js).
-  vault_said_intents: SAID_MACED,
+  vault_said_intents: SAID_MACED, vault_item_use: USE_MACED, // and an item's rules for agents (use.js)
 };
 /** The key column of each MACed table, where it is not `id`. */
 const KEY_COL = { vault_ssh_keys: "name", vault_marks: "name", vault_device_keys: "device" };
@@ -1501,6 +1501,16 @@ export class Vault {
   granted({ name, module, watcher = "", project }) { return this.releases.allowed({ name, module, watcher, project }); }
 
   /**
+   * An agent's own watcher (core/watchers, owner kind agent) uses what is lent to its agent, with no grant of its own: the item must be one the agent may read
+   * right now by its standing kernel grant (never a lease held to a conversation). Only the watchers module asks, for a named watcher.
+   * @param {string} name @param {string} module @param {string} watcher @param {string} agent
+   */
+  async lentToAgent(name, module, watcher, agent) {
+    if (module !== "watchers" || !watcher || !agent || !this.access || typeof this.access.effectFor !== "function") return false;
+    return (await this.access.effectFor(String(agent), String(name), "vault.read")) === "allow";
+  }
+
+  /**
    * Hand one value to one module. The grant is the boundary: the loader's needs.vault check is
    * only a courtesy, since a module could reach this tool through ctx.call directly.
    */
@@ -1511,15 +1521,16 @@ export class Vault {
    *   session-credentials.md). Nothing passes this yet - modules run process-wide, not scoped to
    *   one project - so today it is always absent and this filters nothing.
    */
-  async release({ name, field, watcher = "", project, deployment }, caller) {
+  async release({ name, field, watcher = "", project, deployment, agent = "" }, caller) {
     const mod = moduleOf(caller);
     const who = watcher ? `${caller}/${watcher}` : deployment ? `${caller}/${deployment}` : String(caller);
     if (!mod) { this.audit("release", name, who, false, "not a module"); throw new Error("only modules may ask the vault for a value"); }
     await this.key();
     // Publish asks for a deployment, and a deployment holds its secret as its own kernel grant: that grant, and not a grant to the module, is what lets the value out (R032-11).
-    const g = mod === "publish" ? Boolean(deployment && this.access && this.access.deploymentMay(String(name), String(deployment))) : this.granted({ name, module: mod, watcher, project });
+    const g = mod === "publish" ? Boolean(deployment && this.access && this.access.deploymentMay(String(name), String(deployment))) : this.granted({ name, module: mod, watcher, project }) || (await this.lentToAgent(name, mod, watcher, agent));
     if (!g) {
       this.audit("release", name, who, false, "no grant");
+      if (mod === "watchers" && watcher && agent) throw new Error(`Needs access to ${name}: let ${agent} use it in the Vault (Can use it, without seeing it)`);
       throw new Error(mod === "publish" ? `${name} is not granted to this deployment · give it from the deployment's secrets` : `${name} is not granted to ${watcher ? `${mod}/${watcher}` : mod} · vyre vault grant ${name} ${mod}${watcher ? ` --watcher ${watcher}` : ""}`);
     }
     const r = this.row(name);

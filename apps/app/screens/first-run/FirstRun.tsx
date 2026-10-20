@@ -3,7 +3,7 @@ import { Pressable, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   Button, ChoiceHero, ChoiceList, CodeBlock, Field, FlowStep, InviteShare, PasswordField, ProviderSignInButton,
-  Avatar, FlowOver, Icon, ProviderBadge, RecoveryKeySheet, RolePicker, Segmented, SpaceSwitcherTitle, Text, markRef, passwordStrength, useUiTheme,
+  Avatar, FlowOver, Icon, ModelPicker, ProviderBadge, RecoveryKeySheet, RolePicker, Segmented, SpaceSwitcherTitle, Text, markRef, passwordStrength, useUiTheme,
 } from "@vyre/ui";
 import { ANOTHER_COPY, AI_SIGNIN_COPY, INVITE_ROLES, JOIN_COPY, PHASES, SIGNIN_COPY, SPACE_NAME_SAY, afterAi, afterRecovery, commandOk, entryScreen, displayNameOf, isAnother, passwordOk, phaseOf, spaceAddressOf, spaceNameSuggestions, usernameOf } from "../../../../lib/first-run-shape.js";
 import { MOCK } from "../../src/real/box";
@@ -16,7 +16,8 @@ import { AgentLookPicker } from "../../ui/chat/NewAgentDialog";
 import { PARTS, lookOf, lookSeed, partsOf, setPart, withParts } from "../../ui/chat/agent-look.js";
 import { ASK_COPY, askAddressOf, entryWords, nextForAsk } from "../spaces/join-requests-model.js";
 import { ACCOUNTS_COPY, copyWords, defaultLabel, keyKindOf, keyShapeOk, labelProblem, NO_SIGNIN, pasteOk, signinInput, signinMode } from "./ai-accounts-model.js";
-import { ASSISTANT_COPY, MODEL_COPY, NAME_COPY, lastSpace, modelStep, rememberSpace } from "./welcome-model.js";
+import { ASSISTANT_COPY, MODEL_COPY, NAME_COPY, lastSpace, modelStep, pickedModel, rememberSpace, welcomeGroups } from "./welcome-model.js";
+import { effortFor } from "../../src/models/model-choice.js";
 import { clearAfter, readAfter, returnWaiting, saveAfter } from "../../src/identity/github-return.js";
 import { linkGithub, signInWithGithub, type GithubSession } from "../../src/real/github";
 import type { GithubUser } from "../../src/real/github-types";
@@ -94,8 +95,8 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
   const [failure, setFailure] = useState("");
   const [busy, setBusy] = useState(false);
   const [asName, setAsName] = useState<string>(shot?.asName || "");
-  const [models, setModels] = useState<{ id: string; label: string; provider: string; models: { id: string; label: string }[] }[] | null>(shot?.models || null);
-  const [modelPick, setModelPick] = useState("");
+  const [models, setModels] = useState<{ id: string; label: string; provider: string; kind?: string; models: unknown[] }[] | null>(shot?.models || null);
+  const [modelPick, setModelPick] = useState<{ account: string; provider: string; model: string; effort: string } | null>(null);
   const [holdOpen, setHoldOpen] = useState(false);
   const [askAddr, setAskAddr] = useState<string>(shot?.askAddr || "");
   const [askNote, setAskNote] = useState("");
@@ -235,8 +236,8 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
       if (!r.ok) { setModels([]); return; }
       const list = Array.isArray(r.accounts) ? r.accounts : [];
       setModels(list);
-      const firstWith = list.find((a: { models: unknown[] }) => a.models.length);
-      if (firstWith) setModelPick((cur) => cur || `${firstWith.id}:${firstWith.models[0].id}`);
+      const first = welcomeGroups(list).find((g) => g.models.length);
+      if (first) setModelPick((cur) => cur || { account: first.account.id, provider: first.models[0].provider, model: first.models[0].id, effort: effortFor(first.models[0], null) });
     });
     return () => { live = false; };
   }, [shot, screen]);
@@ -770,31 +771,23 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
 
   if (screen === "setup.model") {
     const who = asName.trim() || ASSISTANT_COPY.suggestion;
-    const picked = (models || []).flatMap((a) => a.models.map((m) => ({ key: `${a.id}:${m.id}`, model: m.id })));
-    const chosen = picked.find((p) => p.key === modelPick);
-    const stepNow = modelStep(models, Boolean(chosen));
+    // the one model picker: each AI account the person just connected, with the models it can run and their details, and the effort control when the chosen model takes one
+    const groups = models === null ? null : welcomeGroups(models);
+    const now = groups && modelPick ? pickedModel(groups, modelPick) : null;
+    const stepNow = modelStep(models, Boolean(now));
     return (
       <FlowStep steps={steps} onBack={back} title={MODEL_COPY.title(who)} lead={stepNow.lead} failure={failure}
         secondary={{ label: "Keep the default", onPress: () => go("ready") }}
         primary={{ label: "Continue", loading: busy, disabled: busy || !stepNow.canContinue, onPress: () => void run(async () => {
-          if (chosen) { const r = await setAssistantModel(chosen.model); if (!r.ok) { setFailure(r.message); return; } }
+          if (now && modelPick) { const r = await setAssistantModel(now.model.id, now.model.provider, effortFor(now.model, modelPick.effort)); if (!r.ok) { setFailure(r.message); return; } }
           go("ready");
         }) }}>
         {models === null ? <Text tone="muted">Looking at your AI accounts...</Text> : null}
-        {(models || []).map((a) => (
-          <View key={a.id} style={{ gap: 6 }} accessibilityLabel={a.label}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}><ProviderBadge provider={a.provider} size={20} /><Text tone="label">{a.label}</Text></View>
-            {a.models.map((m) => {
-              const k = `${a.id}:${m.id}`;
-              return (
-                <Pressable key={k} accessibilityRole="radio" accessibilityLabel={`${a.label}, ${m.label}`} accessibilityState={{ selected: modelPick === k }} onPress={() => setModelPick(k)}
-                  style={{ padding: 12, borderRadius: 12, borderWidth: modelPick === k ? 2 : 0.5, borderColor: modelPick === k ? color.primary : color["edge-strong"], backgroundColor: color["surface-2"] }}>
-                  <Text>{m.label}</Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        ))}
+        {groups && groups.some((g) => g.models.length) ? (
+          <ModelPicker label={`${who}'s model`} groups={groups} value={modelPick || {}} effort={modelPick?.effort || null}
+            onChange={({ account, model }) => setModelPick({ account: account.id, provider: model.provider, model: model.id, effort: effortFor(model, modelPick?.effort) })}
+            onEffort={(effort) => setModelPick((x) => (x ? { ...x, effort } : x))} />
+        ) : null}
       </FlowStep>
     );
   }

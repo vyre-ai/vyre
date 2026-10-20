@@ -66,14 +66,20 @@ export function createAgentd(o) {
     req.on("end", async () => {
       try {
         const body = JSON.parse(raw || "{}");
-        const u = { user: String(body.user), uid: Number(body.uid), display: Number(body.display) };
+        const u = { user: String(body.user), uid: Number(body.uid), display: Number(body.display), name: typeof body.name === "string" ? body.name.slice(0, 200) : "" };   // name: shown on the agent's desk only (agentd.js deskNameOf cleans it)
         if (action === "ticket") {
           // a viewer's one-use way to this agent's screen: checked as an agent triple like every action, then held for the relay
           planCreate(u);
           const session = body.session === undefined || body.session === null ? null : String(body.session);
           if (session !== null && !SESSION_RE.test(session)) throw new Error("not a terminal name");
-          if (body.kind !== undefined && body.kind !== "cdp" && body.kind !== "run") throw new Error("not a ticket kind");
+          if (body.kind !== undefined && body.kind !== "cdp" && body.kind !== "run" && body.kind !== "fs") throw new Error("not a ticket kind");
           if (body.kind === "cdp" && session !== null) throw new Error("a debugging ticket names no terminal");
+          if (body.kind === "fs") {
+            // one file operation in this agent's home, checked as it is held (agentd.js validateFs) and again by the helper, as the agent
+            if (session !== null) throw new Error("a file ticket names no terminal");
+            tickets.add(String(body.ticket), u, "fs", null, body.fs);
+            return send(200, { ok: true });
+          }
           if (body.kind === "run") {
             if (session !== null) throw new Error("a run ticket names no terminal");
             tickets.add(String(body.ticket), u, "run", null, { argv: body.argv, cwd: body.cwd, env: body.env });

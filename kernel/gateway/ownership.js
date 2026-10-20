@@ -39,8 +39,8 @@ export function actingForOf(chain, doer) {
   return doer && doer.kind === "person" ? String(doer.id) : null;
 }
 
-/** The types this file judges: the three that decide who sees what, and a person's own profile. */
-export const OWNED_TYPES = Object.freeze(["project", "team-member", "task", "member-profile"]);
+/** The types this file judges: the three that decide who sees what, and a person's own profile and profile photo. */
+export const OWNED_TYPES = Object.freeze(["project", "team-member", "task", "member-profile", "member-photo"]);
 
 /** Project fields that point at files, memory, credentials, another Space or whose project is personal: written only by an owner, an admin or the work service, never by a member, even the project's own. */
 const PROJECT_TRUSTED_FIELDS = Object.freeze(["drive_path", "memory_scope", "credentials", "moved_to", "moved_from", "personal_of", "slug", "archived_at"]);
@@ -50,6 +50,8 @@ const PROJECT_TEAM_FIELDS = Object.freeze(["name", "status", "due"]);
 const SEAT_TRUSTED_FIELDS = Object.freeze(["role", "instructions", "skills"]);
 
 const no = (/** @type {string} */ message) => new KernelError("not_allowed", message);
+/** The most base64 characters a profile photo holds: 200 KB of picture. */
+const PHOTO_B64_MAX = Math.ceil((200 * 1024) / 3) * 4;
 /** The person id of an actor value as a record holds it: { actor: { id } }, { id } or a bare string. @param {any} a */
 const idOf = a => (a && typeof a === "object" ? (a.actor && a.actor.id) || a.id || null : typeof a === "string" ? a : null);
 /** The urn or id a link value names. @param {any} v */
@@ -62,7 +64,7 @@ const actorsOf = chain => (chain && Array.isArray(chain.hops) ? chain.hops.map((
  * @param {{ op: "create" | "update" | "remove", trusted: boolean, actingFor?: string | null, role?: string, project: (ref: string) => Promise<{ owner: string | null, team: string[], levels?: Record<string, string> } | null>, task?: (id: string) => Promise<any> }} ctx
  */
 export async function mayWrite(chain, type, row, patch, ctx) {
-  if (type === "member-profile") return mayWriteProfile(chain, row, patch, ctx);
+  if (type === "member-profile" || type === "member-photo") return mayWriteProfile(chain, row, patch, ctx, type === "member-photo");
   if (!OWNED_TYPES.includes(type) || ctx.trusted) return true;
   const acting = ctx.actingFor ? [...actorsOf(chain), { kind: "person", id: ctx.actingFor }] : actorsOf(chain);
   const me = acting.find((/** @type {any} */ a) => a.kind === "person");
@@ -146,16 +148,21 @@ export async function mayWrite(chain, type, row, patch, ctx) {
 
 /**
  * A person's profile in a Space (records/core-types.js MEMBER_PROFILE): only that person writes it, as themselves. An owner or an admin is not an exception: they may remove a profile (someone who
- * left) and never make or change one. No agent writes one, not even the person's own assistant, so how a person is shown to the Space is always their own act.
- * @param {any} chain @param {any} row @param {any} patch @param {{ op: "create" | "update" | "remove", trusted: boolean }} ctx
+ * left) and never make or change one. No agent writes one, not even the person's own assistant, so how a person is shown to the Space is always their own act. A profile photo (member-photo) is the
+ * same, and is one small picture: base64 of at most 200 KB, WebP, JPEG or PNG.
+ * @param {any} chain @param {any} row @param {any} patch @param {{ op: "create" | "update" | "remove", trusted: boolean }} ctx @param {boolean} [photo]
  */
-function mayWriteProfile(chain, row, patch, ctx) {
+function mayWriteProfile(chain, row, patch, ctx, photo = false) {
   if (ctx.op === "remove" && ctx.trusted) return true;
+  // the records module's own sweep removes a photo no profile names (core/records-tools/photo-sweep.js): a remove, of a photo, by that one service hop, and nothing else
+  const hops = actorsOf(chain);
+  if (photo && ctx.op === "remove" && hops.length === 1 && hops[0].kind === "service" && hops[0].id === "records") return true;
   // exactly one hop, the person's own: a person calling through a module, a hook, a Flow step or an agent carries a service or agent hop and is refused
-  const acting = actorsOf(chain);
-  const me = acting.length === 1 && acting[0].kind === "person" ? acting[0] : null;
+  const me = hops.length === 1 && hops[0].kind === "person" ? hops[0] : null;
   if (!me) throw no("a profile is changed only by its person, from their own device. A module, a Flow or an agent cannot change it.");
   const person = String(me.id), p = patch && typeof patch === "object" ? patch : {};
+  if (photo && p.image != null && p.image !== "" && !(typeof p.image === "string" && p.image.length <= PHOTO_B64_MAX && /^[A-Za-z0-9+/]+={0,2}$/.test(p.image))) throw no("a profile photo is one small picture of at most 200 KB. Pick it again on your profile page.");
+  if (photo && p.mime != null && p.mime !== "" && !/^image\/(webp|jpeg|png)$/.test(String(p.mime))) throw no("a profile photo is a WebP, JPEG or PNG picture. Pick it again on your profile page.");
   if (ctx.op === "create") { if (idOf(p.person) !== person) throw no("a profile you make is your own: name yourself as its person."); return true; }
   if (idOf(row && row.data && row.data.person) !== person) throw no("only the person a profile is about changes it. Ask them.");
   if (Object.prototype.hasOwnProperty.call(p, "person") && idOf(p.person) !== person) throw no("a profile stays with its person.");

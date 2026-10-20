@@ -1,11 +1,12 @@
 // What the Flow builder offers to pick from, and how a finished draft is saved. A sample build answers from SAMPLE_OPTIONS and keeps Flows in memory; the real one asks the vyred
 // (records.types through Customize's store, agents.list, work.template.list and get, roles.list) and saves with flows.define, which stores a version nobody has approved yet.
-import { useEffect, useState } from "react";
+import { useMemo, useEffect, useState } from "react";
 import { allowsMock, type FlowOptions } from "@vyre/ui";
 import { callT as call } from "../../src/real/call-tool";
 import { useKernelTypes } from "../customize/kernel-types";
 import { useSpaces } from "../shell/state";
 import { SAMPLE_OPTIONS } from "./starters.js";
+import { useMyModels } from "../../src/models/useMyModels";
 
 async function ask<T>(tool: string, input: Record<string, unknown> = {}): Promise<T | null> {
   const r = await call<T>(tool, input);
@@ -64,6 +65,8 @@ export async function realOptions(types: { name: string; label: string; fields?:
 
 /** The options the builder shows, once they are in. */
 export function useFlowOptions(): FlowOptions | null {
+  // the person's own models for an AI step (the one model picker): only what an account of theirs can run
+  const { groups: models } = useMyModels();
   const defs = useKernelTypes((s) => s.defs);
   const space = useSpaces((s) => s.space);
   const loadTypes = useKernelTypes((s) => s.load);
@@ -77,7 +80,7 @@ export function useFlowOptions(): FlowOptions | null {
     realOptions(types, space, () => setTick((n) => n + 1)).then((o) => { if (live) setOpts(o); });
     return () => { live = false; };
   }, [defs, space, tick]);
-  return opts;
+  return useMemo(() => (opts ? { ...opts, models } : null), [opts, models]);
 }
 
 /** Save a stored Flow on the box (a new version when `id` is given). Resolves to the new Flow's id; throws the box's own words when it refuses. */

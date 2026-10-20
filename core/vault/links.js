@@ -26,7 +26,7 @@ export function byWords(who) {
 /** How a caller that is neither the person nor an agent reads on a record: a word for the kind, never a decision about who the person is. */
 const SAYS = /** @type {Record<string, string>} */ ({ device: "one of your devices", mcp: "an assistant", harness: "an assistant", ext: "an assistant" });
 /** What happened to the item, in a few plain words. */
-const DID = /** @type {Record<string, string>} */ ({ fill: "used to sign in", "agent-fill": "used to sign in", "fill-native": "used to sign in", release: "used", relay: "used", inject: "used", totp: "used for its code", copy: "copied", reveal: "looked at" });
+const DID = /** @type {Record<string, string>} */ ({ fill: "used to sign in", "agent-fill": "used to sign in", "fill-native": "used to sign in", release: "used", relay: "used", inject: "used", use: "used", totp: "used for its code", copy: "copied", reveal: "looked at" });
 
 export class Links {
   /** @param {import("./vault.js").Vault} vault */

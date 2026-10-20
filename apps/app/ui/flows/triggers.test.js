@@ -7,11 +7,10 @@ import { SAMPLE_OPTIONS as O } from "../../screens/flows/starters.js";
 
 const flowOf = (trigger) => ({ format: 1, name: "t", label: "T", authorship: "builder", trigger, steps: [{ id: "c1", kind: "create", type: "matter", set: { client: "x" } }] });
 
-test("a record, event or watcher trigger keeps its optional condition and opens as the same editable trigger", () => {
+test("a record or event trigger keeps its optional condition and opens as the same editable trigger", () => {
   for (const [trigger, kind] of [
     [{ on: "event", event: "matter.created", where: "trigger.amount > 5" }, "created"],
     [{ on: "event", event: "documents.signed", where: "trigger.name == \"x\"" }, "event"],
-    [{ on: "watcher", watcher: "new-mail", where: "trigger.item.from != \"\"" }, "watcher"],
     [{ on: "event", event: ["matter.created", "matter.updated"], field: "status", when_record_changes: "replace", where: "trigger.after.amount > 5" }, "changed"],
   ]) {
     const stored = flowOf(trigger);
@@ -86,8 +85,8 @@ test("a Flow with several triggers opens as the first plus the others, says them
 
 test("each trigger is checked on its own, named when there is more than one", () => {
   const d = fromDefinition({ format: 1, name: "t", label: "T", authorship: "builder", trigger: { on: "event", event: "matter.created" }, steps: [{ id: "c1", kind: "create", type: "matter", set: { client: "x" } }] });
-  const two = { ...d, trigger: { kind: "created", type: "matter" }, moreTriggers: [{ kind: "watcher", watcher: "" }] };
-  assert.deepEqual(draftProblems(two, O), ["Trigger 2: Name the watcher."]);
+  const two = { ...d, trigger: { kind: "created", type: "matter" }, moreTriggers: [{ kind: "event" }] };
+  assert.deepEqual(draftProblems(two, O), ["Trigger 2: Choose what happens."]);
 });
 
 test("a step turned off keeps enabled false and stays an editable step", () => {
@@ -159,4 +158,18 @@ test("a webhook trigger is the Flow's web path hook-<route>, and reads back as a
   assert.match(flowSentence(d, O), /^When the webhook \/hooks\/northwind-orders is called,/);
   assert.deepEqual(draftProblems({ ...d, trigger: { kind: "webhook", route: "" } }, O), ["Choose the webhook route that starts it."]);
   assert.equal(fromDefinition({ ...stored, trigger: { on: "web", path: "contact" } }).trigger.kind, "form", "an ordinary form path stays a form");
+});
+
+test("a webhook, form or sign-up trigger asks for the Flow's own address; one saved the older way is kept as it was", () => {
+  const base = { format: 1, name: "t", label: "T", authorship: "builder", steps: [{ id: "c1", kind: "create", type: "note", set: { title: "x" } }] };
+  for (const [draft, stored] of [[{ kind: "webhook" }, { on: "web", path: "hook", address: true }], [{ kind: "form", path: "contact" }, { on: "web", path: "contact", address: true }], [{ kind: "signup" }, { on: "web", path: "signup", address: true }]]) {
+    const def = toDefinition({ name: "T", trigger: /** @type {any} */ (draft), steps: [] }, O);
+    assert.deepEqual(def.trigger, stored);
+    assert.deepEqual(checkFlow({ ...base, trigger: stored }), []);
+    assert.deepEqual(fromDefinition({ ...base, trigger: stored }).trigger, draft, "reads back as it was drawn");
+  }
+  assert.deepEqual(draftProblems({ name: "T", trigger: { kind: "webhook" }, steps: [] }, O).filter((p) => /webhook/.test(p)), [], "nothing to choose: the address comes when the Flow is on");
+  const older = { ...base, trigger: { on: "web", path: "contact" } };
+  assert.deepEqual(fromDefinition(older).trigger, { kind: "form", path: "contact", address: false });
+  assert.deepEqual(toDefinition(fromDefinition(older), O).trigger, older.trigger, "saved back unchanged until the person gives it an address");
 });

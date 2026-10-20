@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { tempHome } from "../../test/helpers.js";
 import { open as openStore } from "../store/index.js";
-import { duties, makeWake, dutyHash, DUTIES_MIGRATION, DUTIES_SEEN_MIGRATION, DUTIES_TITLE_MIGRATION, DUTIES_RUNAS_MIGRATION } from "./duties.js";
+import { duties, makeWake, dutyHash, holdUnstamped, DUTIES_MIGRATION, DUTIES_SEEN_MIGRATION, DUTIES_TITLE_MIGRATION, DUTIES_RUNAS_MIGRATION, DUTIES_HELD_MIGRATION } from "./duties.js";
 import { dutyNewsBlock, addRefusal, addIsolation } from "./index.js";
 
 const tm = { agent: "reviewer-harlow-legal", project: "harlow-legal", role: "reviewer" };
@@ -205,6 +205,7 @@ test("wake: the bus's envelope (what a listener is handed) wakes the duty the sa
 test("a duty keeps the person it runs as: who made it running, who turns it on or changes it; a proposal keeps nobody until then", async t => {
   const s = setup(t);
   s.db.exec(DUTIES_RUNAS_MIGRATION);
+  s.db.exec(DUTIES_HELD_MIGRATION);
   const made = await s.api.create(tm, { when: "daily 07:00", instruction: "Note what went stale.", act: true, by: "deck", run_as: "per_ada" });
   assert.equal(made.run_as, "per_ada", "started at once: its maker");
   const proposed = await s.api.create(tm, { when: "daily 08:00", instruction: "Check the pricing page.", act: true, by: "agent:juno", propose: true, run_as: "per_ada" });
@@ -236,4 +237,43 @@ test("wake: an item that carries instructions never reaches the request; it stay
   assert.ok(!block.includes("</vyre-request>"), "an injected closing tag cannot end the request");
   const prompt = `${block}\n\n<vyre-request id="r_1" from="duty:${d.id}" priority="low">\n${queued[0].text}\n</vyre-request>`;
   assert.equal((prompt.match(/<vyre-request /g) || []).length, 1, "exactly one real request wrapper");
+});
+
+test("Rule 2 on upgrade: a duty with nobody to run as is held off with the reason, unless its own row shows the owner made it; turning it on makes it that person's", async t => {
+  const s = setup(t);
+  s.db.exec(DUTIES_RUNAS_MIGRATION);
+  s.db.exec(DUTIES_HELD_MIGRATION);
+  // three duties as a release before batch 1 left them: running, with no run_as
+  const put = (/** @type {string} */ id, /** @type {string} */ by, enabled = 1) => s.db.prepare("INSERT INTO team_duties (id, teammate, project, role, watcher, trigger, instruction, act, enabled, started, created_by, at) VALUES (?,?,?,?,?,?,?,1,?,1,?,?)")
+    .run(id, tm.agent, tm.project, tm.role, `duty-reviewer-${id}`, "daily 07:00", "Note what went stale.", enabled, by, 1);
+  put("own1", "deck");                    // made on the owner's own surface
+  put("prop1", "reviewer-harlow-legal");   // a teammate's proposal someone turned on, who is not recorded
+  put("dev1", "device:abcdefghijklmnop");  // a paired device: it may be a member's
+  put("off1", "reviewer-harlow-legal", 0); // a proposal still off: nothing to hold
+  const r = holdUnstamped(s.db, "per_owner");
+  assert.deepEqual(r.stamped, ["own1"]);
+  assert.deepEqual(r.held.sort(), ["dev1", "prop1"]);
+  const own = s.api.get("own1");
+  assert.deepEqual([own.enabled, own.run_as, own.held], [true, "per_owner", null], "the owner's own schedule keeps running, as the owner");
+  const held = s.api.get("prop1");
+  assert.deepEqual([held.enabled, held.run_as], [false, null], "paused, never run as the owner");
+  assert.equal(held.held, "Paused: made before Vyre recorded who it runs for. Turn it on to run it as you.");
+  assert.equal(s.api.get("off1").held, null, "an off proposal is left as it was");
+  assert.deepEqual(holdUnstamped(s.db, "per_owner"), { stamped: [], held: [] }, "a second start changes nothing");
+  assert.deepEqual(holdUnstamped(s.db, ""), { stamped: [], held: [] }, "with no owner to name (no kernel), nothing is changed");
+
+  // the wake queues nothing for a held duty
+  const queued = [];
+  const wake = makeWake({ dutyApi: s.api, live: () => true, waiting: () => false, queue: r => queued.push(r) });
+  assert.equal(wake({ name: "duty-reviewer-prop1", items: 1 }), false);
+  assert.equal(queued.length, 0, "NEGATIVE: nothing runs for a held duty");
+
+  // turning it on stamps the person who turns it on, and the note goes
+  const on = await s.api.update("prop1", { enabled: true, run_as: "per_ada" });
+  assert.deepEqual([on.enabled, on.run_as, on.held], [true, "per_ada", null]);
+  assert.equal(wake({ name: "duty-reviewer-prop1", items: 1 }), true, "on again: it runs, as her");
+  // a running duty found with nobody to run as (missed by the upgrade) is held when it fires
+  s.db.prepare("UPDATE team_duties SET run_as = NULL WHERE id = 'own1'").run();
+  assert.equal(s.api.hold("own1").held, "Paused: made before Vyre recorded who it runs for. Turn it on to run it as you.");
+  assert.equal(s.api.get("own1").enabled, false);
 });

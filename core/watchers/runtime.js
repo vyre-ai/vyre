@@ -8,15 +8,16 @@
 // three failures in a row pauses it and says so. An edit to the folder pauses it too, until it is
 // dry-run and created again.
 //
-// Three kinds of schedule: cron, "webhook" (vyred's /v1/watchers/<name>/hook, token-checked), and
-// "event": the watcher runs when an event of its `on` type is emitted whose payload matches its
+// Two kinds of schedule: cron, and "event": the watcher runs when an event of its `on` type is emitted whose payload matches its
 // `where`. For hook.received (core/hooks, an internet webhook through the Wink public gate) the runtime reads the
 // delivery with hooks.delivery and hands it to the watcher, which stays in its sandbox and never
-// calls a tool itself.
+// calls a tool itself. (A "webhook" schedule, vyred's /v1/watchers/<name>/hook, is retired: a webhook starts a Flow.)
+//
+// An agent's own watcher (owner { kind: "agent" }, made by watchers.write when a person asked that agent) starts paused until its first
+// dry run passes, then turns itself on; each run with something new wakes that agent for the person who asked, quoted, a few times a day.
 //
 // Time comes from `now()` and runs are started by `tick()`, so tests drive the clock by hand.
 
-import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import * as cron from "./cron.js";
@@ -26,6 +27,7 @@ import { parseWhen } from "./when.js";
 import { buildPreset } from "./presets.js";
 import { wakeText, DEFAULT_PER_DAY } from "./wake.js";
 import { DUTY_NAME, DUTY_WATCH_JS } from "./duty.js";
+import { isRoutine, routineText } from "./routine.js";
 import { systemZone } from "../../lib/time/index.js";
 
 /** Schedules that are not cron: nothing is due on a clock. */
@@ -90,7 +92,13 @@ export const MIGRATIONS = [`
 /** Steps added after v0.3.0 (test/migrations-append-only.test.js): the list the module runs is [...MIGRATIONS, ...DEF_MIGRATIONS, ...LATE_MIGRATIONS], so a released step never moves. */
 export const LATE_MIGRATIONS = [`
   CREATE TABLE watchers_state (k TEXT PRIMARY KEY, v TEXT NOT NULL);
+`, `
+  ALTER TABLE watchers_watchers ADD COLUMN owner_agent TEXT;   -- the agent that wrote it with watchers.write (only that tool sets it)
+  ALTER TABLE watchers_watchers ADD COLUMN paused_by TEXT;     -- waiting (for its first passing test), person, agent:<name> or vyre
 `];
+
+/** Why an agent's new watcher is paused: it turns itself on when its first dry run passes. */
+export const WAITING = "waiting for its first test to pass";
 
 /**
  * @typedef {{ db: import("node:sqlite").DatabaseSync, dir: string,
@@ -151,20 +159,26 @@ export class Runtime {
 
   // ------------------------------------------------------------------ tools
 
-  /** Every watcher: on disk, turned on, or both. */
-  list() {
+  /** Every watcher: on disk, turned on, or both. `agent`: only that agent's own. */
+  list({ agent = null } = {}) {
     const rows = new Map(this.db.prepare("SELECT * FROM watchers_watchers").all().map(r => [String(r.name), /** @type {any} */ (r)]));
     const count = this.db.prepare("SELECT COUNT(*) n FROM watchers_items WHERE watcher = ?");
     const out = [];
     for (const name of new Set([...folder.names(this.d.dir), ...rows.keys()])) {
       const f = folder.read(this.d.dir, name), r = rows.get(name);
       if (!f.hash && !(r && r.enabled)) continue;   // a dry-run draft whose folder was deleted
+      const own = r && r.owner_agent ? String(r.owner_agent) : null;
+      if (agent && own !== agent) continue;
       const on = r && r.enabled;
       const state = !f.hash && on ? "missing" : f.problems.length ? "invalid" : !on ? "draft"
         : f.hash !== r.hash ? "changed" : r.paused ? "paused" : "on";
       const schedule = f.spec?.schedule || r?.schedule || null;
       const every = schedule === "event" && f.spec ? describeOn(f.spec) : schedule ? cron.describe(schedule, this.zone()) : null;
+      const o = f.spec && f.spec.owner && f.spec.owner.kind === "agent" ? f.spec.owner : null;
       out.push({ name, state, hash: f.hash || null, title: f.spec?.summary?.do || null, project: f.spec?.project || r?.project || null, schedule, every,
+        kind: f.spec ? (isRoutine(f.spec) ? "routine" : DUTY_NAME.test(name) ? (f.spec.schedule === "event" ? "watcher" : "routine") : "watcher") : "watcher",
+        ...(f.spec && f.spec.instruction && (isRoutine(f.spec) || DUTY_NAME.test(name)) ? { instruction: f.spec.instruction.slice(0, 2000) } : {}),
+        ...(own ? { agent: own, person: o && o.person ? o.person : null, thread: o && o.thread ? o.thread : null, waiting: Boolean(r.paused && r.paused_by === "waiting"), pausedBy: r.paused ? r.paused_by || null : null } : {}),
         next: on && !r.paused && r.next_at ? new Date(r.next_at).toISOString() : null,
         lastRun: r?.last_run ? new Date(r.last_run).toISOString() : null, lastError: r?.last_error || null, failures: r?.failures || 0,
         pausedWhy: r?.paused ? r.paused_why : null, items: Number(count.get(name)?.n || 0), problems: f.problems });
@@ -190,12 +204,14 @@ export class Runtime {
     if (res.error) return { ok: false, name, error: res.error, logs: res.logs, ms: res.ms };
     const now = this.now();
     this.db.prepare(`INSERT INTO watchers_watchers (name, project, schedule, tested_hash, tested_at) VALUES (?,?,?,?,?)
-      ON CONFLICT(name) DO UPDATE SET tested_hash = excluded.tested_hash, tested_at = excluded.tested_at`).run(name, spec.project, spec.schedule, f.hash, now);
+      ON CONFLICT(name) DO UPDATE SET tested_hash = excluded.tested_hash, tested_at = excluded.tested_at`).run(name, spec.project || null, spec.schedule, f.hash, now);
     const filed = this.db.prepare("SELECT 1 FROM watchers_items WHERE watcher = ? AND id = ?");
-    const project = await this.project(spec.project);
+    const project = spec.project ? await this.project(spec.project) : null;
+    // An agent's own watcher waiting for this: the code that passed is the code that was written, so it turns itself on now.
+    const turnedOn = this.firstPass(name, f.hash, spec);
     return {
-      ok: true, name, project: project ? project.slug : null,
-      ...(project ? {} : { warning: `no project "${spec.project}"; watchers.create will refuse until it exists (vyre projects lists them)` }),
+      ok: true, name, project: project ? project.slug : null, ...(turnedOn ? { state: "on", turnedOn: true } : {}),
+      ...(project || !spec.project ? {} : { warning: `no project "${spec.project}"; watchers.create will refuse until it exists (vyre projects lists them)` }),
       schedule: spec.schedule, every: spec.schedule === "event" ? describeOn(spec) : cron.describe(spec.schedule, this.zone()), needs: spec.needs, count: res.items.length,
       alreadyFiled: res.items.filter(i => filed.get(name, i.id)).length,
       items: res.items.slice(0, 20), logs: res.logs.slice(-20), ms: res.ms, sandboxed: res.sandboxed, networkIsolated: res.isolated === true, wall: res.wall || null,
@@ -213,20 +229,24 @@ export class Runtime {
     const r = this.row(name);
     const when = spec.schedule === "event" ? describeOn(spec) : cron.describe(spec.schedule, this.zone());
     const duty = spec.owner != null && spec.owner.kind === "teammate";
+    const mine = spec.owner != null && spec.owner.kind === "agent" ? spec.owner : null;
     const wakes = spec.about && spec.about.session && spec.act ? spec.about.session : null;
     return {
-      name, hash, project: spec.project, state: !r || !r.enabled ? "draft" : r.paused ? "paused" : r.hash !== hash ? "changed" : "on",
+      name, hash, project: spec.project || null, state: !r || !r.enabled ? "draft" : r.paused ? "paused" : r.hash !== hash ? "changed" : "on",
+      ...(mine && r && r.paused ? { pausedWhy: r.paused_why || null, waiting: r.paused_by === "waiting" } : {}),
+      kind: isRoutine(spec) ? "routine" : "watcher",
       owner: spec.owner ? { ...spec.owner } : { kind: "project", project: spec.project },
       lines: {
         when: spec.summary ? spec.summary.when : spec.when ? `Runs ${when} (${spec.when})` : `Runs ${when}`,
         ...(spec.summary && spec.summary.check ? { check: spec.summary.check } : {}),
-        do: spec.summary ? spec.summary.do : duty && spec.instruction ? spec.instruction.split("\n")[0].slice(0, 240) : "Files what it finds into the project, marked as from outside",
+        do: spec.summary ? spec.summary.do : duty && spec.instruction ? spec.instruction.split("\n")[0].slice(0, 240) : mine ? `Tells ${mine.agent} what is new, marked as from outside` : "Files what it finds into the project, marked as from outside",
       },
       facts: {
         reads: spec.source ? ["github (your connected account, read only)"] : spec.net ? Object.keys(spec.net) : [],
         readsText: spec.source ? "Reads the new comments other people leave on this session's pull requests, from GitHub through your connected account (read only)" : spec.net ? `Reads ${Object.keys(spec.net).join(", ")}` : "Reads nothing from the web",
         credentials: spec.net ? Object.entries(spec.net).filter(([, v]) => v.vault || v.credential || v.google).map(([h, v]) => ({ host: h, item: v.vault || v.credential || `google:${v.google}`, how: v.google ? "your connected Google account, read only" : v.credential ? "the vault calls it, read only" : "Vyre adds it to requests" })) : [],
-        acts: wakes ? `Posts what it finds into session ${wakes} as quoted notes, up to ${spec.wake ? spec.wake.maxPerDay : DEFAULT_PER_DAY} times a day; never as an instruction`
+        acts: mine ? `Wakes ${mine.agent} with what it finds, as quoted notes, up to ${spec.wake ? spec.wake.maxPerDay : DEFAULT_PER_DAY} times a day. ${mine.agent} decides what to do and tells you here`
+          : wakes ? `Posts what it finds into session ${wakes} as quoted notes, up to ${spec.wake ? spec.wake.maxPerDay : DEFAULT_PER_DAY} times a day; never as an instruction`
           : duty && spec.act ? "May take actions for its teammate; anything outward that you did not ask for holds for you" : "Never acts: it reads and files",
         cost: spec.ask ? `Asks a model, at most $${spec.ask.dailyUsd} a day` : "No model cost",
         schedule: when,
@@ -241,20 +261,67 @@ export class Runtime {
     if (shown && shown !== hash) throw new Error(`${name} changed after its card was shown; show the card again, then turn it on`);
     const r = this.row(name);
     if (!r || r.tested_hash !== hash) throw new Error(`${name} has ${r && r.tested_hash ? "changed since its last dry run" : "not been dry-run"}; run watchers.test, show the user its items, then create it`);
-    const project = await this.project(spec.project);
-    if (!project) throw new Error(`no project "${spec.project}"; vyre projects lists them, and the watcher's project must be one of their slugs`);
+    // An agent's own watcher may have no project; any other names one that exists.
+    const agentOwned = spec.owner != null && spec.owner.kind === "agent";
+    const project = spec.project ? await this.project(spec.project) : null;
+    if (!project && !(agentOwned && !spec.project)) throw new Error(`no project "${spec.project}"; vyre projects lists them, and the watcher's project must be one of their slugs`);
+    const slug = project ? project.slug : null;
     const now = this.now();
-    const hook = spec.schedule === "webhook", pushed = PUSHED.has(spec.schedule);
-    const token = hook ? r.token || crypto.randomBytes(24).toString("base64url") : null;
+    const pushed = PUSHED.has(spec.schedule);
     // Turning on again after an edit keeps the cursor, so it carries on from where it was.
-    this.db.prepare(`UPDATE watchers_watchers SET project = ?, schedule = ?, hash = ?, enabled = 1, paused = 0, paused_why = NULL,
-      failures = 0, last_error = NULL, token = ?, next_at = ?, created_at = COALESCE(created_at, ?) WHERE name = ?`)
-      .run(project.slug, spec.schedule, hash, token, pushed ? null : now, now, name);
-    this.d.emit("watcher.created", { name, project: project.slug, schedule: spec.schedule }, { project: project.slug });
+    this.db.prepare(`UPDATE watchers_watchers SET project = ?, schedule = ?, hash = ?, enabled = 1, paused = 0, paused_why = NULL, paused_by = NULL,
+      failures = 0, last_error = NULL, token = NULL, next_at = ?, created_at = COALESCE(created_at, ?) WHERE name = ?`)
+      .run(slug, spec.schedule, hash, pushed ? null : now, now, name);
+    this.d.emit("watcher.created", { name, project: slug, schedule: spec.schedule, ...(agentOwned ? { agent: spec.owner.agent } : {}) }, slug ? { project: slug } : {});
     if (!pushed) this.kick(name, "create");
     if (spec.schedule === "event") this.subscribe();
-    return { name, project: project.slug, schedule: spec.schedule, every: spec.schedule === "event" ? describeOn(spec) : cron.describe(spec.schedule, this.zone()), state: "on",
-      ...(hook ? { hook: { method: "POST", path: `/v1/watchers/${name}/hook`, header: "x-vyre-token", token } } : {}) };
+    return { name, project: slug, schedule: spec.schedule, every: spec.schedule === "event" ? describeOn(spec) : cron.describe(spec.schedule, this.zone()), state: "on" };
+  }
+
+  /**
+   * An agent's own watcher, as watchers.write or watchers.revise hands it over (already written to the folder): it is recorded as that agent's, turned on in the
+   * sense that it is the code that will run, and paused until a dry run of exactly this code passes (test turns it on). Any earlier cursor is kept.
+   * @param {string} name @param {string} agent
+   */
+  ownWritten(name, agent) {
+    mustName(name);
+    const f = folder.read(this.d.dir, name);
+    const spec = f.spec;
+    this.db.prepare(`INSERT INTO watchers_watchers (name, project, schedule, hash, enabled, paused, paused_why, paused_by, owner_agent, created_at) VALUES (?,?,?,?,1,1,?, 'waiting', ?, ?)
+      ON CONFLICT(name) DO UPDATE SET project = excluded.project, schedule = excluded.schedule, hash = excluded.hash, enabled = 1, paused = 1, paused_why = excluded.paused_why,
+      paused_by = 'waiting', owner_agent = excluded.owner_agent, tested_hash = NULL, failures = 0, last_error = NULL, next_at = NULL`)
+      .run(name, spec && spec.project ? spec.project : null, spec ? spec.schedule : null, f.hash, WAITING, agent, this.now());
+    this.d.emit("watcher.created", { name, agent, state: "paused", schedule: spec ? spec.schedule : null }, spec && spec.project ? { project: spec.project } : {});
+  }
+
+  /**
+   * A Routine is Vyre's own code, so it needs no dry run: it is on from the moment it is written, and its first run is at its next time (never now).
+   * @param {string} name
+   */
+  routineOn(name) {
+    const { spec, hash } = this.spec(name);
+    if (!isRoutine(spec)) throw new Error(`${name} is not a routine`);
+    const next = cron.next(cron.parse(spec.schedule), this.now(), this.zone());
+    this.db.prepare("UPDATE watchers_watchers SET hash = ?, tested_hash = ?, tested_at = ?, enabled = 1, paused = 0, paused_why = NULL, paused_by = NULL, failures = 0, next_at = ? WHERE name = ?").run(hash, hash, this.now(), next, name);
+    return { name, state: "on", next: next ? new Date(next).toISOString() : null, every: cron.describe(spec.schedule, this.zone()) };
+  }
+
+  /** Who owns a watcher as watchers.write recorded it: the agent's name, or null for a person's, a project's, a session's or a duty. */
+  ownerAgent(name) { const r = this.row(name); return r && r.owner_agent ? String(r.owner_agent) : null; }
+
+  /**
+   * The first passing dry run of an agent's waiting watcher turns it on: the hash that passed must be the hash that was written.
+   * @returns {boolean} whether it turned on
+   */
+  firstPass(name, hash, spec) {
+    const r = this.row(name);
+    if (!r || !r.owner_agent || !r.enabled || !r.paused || r.paused_by !== "waiting" || r.hash !== hash || !spec || !spec.owner || spec.owner.kind !== "agent" || spec.owner.agent !== r.owner_agent) return false;
+    const pushed = PUSHED.has(spec.schedule), now = this.now();
+    this.db.prepare("UPDATE watchers_watchers SET paused = 0, paused_why = NULL, paused_by = NULL, failures = 0, tested_hash = ?, tested_at = ?, next_at = ? WHERE name = ?").run(hash, now, pushed ? null : now, name);
+    this.d.emit("watcher.resumed", { name, agent: r.owner_agent, first: true }, r.project ? { project: r.project } : {});
+    if (!pushed) this.kick(name, "create");
+    if (spec.schedule === "event") this.subscribe();
+    return true;
   }
 
   /**
@@ -335,8 +402,9 @@ export class Runtime {
     const f = folder.read(this.d.dir, name);
     if (!r && !f.hash) throw Object.assign(new Error(`no watcher ${name} (watchers.list shows them)`), { code: "not_found" });
     this.db.prepare("DELETE FROM watchers_watchers WHERE name = ?").run(name);
-    if (DUTY_NAME.test(name)) { fs.rmSync(path.join(this.d.dir, name), { recursive: true, force: true }); if (this.d.defs) void this.d.defs.forget(name).catch(() => {}); }
-    this.d.emit("watcher.deleted", { name }, { project: r?.project || f.spec?.project });
+    // A duty's folder and an agent's own watcher's folder were written by Vyre, so they go with it, and their definitions too.
+    if (DUTY_NAME.test(name) || (r && r.owner_agent)) { fs.rmSync(path.join(this.d.dir, name), { recursive: true, force: true }); if (this.d.defs) void this.d.defs.forget(name).catch(() => {}); }
+    this.d.emit("watcher.deleted", { name, ...(r && r.owner_agent ? { agent: String(r.owner_agent) } : {}) }, { project: r?.project || f.spec?.project || undefined });
     return { name, deleted: true };
   }
 
@@ -349,11 +417,16 @@ export class Runtime {
     return this.logs(name, 1);
   }
 
-  pause(name, why = "paused by the user") {
+  /** @param {string} name @param {string} [why] @param {string} [by] person, agent:<name> or vyre: who stopped it, which decides whether its agent may resume it */
+  pause(name, why = "paused by the user", by = "vyre") {
     const r = this.row(name);
     if (!r || !r.enabled) throw new Error(`${name} is not turned on`);
-    if (r.paused) return { name, state: "paused", why: r.paused_why };
-    this.db.prepare("UPDATE watchers_watchers SET paused = 1, paused_why = ? WHERE name = ?").run(why, name);
+    if (r.paused) {
+      // A person's pause of a watcher waiting for its test, or of one Vyre paused, is the person's from now on: its agent cannot undo it.
+      if (by === "person" && r.paused_by !== "person") this.db.prepare("UPDATE watchers_watchers SET paused_by = 'person', paused_why = ? WHERE name = ?").run(why, name);
+      return { name, state: "paused", why: by === "person" ? why : r.paused_why };
+    }
+    this.db.prepare("UPDATE watchers_watchers SET paused = 1, paused_why = ?, paused_by = ? WHERE name = ?").run(why, by, name);
     this.d.emit("watcher.paused", { name, why }, { project: r.project });
     return { name, state: "paused", why };
   }
@@ -365,7 +438,7 @@ export class Runtime {
     if (shown && shown !== hash) throw new Error(`${name} changed after its card was shown; show the card again, then turn it on`);
     if (hash !== r.hash) throw new Error(`${name} changed since it was turned on; run watchers.test and watchers.create again`);
     const next = PUSHED.has(r.schedule) ? null : cron.next(cron.parse(r.schedule), this.now(), this.zone());
-    this.db.prepare("UPDATE watchers_watchers SET paused = 0, paused_why = NULL, failures = 0, next_at = ? WHERE name = ?").run(next, name);
+    this.db.prepare("UPDATE watchers_watchers SET paused = 0, paused_why = NULL, paused_by = NULL, failures = 0, next_at = ? WHERE name = ?").run(next, name);
     this.d.emit("watcher.resumed", { name }, { project: r.project });
     return { name, state: "on", next: next ? new Date(next).toISOString() : null };
   }
@@ -384,16 +457,9 @@ export class Runtime {
       .map(r => ({ ...JSON.parse(String(r.data)), watcher: r.watcher, project: r.project, kind: r.kind, filed: new Date(Number(r.filed_at)).toISOString() }));
   }
 
-  /** A webhook call. The token is checked in constant time; the body reaches the watcher as `hook`. */
-  async hook(name, token, body) {
-    const r = this.row(name);
-    const want = Buffer.from(String(r?.token || "")), got = Buffer.from(String(token || ""));
-    if (!r || !r.enabled || r.schedule !== "webhook" || !r.token || want.length !== got.length || !crypto.timingSafeEqual(want, got)) {
-      throw new Error("no such webhook, or the wrong token");
-    }
-    if (r.paused) throw new Error(`${name} is paused`);
-    this.kick(name, "hook", body ?? null);
-    return { accepted: true };
+  /** The retired webhook door: nothing runs, the caller is told where webhooks went. */
+  async hook() {
+    throw Object.assign(new Error("watcher webhooks are retired: a webhook starts a Flow (Flows, the trigger A webhook is called)"), { code: "denied" });
   }
 
   // ------------------------------------------------------------------ scheduling
@@ -520,7 +586,7 @@ export class Runtime {
       const why = f.problems.length ? `its folder is not valid: ${f.problems.join("; ")}` : "watch.js or watcher.json changed since it was turned on; run watchers.test and watchers.create again";
       this.record(name, trigger, { error: why, logs: [], ms: 0 }, 0, 0);
       this.db.prepare("UPDATE watchers_watchers SET last_run = ?, last_error = ? WHERE name = ?").run(started, why, name);
-      this.pause(name, why);
+      this.pause(name, why, "vyre");
       return;
     }
     const spec = /** @type {folder.Spec} */ (f.spec);
@@ -530,7 +596,7 @@ export class Runtime {
     if (this.stopping) return;                     // cut short by stop(): not the watcher's failure
     if (res.error) return this.failed(name, r, trigger, res, started);
 
-    const project = await this.project(r.project);
+    const project = r.project ? await this.project(r.project) : null;
     const insert = this.db.prepare(`INSERT OR IGNORE INTO watchers_items (watcher, id, project, kind, at, title, url, data, filed_at)
       VALUES (?,?,?,?,?,?,?,?,?)`);
     const fresh = [];
@@ -549,15 +615,16 @@ export class Runtime {
           at: item.at || undefined, key: `${name}/${item.id}`, project_cwds: project.folders,
         }).catch(() => false);
       }
-    } else if (fresh.length && spec.memory !== false) this.d.log(`${name}: project ${r.project} is gone, so ${fresh.length} items were filed but not taught to Memory`);
+    } else if (fresh.length && spec.memory !== false && r.project) this.d.log(`${name}: project ${r.project} is gone, so ${fresh.length} items were filed but not taught to Memory`);
 
     const cursor = res.cursor ?? started;
     const next = PUSHED.has(r.schedule) ? null : cron.next(cron.parse(r.schedule), this.now(), this.zone());
     this.db.prepare(`UPDATE watchers_watchers SET since = ?, failures = 0, last_run = ?, last_ok = ?, last_error = NULL, next_at = ? WHERE name = ?`)
       .run(JSON.stringify(cursor), started, started, next, name);
     if (fresh.length && spec.about && spec.about.session && spec.act) await this.wake(spec, fresh, res.logs);
+    if (fresh.length && spec.owner && spec.owner.kind === "agent") await this.wakeAgent(spec, fresh, res.logs, r);
     this.record(name, trigger, res, res.items.length, fresh.length);
-    this.d.emit("watcher.fired", { name, items: fresh.length, seen: res.items.length, trigger }, { project: r.project });
+    this.d.emit("watcher.fired", { name, items: fresh.length, seen: res.items.length, trigger, ...(r.owner_agent ? { agent: String(r.owner_agent) } : {}) }, r.project ? { project: r.project } : {});
   }
 
   failed(name, r, trigger, res, started) {
@@ -601,7 +668,9 @@ export class Runtime {
 
   async exec(dir, spec, since, hook) {
     if (spec.source) return this.execSource(spec, since);
-    const res = await runOnce({ dir, needs: spec.needs, since, hook, timeoutMs: spec.timeout * 1000, fetch: (n, field) => this.d.fetch(n, spec.name, field), signal: this.abort.signal, wall: typeof this.d.wall === "function" ? this.d.wall() : this.d.wall, findWall: this.d.findWall, viaRequest: spec.net ? async (url, init) => {
+    // An agent's own watcher reaches the items and connections already lent to its agent (the vault checks that grant), with no grant of its own.
+    const lentTo = spec.owner && spec.owner.kind === "agent" && this.ownerAgent(spec.name) === spec.owner.agent ? spec.owner.agent : undefined;
+    const res = await runOnce({ dir, needs: spec.needs, since, hook, timeoutMs: spec.timeout * 1000, fetch: (n, field) => this.d.fetch(n, spec.name, field, lentTo), signal: this.abort.signal, wall: typeof this.d.wall === "function" ? this.d.wall() : this.d.wall, findWall: this.d.findWall, viaRequest: spec.net ? async (url, init) => {
         const rule = spec.net[url.hostname];
         if (rule && rule.google) {
           // A connected Google account: the google module reads for it (Gmail and Calendar reads only), the token never leaves it.
@@ -609,9 +678,9 @@ export class Runtime {
           if (method !== "GET") throw new Error(`${method} is not allowed from a watcher; only GET`);
           if (typeof this.d.google !== "function") throw new Error("the google module is not running on this machine");
           // no grant, no read: a person grants the account's vault item to this watcher, for a dry run as for a run
-          if (typeof this.d.googleGranted !== "function" || !(await this.d.googleGranted(rule.google, spec.name))) {
+          if (typeof this.d.googleGranted !== "function" || !(await this.d.googleGranted(rule.google, spec.name, lentTo))) {
             const item = typeof this.d.googleItem === "function" ? await this.d.googleItem(rule.google).catch(() => null) : null;
-            throw new Error(`the Google account ${rule.google} is not granted to this watcher; a person runs: vyre vault grant ${item || "<the account's vault item>"} watchers --watcher ${spec.name}`);
+            throw new Error(lentTo ? `Needs access to ${item || `the Google account ${rule.google}`}: let ${lentTo} use it in Connections` : `the Google account ${rule.google} is not granted to this watcher; a person runs: vyre vault grant ${item || "<the account's vault item>"} watchers --watcher ${spec.name}`);
           }
           const query = {};
           for (const [k, v] of url.searchParams) query[k] = k in query ? [].concat(query[k], v) : v;
@@ -622,14 +691,14 @@ export class Runtime {
         const method = String((init && init.method) || "GET").toUpperCase();
         if (method !== "GET" && method !== "HEAD") throw new Error(`${method} is not allowed from a watcher; only GET and HEAD`);
         if (typeof this.d.request !== "function") throw new Error("the vault is not running on this machine");
-        const r = await this.d.request({ credential: rule.credential, method, url: url.href, watcher: spec.name });
+        const r = await this.d.request({ credential: rule.credential, method, url: url.href, watcher: spec.name, ...(lentTo ? { agent: lentTo } : {}) });
         return { status: Number(r.status), url: url.href, headers: Object.fromEntries(Object.entries(r.headers || {}).map(([k, v]) => [String(k).toLowerCase(), String(v)])), body: typeof r.body === "string" ? r.body : JSON.stringify(r.body ?? ""), truncated: false };
       } : null,
       askFn: spec.ask ? (prompt => this.askModel(spec, prompt)) : null, hosts: spec.net ? Object.keys(spec.net) : null,
       netAuth: spec.net ? async url => {
         const rule = spec.net[url.hostname];   // the exact declared host, never a subdomain
         if (!rule || !rule.vault) return undefined;
-        const value = await this.d.fetch(rule.vault, spec.name, rule.field);
+        const value = await this.d.fetch(rule.vault, spec.name, rule.field, lentTo);
         return { host: url.hostname, header: rule.header, value: rule.scheme ? `${rule.scheme} ${value}` : String(value) };
       } : undefined, netOptions: typeof this.d.netOptions === "function" ? this.d.netOptions() : this.d.netOptions });
     if (res.error) return res;
@@ -665,6 +734,31 @@ export class Runtime {
   }
 
   /**
+   * Wake the agent that owns this watcher, for the person who asked for it: ONE message per run with what is new, quoted as untrusted outside data
+   * (wake.js), in the chat it was asked in. Checks every time: the folder's owner is the agent watchers.write recorded, and today's budget is not spent.
+   * The agent decides what to do (tell the person, or start a Flow with the items as outside data). A refusal is logged and not retried; the items are filed either way.
+   * @param {folder.Spec} spec @param {any[]} fresh @param {string[]} logs @param {any} row
+   */
+  async wakeAgent(spec, fresh, logs, row) {
+    const name = spec.name, owner = /** @type {{ kind: "agent", agent: string, person?: string, thread?: string }} */ (spec.owner);
+    const skip = why => { logs.push(`not woken: ${why}`); this.d.log(`${name}: not woken: ${why}`); };
+    if (!row || String(row.owner_agent || "") !== owner.agent) return skip(`the watcher is not ${owner.agent}'s own`);
+    if (typeof this.d.wakeAgent !== "function") return skip("this computer cannot wake an agent");
+    // A Routine starts its agent at every time it is due (its schedule is its bound, at least ROUTINE_MIN_MINUTES apart); a Watcher's wakes are capped per day.
+    const routine = isRoutine(spec);
+    const day = new Date(this.now()).toISOString().slice(0, 10), cap = spec.wake ? spec.wake.maxPerDay : DEFAULT_PER_DAY;
+    const used = Number(/** @type {any} */ (this.db.prepare("SELECT posts FROM watchers_wakes WHERE watcher = ? AND day = ?").get(name, day))?.posts || 0);
+    if (!routine && used >= cap) return skip(`already woke ${owner.agent} ${used} times today (the most is ${cap})`);
+    const { text, shown } = routine ? { text: routineText(name, String(spec.instruction || ""), cron.describe(spec.schedule, this.zone())), shown: 1 } : wakeText(name, fresh, { to: owner.agent });
+    let woke;
+    try { woke = await this.d.wakeAgent({ agent: owner.agent, person: owner.person || null, thread: owner.thread || null, watcher: name, text }); }
+    catch (e) { return skip(`${owner.agent} could not be woken: ${/** @type {Error} */ (e).message}`); }
+    this.db.prepare(`INSERT INTO watchers_wakes (watcher, day, posts) VALUES (?,?,1) ON CONFLICT(watcher, day) DO UPDATE SET posts = posts + 1`).run(name, day);
+    this.d.emit("watcher.woke", { name, agent: owner.agent, ...(woke && woke.thread ? { thread: woke.thread } : {}), items: shown }, spec.project ? { project: spec.project } : {});
+    logs.push(routine ? `started ${owner.agent} with the routine's instructions` : `woke ${owner.agent} with ${shown} item${shown === 1 ? "" : "s"}`);
+  }
+
+  /**
    * A watcher's one way to a model: a judgment fed back into its own code (is this relevant, which
    * of these). No tools, no vault values, never a decision to send. The dollars are already in
    * core/spend: the switchboard's thread.finished for the quick session lands in the ledger by
@@ -681,7 +775,9 @@ export class Runtime {
     if (standing && standing.ok === false) throw new Error(standing.line || "today's model budget is reached");
     const used = Number(/** @type {any} */ (this.db.prepare("SELECT usd FROM watchers_spend WHERE watcher = ? AND day = ?").get(spec.name, day))?.usd || 0);
     if (used >= cap) throw new Error(`${spec.name} reached its daily model budget of $${cap}`);
-    const r = await this.d.ask(prompt, { purpose: `watcher:${spec.name}`, maxUsd: Math.max(0.001, cap - used) });
+    // An agent's own watcher asks on the account of the person it runs for (index.js resolves it), never the owner's for someone else.
+    const own = spec.owner && spec.owner.kind === "agent" ? { agent: spec.owner.agent, ...(spec.owner.person ? { person: spec.owner.person } : {}) } : {};
+    const r = await this.d.ask(prompt, { purpose: `watcher:${spec.name}`, maxUsd: Math.max(0.001, cap - used), ...own });
     this.db.prepare(`INSERT INTO watchers_spend (watcher, day, usd, calls) VALUES (?,?,?,1)
       ON CONFLICT(watcher, day) DO UPDATE SET usd = usd + excluded.usd, calls = calls + 1`).run(spec.name, day, Number(r && r.usd) || 0);
     return String((r && r.text) || "");

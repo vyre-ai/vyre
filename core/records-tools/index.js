@@ -22,8 +22,10 @@ import { registerSample } from "./sample.js";
 import { registerStats } from "./stats.js";
 import { withMe, withOwner } from "./me.js";
 import { seesNote } from "../../lib/note-share.js";
-import { registerQuick, quickFieldsOf, mergeOut, splitIn, bagInQuery, bagOf } from "./quick.js";
-import { nextRef, refNumber, refPrefix, formatRef, mintRef } from "./ref.js";
+import { registerQuick, quickFieldsOf, quickFieldsByType, forgetQuick, withFastFields, withoutFastFields, mergeOut, splitIn, bagInQuery, bagOf } from "./quick.js";
+import { nextRef, refNumber, refPrefix, formatRef, mintRef, idOnCreate, idOnUpdate, keptOnUpdate, withoutBlankIds } from "./ref.js";
+import { within } from "../../lib/within.js";
+import { startPhotoSweep } from "./photo-sweep.js";
 
 const obj = (/** @type {any} */ props = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties: props, ...(required.length ? { required } : {}) });
 const str = { type: "string" };
@@ -41,15 +43,29 @@ export function parseUrn(urn) {
 export default {
   async start(ctx) {
     const door = createDoor(ctx);
+    // A Space's label is kept for a minute: Records opens with several calls at once, and each would otherwise ask spaces.merge-list again before it answers.
+    /** @type {Map<string, { at: number, label: Promise<string | null> }>} */ const labels = new Map();
+    const LABEL_MS = 60_000;
+    /** The plain label spaces.merge-list gives a Space, or null. @param {string} id */
+    const labelOf = async (id) => {
+      let r; try { r = /** @type {any} */ (await ctx.call("spaces.merge-list", { person: ctx.kernel.owner })); } catch { r = null; }
+      const row = r && r.data && Array.isArray(r.data.spaces) ? r.data.spaces.find((/** @type {any} */ x) => x.space === id) : null;
+      const name = row && row.name;
+      return typeof name === "string" ? name.replace(/\.vyre\.run$/, "") : null;
+    };
     /** @typedef {{ space: string, gateway: any, surfaces: any, chain: any, proof: any }} Opened */
     /** @param {string} name @param {string} description @param {any} input @param {(i: any, d: Opened) => Promise<any>} fn @param {(i: any) => any} [where] the Space a call acts in: the `space` it names, or the one its record reference names */
     /** The space a call acted in, named: its id and a plain label ("home" for the home's own space). A caller that wants a particular space passes `space`; with none the call acts in the home's own space, and says so here. @param {string} id */
     const actedIn = async id => {
       if (ctx.kernel && id === ctx.kernel.space) return { id, label: "home" };
-      let r; try { r = /** @type {any} */ (await ctx.call("spaces.merge-list", { person: ctx.kernel.owner })); } catch { r = null; }
-      const row = r && r.data && Array.isArray(r.data.spaces) ? r.data.spaces.find((/** @type {any} */ x) => x.space === id) : null;
-      const name = row && row.name;
-      return { id, label: typeof name === "string" ? name.replace(/\.vyre\.run$/, "") : null };
+      const kept = labels.get(id);
+      if (kept && Date.now() - kept.at < LABEL_MS) return { id, label: await kept.label };
+      const label = labelOf(id);
+      labels.set(id, { at: Date.now(), label });
+      const out = await label;
+      // an unnamed answer is not kept, so a Space named a moment later shows its name on the next call
+      if (out === null) labels.delete(id);
+      return { id, label: out };
     };
     /** The Store calls a team MEMBER's app makes on the team's server, by tool name: the same bodies as the tools below, run under the member's own chain in the team's Space (the member door's rows, core/work/member-tools.js). @type {Map<string, { fn: (i: any, d: any) => Promise<any>, where: (i: any) => any }>} */
     const ops = new Map();
@@ -80,9 +96,11 @@ export default {
       const list = await d.gateway.grants.members.list(d.chain);
       return { actors: (Array.isArray(list) ? list : []).map((/** @type {any} */ m) => ({ id: m.person, name: m.name || m.person, family: "person", role: m.role })) };
     });
+    // A field added with records.field.add that is not a real field yet is listed with its type, marked fast: true with its state (bag or promoting), so a new column shows at once.
     tool("records.types", "The record types of a Space, as defined (a type may carry kind: project). The kernel's own bookkeeping types are left out unless `system: true` is asked for, and then carry system: true.", obj({ space: str, system: { type: "boolean" } }), async (i, d) => {
       const all = (await d.gateway.definitions(d.chain)) || [];
-      const withFlag = all.map((/** @type {any} */ t) => (isSystemType(String(t.name)) ? { ...t, system: true } : t));
+      const quick = await quickFieldsByType(d);
+      const withFlag = all.map((/** @type {any} */ t) => (isSystemType(String(t.name)) ? { ...t, system: true } : withFastFields(t, quick.get(String(t.name)) || [])));
       return { types: i.system === true ? withFlag : withFlag.filter((/** @type {any} */ t) => !t.system) };
     });
     // What an address is, for the composer that turns a reference in instructions into a line a model reads. Answered from the TYPE DEFINITIONS alone, never a row: a first segment that is a record type the
@@ -105,7 +123,9 @@ export default {
         } catch { return { kind: "record", unknown: true }; }
       },
     });
+    // A field marked fast: true (as records.types lists one) is left out of the change: it is a quick-field row until records.field.promote makes it a field of the store.
     tool("records.define", "Add or change record types and their fields (a DefineDiff). The kernel decides who may. A type that gains an ID field gives its older records their IDs, oldest first.", obj({ space: str, diff: { type: "object" } }, ["diff"]), async (i, d) => {
+      i = { ...i, diff: withoutFastFields(i.diff) };
       const out = await d.gateway.records.define(d.chain, i.diff);
       // the person who defined it may update these records, so the IDs are given under their own chain, once; records that have one are left alone
       for (const t of [...((i.diff && i.diff.add_types) || []), ...((i.diff && i.diff.change_types) || [])]) {
@@ -118,14 +138,34 @@ export default {
     const mayReadRecord = (/** @type {any} */ d) => async (/** @type {string} */ urn) => { const p = urn.split("/"); try { return Boolean(await d.gateway.records.get(d.chain, p[3], p[4])); } catch { return false; } };
     const noteSeen = async (/** @type {any} */ d, /** @type {any} */ row) => { if (!row) return true; const n = row.data || {}; const me = d.chain.hops.find((/** @type {any} */ h) => h.actor.kind === "person"); return seesNote({ kind: "note", by: n.person, visibility: n.visibility, record: n.record }, me ? String(me.actor.id) : null, mayReadRecord(d)); };
     const cutNotes = async (/** @type {any} */ d, /** @type {string} */ type, /** @type {any[]} */ rows) => { if (!(await isPlannerNote(d, type))) return rows; const out = []; for (const r of rows) if (await noteSeen(d, r)) out.push(r); return out; };
-    tool("records.list", "One page of records of a type: filter, sort, a cursor from the last page. include_deleted lists the removed ones too (the Bin): your own, or all for an owner or admin.", obj({ space: str, type: str, filter: {}, sort: { type: "array" }, cursor: str, limit: { type: "integer" }, include_deleted: { type: "boolean" } }, ["type"]), async (i, d) => {
+    // How many records of a type the caller may read, under the same filter: one count in the store (records.aggregate counts natively where it can), never a scan of pages here.
+    // Null when it takes longer than COUNT_MS or the store cannot say, so a slow count never holds the page back. A planner Note is cut row by row after the read, so it has no count here.
+    const COUNT_MS = 1500;
+    const countOf = async (/** @type {any} */ d, /** @type {string} */ type, /** @type {any} */ filter) => {
+      if (await isPlannerNote(d, type)) return null;
+      const rows = await within(d.gateway.records.aggregate(d.chain, type, { ...(filter ? { filter } : {}), group_by: [], measures: [{ fn: "count" }] }).catch(() => null), COUNT_MS, null);
+      return Array.isArray(rows) ? rows.reduce((/** @type {number} */ n, /** @type {any} */ r) => n + Number((r && r.values && r.values.count) || 0), 0) : null;
+    };
+    tool("records.list", "One page of records of a type: filter, sort, a cursor from the last page. include_deleted lists the removed ones too (the Bin): your own, or all for an owner or admin.", obj({ space: str, type: str, filter: {}, sort: { type: "array" }, cursor: str, limit: { type: "integer" }, include_deleted: { type: "boolean" }, count: { type: "boolean" } }, ["type"]), async (i, d) => {
       const limit = Number.isInteger(i.limit) ? Math.min(Math.max(i.limit, 1), 200) : 50;
-      const qf = (await quickFieldsOf(d, String(i.type))).filter((f) => f.state !== "real");
+      const type = String(i.type);
+      const filter = i.filter ? withMe(i.filter, d.chain.hops.find((/** @type {any} */ h) => h.actor.kind === "person")?.actor.id ?? "") : undefined;
+      // The type's quick fields, the page and (asked for) the count are read at once: on a store that answers over the network (Twenty) each read is a round trip, and none waits on another.
+      // A filter or sort on a field still being set up is refused as before; the page read beside it is dropped.
+      const pageP = d.gateway.records.query(d.chain, type, { ...(filter ? { filter } : {}), ...(Array.isArray(i.sort) ? { sort: i.sort } : {}), ...(i.include_deleted === true ? { include_deleted: true } : {}), page: { limit, ...(i.cursor ? { cursor: String(i.cursor) } : {}) } })
+        .then((/** @type {any} */ r) => ({ r }), (/** @type {any} */ e) => ({ e }));
+      const countP = i.count === true && !i.cursor && i.include_deleted !== true ? countOf(d, type, filter).catch(() => null) : null;
+      const qf = (await quickFieldsOf(d, type)).filter((f) => f.state !== "real");
       const hit = bagInQuery({ filter: i.filter, sort: i.sort }, qf);
       if (hit) throw refuse(`${hit} is still being set up, so it cannot be filtered or sorted yet. Try again in a minute.`, "bad_input");
-      const r = await d.gateway.records.query(d.chain, String(i.type), { ...(i.filter ? { filter: withMe(i.filter, d.chain.hops.find((/** @type {any} */ h) => h.actor.kind === "person")?.actor.id ?? "") } : {}), ...(Array.isArray(i.sort) ? { sort: i.sort } : {}), ...(i.include_deleted === true ? { include_deleted: true } : {}), page: { limit, ...(i.cursor ? { cursor: String(i.cursor) } : {}) } });
-      const seen = await cutNotes(d, String(i.type), r.rows);
-      return { rows: qf.length ? seen.map((/** @type {any} */ x) => mergeOut(x, qf)) : seen, next_cursor: r.next_cursor || null };
+      const got = await pageP;
+      if ("e" in got) throw got.e;
+      const r = got.r;
+      const seen = await cutNotes(d, type, r.rows);
+      const rows = qf.length ? seen.map((/** @type {any} */ x) => mergeOut(x, qf)) : seen;
+      if (!countP) return { rows, next_cursor: r.next_cursor || null };
+      // A first page that holds every record is its own count; otherwise the store's count, or null when it was slow.
+      return { rows, next_cursor: r.next_cursor || null, total: r.next_cursor ? await countP : rows.length };
     });
     tool("records.get", "One record by its reference, or null when it is not there or not yours to see.", obj({ urn: str }, ["urn"]), async (i, d) => {
       const u = parseUrn(i.urn);
@@ -145,9 +185,13 @@ export default {
     const hasRef = async (/** @type {any} */ d, /** @type {string} */ type) => { try { return ((await d.gateway.definitions(d.chain)) || []).some((/** @type {any} */ t) => t.name === type && (t.fields || []).some((/** @type {any} */ f) => f.name === "ref")); } catch { return false; } };
     tool("records.create", "Make a record of a type. A type with an ID field gives the record the next ID (PER-0001).", obj({ space: str, type: str, data: { type: "object" } }, ["type", "data"]), async (i, d) => {
       const type = String(i.type);
+      // The record's identity is Vyre's: its id and address always, and its ID on a type that has an ID field. Naming one is refused in words, never quietly replaced.
+      const withRef = await hasRef(d, type);
+      { const no = idOnCreate(i.data, withRef); if (no) throw refuse(no, "field_not_allowed"); }
+      i = { ...i, data: withoutBlankIds(i.data || {}, withRef) };
       try { i = { ...i, data: splitIn(i.data || {}, await quickFieldsOf(d, type)) }; if ("amount" in i.data || "probability" in i.data) { const t = ((await d.gateway.definitions(d.chain)) || []).find((/** @type {any} */ x) => x.name === type); if (t) i = { ...i, data: withWeighted(t.fields || [], {}, i.data) }; } } catch (e) { throw refuse(/** @type {Error} */ (e).message, "bad_input"); }
       { const who = d.chain.hops.find((/** @type {any} */ h) => h.actor.kind === "person"); if (who && ["communication", "event"].includes(type)) { const t = ((await d.gateway.definitions(d.chain)) || []).find((/** @type {any} */ x) => x.name === type); i = { ...i, data: withOwner(type, t && t.fields, i.data || {}, who.actor.id) }; } }
-      if (!(await hasRef(d, type))) return { record: await d.gateway.records.create(d.chain, type, i.data) };
+      if (!withRef) return { record: await d.gateway.records.create(d.chain, type, i.data) };
       const key = `${d.space}:${type}`;
       const before = minting.get(key) || Promise.resolve();
       const mine = before.catch(() => {}).then(async () => {
@@ -187,15 +231,18 @@ export default {
     };
     // The one way a record is changed by a tool: the ID never changes, fast-field values go to the bag, the weighted value follows. records.update and records.move both come through here.
     const applyUpdate = async (/** @type {any} */ d, /** @type {{ type: string, id: string }} */ u, /** @type {any} */ inPatch, /** @type {number} */ baseVersion) => {
-      if (inPatch && Object.prototype.hasOwnProperty.call(inPatch, "ref") && await hasRef(d, u.type)) throw Object.assign(new Error("A record's ID is made when the record is made and never changes."), { code: "field_not_allowed" });
-      const qf = await quickFieldsOf(d, u.type);
+      // the type is read once for the checks and the weighted value; the definitions and the fast fields are read at once
+      const [defs, qf] = await Promise.all([Promise.resolve(d.gateway.definitions(d.chain)).catch(() => []), quickFieldsOf(d, u.type)]);
+      const def = (defs || []).find((/** @type {any} */ x) => x.name === u.type);
+      const fields = (def && def.fields) || [];
+      { const no = idOnUpdate(inPatch, fields.some((/** @type {any} */ f) => f.name === "ref")) || keptOnUpdate(fields, inPatch); if (no) throw Object.assign(new Error(no), { code: "field_not_allowed" }); }
       let patch = inPatch;
       if (qf.some((f) => f.state === "bag" && patch && f.name in patch)) {
         const cur = await d.gateway.records.get(d.chain, u.type, u.id);
         try { patch = splitIn(patch, qf, cur && cur.data && cur.data.extra); } catch (e) { throw refuse(/** @type {Error} */ (e).message, "bad_input"); }
       }
       if (patch && ("amount" in patch || "probability" in patch)) {
-        const t = ((await d.gateway.definitions(d.chain)) || []).find((/** @type {any} */ x) => x.name === u.type);
+        const t = def;
         const cur = t && (await d.gateway.records.get(d.chain, u.type, u.id));
         if (t && cur) patch = withWeighted(t.fields || [], cur.data || {}, patch);
       }
@@ -287,6 +334,23 @@ export default {
       const task = await d.gateway.ask.request(d.chain, { title: `Forget ${u.type} ${u.id.slice(0, 8)}?`, record: i.urn, doer: me, output: { kind: "decision" }, note: `Proposed: forget this record for good. It cannot be undone.${i.why ? ` Why: ${String(i.why).slice(0, 300)}` : ""}` });
       return { proposed: true, task: task.id, message: "Nothing was forgotten. The person has a task to decide it with their presence." };
     }, byUrn);
+
+    // Sealing a field for every record of a type: the kernel's own migration (gateway.migrate.sealField), never a flag on the definition. The plain values move into a new sealed field (<field>_sealed), the
+    // plain field is emptied and removed from view, and the old values are scrubbed from the change log, the snapshots, the event log and the task texts that quote them. It cannot be undone, so it is an
+    // owner's or an admin's own act with their presence: a model or an agent never runs it, and the kernel still checks records.define, records.update on every record and seal.put under the caller's chain.
+    ctx.tool("records.field.seal", {
+      description: "Seal a plain text field for every record of a type: its values move into a new sealed field, the plain field is removed from view and the old values are scrubbed from the history. Agents then see only a placeholder. Cannot be undone. An owner's or admin's own act with their presence. { type, field, class? (default free) }.",
+      input: obj({ space: str, type: str, field: str, class: str }, ["type", "field"]), callers: CALLERS, presence: true,
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+        const d = await door.open({ ...(i.space ? { space: i.space } : {}) }, meta);
+        let role = null; try { role = d.gateway.members.roleOf(d.chain.hops[0].actor); } catch { role = null; }
+        if (role !== "owner" && role !== "admin") throw refuse("Only an owner or an admin seals a field. Ask one of them.", "not_allowed");
+        if (!d.gateway.migrate || !d.gateway.seal) throw refuse("this Space has no sealing process, so a field cannot be sealed here; ask the owner to seal it on the Space's server", "unavailable");
+        const out = await d.gateway.migrate.sealField(d.chain, { type: String(i.type || ""), field: String(i.field || ""), class: i.class ? String(i.class) : "free" });
+        forgetQuick(d.space);
+        return { ...out, acted_in: await actedIn(d.space) };
+      },
+    });
 
     // ---- sealed values and the event feed ----
     tool("records.seal-put", "Put a value into a record's sealed field. It goes straight to the sealing process and never rides the record; the record keeps only the reference. The person's own act.", obj({ urn: str, field: str, value: str, class: str }, ["urn", "field", "value"]), async (i, d) => {
@@ -438,6 +502,8 @@ export default {
     ctx.tool("records.serve-create", { effect: "write", internal: true, callers: ["module"], description: "A team member makes a record of a type, as that member, in that Space. Only the daemon's member door runs it.", input: serveInput(["create"]), run: serve(["create"]) });
     ctx.tool("records.serve-update", { effect: "write", internal: true, callers: ["module"], description: "A team member changes a record, as that member, in that Space: an update, a move, a relationship, her layout, a log, a role, her event's sharing, an undo, a removal to the bin or a restore (a stale base_version is refused); an owner's or an admin's field or link addition. Only the daemon's member door runs it.", input: serveInput(WRITES), run: serve(WRITES) });
     registerDevSeed(ctx, door, () => typeof ctx.devStandIn === "function" && ctx.devStandIn() === true);
-    return { async stop() {} };
+    // the Space's profile photos that no profile names any more are removed now and then, under this module's own service chain (photo-sweep.js)
+    const sweep = ctx.kernel && ctx.kernel.records && typeof ctx.kernel.serviceChain === "function" ? startPhotoSweep(ctx.kernel, (/** @type {string} */ m) => { if (typeof ctx.log === "function") ctx.log(m); }) : null;
+    return { async stop() { if (sweep) sweep.stop(); } };
   },
 };

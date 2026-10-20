@@ -287,7 +287,8 @@ async function readJson(req) {
 /**
  * The /fs handler over one home folder. Call it after the bearer check; it answers every
  * /fs/... request, including with 404 for a route it does not have.
- * @param {{ root?: string }} [opts]
+ * `downloads` is the folder Chrome saves into for this home (AGENT_DOWNLOADS when not given): agentd-fs.js names the agent's own, by its uid.
+ * @param {{ root?: string, downloads?: string }} [opts]
  * @returns {(req: import("node:http").IncomingMessage, res: import("node:http").ServerResponse, url: URL) => Promise<void>}
  */
 export function createFs(opts = {}) {
@@ -296,7 +297,7 @@ export function createFs(opts = {}) {
   // anything in it (e2e review MEDIUM 3: a Downloads folder inside the agent's home could be replaced with a symlink into the browser's profile, and Chrome would write through it).
   // Glass Files shows it as home/Downloads, read-only: list and read only, and the folder is its own root, so no path (and no link) leads out of it.
   const rootNoSlash = root.replace(/\/+$/, "");
-  const downloadsDir = (process.env.AGENT_DOWNLOADS || "").replace(/\/+$/, "");
+  const downloadsDir = (opts.downloads ?? process.env.AGENT_DOWNLOADS ?? "").replace(/\/+$/, "");
   const downloadsOutside = Boolean(downloadsDir) && !downloadsDir.startsWith(rootNoSlash + "/");
   const homeDownloads = downloadsDir && !downloadsOutside
     ? downloadsDir.slice(rootNoSlash.length).replace(/^\//, "").split("/")
@@ -347,6 +348,11 @@ export function createFs(opts = {}) {
           if (hidden(d.name, segments)) continue;
           if (entries.length >= MAX_ENTRIES) { truncated = true; break; }
           const p = fdPath(dirFd, d.name);
+          if (d.isSymbolicLink() && downloadsOutside && picked.root === root && segments.length === 0 && d.name === "Downloads") {
+            // the home's own link to Chrome's download folder (agentd.js planFolders) is that folder, read-only, the way the routes above treat the name; never its target's path
+            entries.push({ name: "Downloads", kind: "dir", size: null, mtime: null, readOnly: true });
+            continue;
+          }
           if (d.isSymbolicLink()) {
             // Shown as a link; followed only when it lands inside the root on a name the guard
             // allows, and only for this one preview stat -- reads and writes never use `p` again.

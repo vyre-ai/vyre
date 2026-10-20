@@ -4,6 +4,7 @@
 
 import type { Peer } from "@vyre/relay-client/peerclient.js";
 import { withTimeout } from "./with-timeout.js";
+import { afterNoAnswer } from "./peer-retry.js";
 
 /** How long a call to one of several servers waits before that server is called offline. */
 const ANSWER_MS = 60_000;
@@ -86,6 +87,8 @@ async function peerCallOnce<T = unknown>(tool: string, input: Record<string, unk
   // With several servers paired one that is stopped or offline must not hang a screen: the call waits a set time, then is refused in words, and the stuck connection is dropped so the next call opens a fresh one.
   const several = (await import("./space-servers")).multiServers();
   const sent = async (peer: Peer) => (several ? await withTimeout(peer.call(tool, input), ANSWER_MS) : await peer.call(tool, input)) as T;
+  // a stream already closed when the call is made never carried it to the server (peer-retry.js: such a call is always safe to make again)
+  const neverSent = p.closed;
   try { return await sent(p); }
   catch (e) {
     const code = (e as { code?: string })?.code;
@@ -94,11 +97,10 @@ async function peerCallOnce<T = unknown>(tool: string, input: Record<string, unk
     if (code === "relay_removed") { await (await import("../identity/removed")).ifRemoved(code); throw e; }
     // a lapsed paired session renews once, with the same key and no owner step (pair-challenge, then start-paired), and the call is made again
     if (code === "person_session_required" && (await renewSession(id))) { p = await openPeer(id); return await sent(p); }
-    // a closed connection is reopened once; anything the server answered is the answer
-    if (code !== "unreachable") throw e;
-    peers.delete(id);
-    p = await openPeer(id);
-    return await sent(p);
+    // a closed connection, or one that took the call and never answered (timeout), is dropped; the call is made once more on a fresh one only when that cannot do anything twice (a read, a
+    // write the server keeps once by its key, or a call that never left): any other write is refused in plain words (peer-retry.js). Anything the server answered is the answer.
+    const drop = (x: Peer) => { if (peers.get(id) === x) peers.delete(id); if (!x.closed) { try { x.close(); } catch { /* closed */ } } };
+    return await afterNoAnswer({ error: e, tool, input, neverSent, stuck: p, drop, reopen: () => openPeer(id), call: sent });
   }
 }
 

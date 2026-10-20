@@ -29,6 +29,7 @@ throwaway vyred. Nothing here touches the live Vyre on that server.
 ## Two modes, two scripts (0.6)
 
 - `proof.mjs` runs vyred with `computers.browse: "desktop"`: one container per agent (`csproof-computer-kit`), a screen to watch, take over and hand back. It is the mode used when the box has no space computer.
+- `space.mjs` starts from a fresh box (no computer yet): the Computer tab's status says it is a first start, the person presses Wake, and that makes the Space's one computer through the real driver and the restricted proxy; then an agent's own use (checkout) reuses it.
 - `agents.mjs` proves the default mode: the space's one computer (`browser-shared`) with a Linux user per agent, each with its own screen, Chrome and home. It checks agentd answers through the one allowed exec and runs as agentctl with no new privileges and only setuid and setgid in its bounding set; that a login survives sleep and wake and the other agent never has it; that one agent's uid cannot reach another's profile, socket, screen or memory; and the X, keystroke and download checks. `PROOF_CONTINUE=1` (the default in `run.sh`) lets it list every failed check instead of stopping at the first.
 
 ## How it is wired
