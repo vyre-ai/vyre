@@ -90,6 +90,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_CHROME_NO_COPY` | Not described yet. | `local/hands-chrome-mac/standalone/cli.mjs` |
 | `VYRE_CHROME_TEST_NOFETCH` | Not described yet. | `local/hands-chrome-mac/index.js`, `local/hands-chrome-mac/standalone/harness/frames-suite.mjs` |
 | `VYRE_CLAUDE_HOME` | Claude Code's folder for a home other than `~/.vyre`. Without it such a home uses its own `claude` folder and never reads `~/.claude`. | `core/config/dialogs.js` |
+| `VYRE_CODEX_BIN` | Not described yet. | `core/sessions/drivers/signin-door.js` |
 | `VYRE_CODEX_HOME` | Not described yet. | `core/import/formats/index.js` |
 | `VYRE_COMPUTERS_CAP_ADD` | Extra Linux capabilities for agent computers, comma separated. | `core/dockerproxy/main.js` |
 | `VYRE_COMPUTERS_IMAGE` | The container image agent computers run. Default `vyre/computer:0.1`. | `core/dockerproxy/main.js` |
@@ -109,6 +110,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_FINISH_POLL_MS` | Not described yet. | `core/daemon/index.js` |
 | `VYRE_FREEZE_FD` | Not described yet. | `core/computers/image/computerd/index.js` |
 | `VYRE_GEMINI_HOME` | Not described yet. | `core/import/formats/index.js` |
+| `VYRE_GROK_BIN` | Not described yet. | `core/sessions/drivers/signin-door.js` |
 | `VYRE_HANDS_BIN` | Another build of the Mac hands helper. | `local/hands-mac/index.js` |
 | `VYRE_HARNESS_DIR` | The Harness plugin folder threads load. Default the one beside this install. | `core/cli/commands/projects.js`, `core/runner/pipe-home.js`, `core/switchboard/index.js` |
 | `VYRE_HEADSCALE_BIN` | The `headscale` binary a space's network control plane runs. Under node --test there is none unless `VYRE_WINK_REAL=1`. | `core/wink/control/headscale.js`, `core/wink/netd.js` |
@@ -161,6 +163,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_SETUP_CODE_AT` | Not described yet. | `core/relay/index.js` |
 | `VYRE_SETUP_HTTP` | `1`, or inside Docker: vyred may serve the setup page. It opens only after the install line's own pairing at boot failed, takes only the code that carries the install line's setup code, and stops listening once the server is paired. | `core/wink/install-pair.js` |
 | `VYRE_SETUP_PORT` | The port the setup page listens on. Default 8080. | `core/wink/install-pair.js` |
+| `VYRE_SIGNIN_DOOR_TIMEOUT_MS` | Not described yet. | `core/sessions/drivers/signin-door.js` |
 | `VYRE_SPAWNER_ALLOW` | Not described yet. | `core/spawner/main.js` |
 | `VYRE_SSE_HEARTBEAT_MS` | Not described yet. | `core/daemon/index.js` |
 | `VYRE_SSH_BIN` | The `ssh` binary to run. | `core/cli/ssh.js` |
@@ -208,7 +211,7 @@ vyred sets these for the threads and helpers it starts, and the Harness reads th
 | `VYRE_CHROME_HOME` | Not described yet. | `local/hands-chrome-mac/index.js`, `local/hands-chrome-mac/standalone/runtime.js` |
 | `VYRE_CHROME_SOCK` | Not described yet. | `local/hands-chrome-mac/native-host/host.js`, `local/hands-chrome-mac/spike/host/host.js` |
 | `VYRE_CHROME_TEST` | Not described yet. | `local/hands-chrome-mac/extension/shared/sk/site-knowledge.js`, `local/hands-chrome-mac/index.js`, `local/hands-chrome-mac/standalone/runtime.js` |
-| `VYRE_CLAUDE_BIN` | The `claude` binary to run. Default `claude` on the PATH. | `core/memory/index.js`, `core/memory/personal/reader.js`, `core/onboard/index.js`, `core/onboard/setup-token.js`, `core/runner/index.js`, `core/switchboard/index.js`, `core/team/team-fixture.js` |
+| `VYRE_CLAUDE_BIN` | The `claude` binary to run. Default `claude` on the PATH. | `core/memory/index.js`, `core/memory/personal/reader.js`, `core/onboard/index.js`, `core/onboard/setup-token.js`, `core/runner/index.js`, `core/sessions/drivers/signin-door.js`, `core/switchboard/index.js`, `core/team/team-fixture.js` |
 | `VYRE_CORE_OWNER` | The owner's uid: the only uid vyre-core answers. Required. | `core/vyre-core/main.js` |
 | `VYRE_CORE_SERVER` | Not described yet. | `core/vyre-core/main.js` |
 | `VYRE_GH_BIN` | Not described yet. | `core/github/index.js` |

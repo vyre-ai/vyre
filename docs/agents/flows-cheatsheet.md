@@ -84,9 +84,9 @@ A `key=value` value is a word, number, "string", [list], {key: value}, or a `bac
     move stage type=matter record=`steps.make.record.id` to=Active
 - agent: assistant, title, instructions, record, output, await, skills, checker, followers, notes
     draft agent assistant=teammate:paralegal title="Summarise the file" instructions="Read the file and write a short summary." output={kind: note}
-- classify: input, labels
+- classify: input, labels, model
     kind classify input=`trigger.message` labels=["new client", "existing client", spam]
-- extract: input, fields
+- extract: input, fields, model
     facts extract input=`trigger.message` fields=[{name: phone, kind: text}]
 - service: connector, method, path, query, headers, body, drive, connection, operation, input, approve
     crm service connection=orbit-crm operation=customers.list input={limit: 1}
