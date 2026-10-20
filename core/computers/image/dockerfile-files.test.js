@@ -40,14 +40,29 @@ test("every relative import of a copied file, and every /opt/agentd/<file> any f
   }
 });
 
-test("the desk: the wallpaper's mark is the app's Vyre mark as given, the window manager's files start nothing, and the image copies both where agentd.js looks", async () => {
+/** the width, height and colour type of a PNG file (8-bit, with an alpha channel when the type is 6) @param {string} f */
+const png = f => { const b = fs.readFileSync(path.join(DIR, "desk", f)); assert.equal(b.subarray(1, 4).toString(), "PNG", `${f} is a PNG`); return { w: b.readUInt32BE(16), h: b.readUInt32BE(20), depth: b[24], type: b[25] }; };
+
+test("the desk: the wallpaper's mark is the clean Vyre mark (no card, transparent), the dock's pictures are all there at their sizes, and the image copies them where agentd.js and the dock look", async () => {
   const { DESK } = await import("./agentd.js");
-  const mark = fs.readFileSync(path.join(DIR, "desk", "mark.png")), icon = fs.readFileSync(path.join(DIR, "../../../site/icon-192.png"));
-  assert.ok(mark.equals(icon), "desk/mark.png is a copy of site/icon-192.png (the mark the site and the app use): copy it again when the mark changes");
+  const mark = png("vyre-mark.png");
+  assert.deepEqual([mark.depth, mark.type], [8, 6], "8-bit with an alpha channel: the mark sits on the wallpaper with no card behind it");
+  assert.ok(mark.w >= 800 && mark.w <= 1200 && mark.h >= 800 && mark.h <= 1200, "large enough for a full-screen wallpaper");
+  assert.ok(!fs.existsSync(path.join(DIR, "desk", "mark.png")), "the app icon with its folded corner is no longer the wallpaper's picture");
+  for (const app of ["browser", "terminal", "files"]) {
+    // the 2x master (112) and the three sizes the dock draws: at rest 56, beside the pointer 62, under it 68
+    for (const n of [112, 56, 62, 68]) assert.deepEqual(png(`dock/${app}-${n}.png`), { w: n, h: n, depth: 8, type: 6 }, `${app}-${n}.png`);
+  }
+  assert.deepEqual(png("dock/panel.png"), { w: 276, h: 84, depth: 8, type: 6 });
   assert.match(dockerfile, /^COPY desk\/fluxbox \/etc\/vyre-desk\/fluxbox$/m);
-  assert.match(dockerfile, /^COPY desk\/mark\.png \/usr\/share\/vyre-desk\/mark\.png$/m);
+  assert.match(dockerfile, /^COPY desk\/vyre-mark\.png desk\/newtab\.html \/usr\/share\/vyre-desk\/$/m);
+  assert.match(dockerfile, /^COPY desk\/dock \/usr\/share\/vyre-desk\/dock$/m);
   assert.equal(DESK.fluxbox, "/etc/vyre-desk/fluxbox/init");
-  assert.equal(DESK.mark, "/usr/share/vyre-desk/mark.png");
+  assert.equal(DESK.mark, "/usr/share/vyre-desk/vyre-mark.png");
+  assert.equal(DESK.newtab, "/usr/share/vyre-desk/newtab.html");
+  assert.equal(DESK.dock, "/usr/share/vyre-desk/dock");
+  assert.match(read("agentd-dock.py"), /PICTURES = "\/usr\/share\/vyre-desk\/dock"/);
+  assert.match(read("agentd-chrome.py"), /NEWTAB = "file:\/\/\/usr\/share\/vyre-desk\/newtab\.html"/);
   const init = read("desk/fluxbox/init");
   for (const f of ["menu", "keys", "apps", "overlay", "windowmenu"]) {
     assert.match(init, new RegExp(`:\\t/etc/vyre-desk/fluxbox/${f}$`, "m"), `init names /etc/vyre-desk/fluxbox/${f}`);
@@ -62,12 +77,30 @@ test("the desk: the wallpaper's mark is the app's Vyre mark as given, the window
   assert.match(read("desk/fluxbox/overlay"), /^background: none$/m, "fluxbox sets no wallpaper of its own");
 });
 
+test("the new-tab page calls nothing: no address in it is fetched, loaded or sent to until a person searches, and a content policy says so", () => {
+  const page = read("desk/newtab.html");
+  assert.match(page, /Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; form-action 'none'"/);
+  assert.doesNotMatch(page, /<(?:script|link|img|iframe|audio|video|source|embed|object)\b[^>]*\b(?:src|href|data)=["']?(?:https?:)?\/\//i, "nothing is loaded from anywhere");
+  assert.doesNotMatch(page, /fetch\(|XMLHttpRequest|WebSocket|sendBeacon|navigator\.|importScripts|@import|url\(\s*["']?[^#\s"')]/, "no request of its own (url(#id) only points at a gradient in the page itself)");
+  assert.equal([...page.matchAll(/location\.assign\(/g)].length, 3, "it navigates only inside the submit handler, three ways");
+  assert.ok(page.indexOf("addEventListener(\"submit\"") < page.indexOf("location.assign("), "and only after a person submits");
+  assert.match(page, /textContent = who/, "the agent's name is set as text, never as markup");
+  assert.doesNotMatch(page, /innerHTML|document\.write|eval\(/);
+});
+
 test("the dock runs only as an agent's uid, builds its own environment, starts no shell, and reaches Chrome only through the holder's FIFO", () => {
   const dock = read("agentd-dock.py"), holder = read("agentd-chrome.py");
   assert.match(dock, /uid < 20000 or uid > 20063 or uid != os\.getuid\(\) or len\(sys\.argv\) != 1/);
   assert.doesNotMatch(dock, /os\.environ|getenv|shell=True|os\.system|cdp\.sock|browsers\//, "nothing from its environment, no shell, nothing of the browser uid's");
   assert.match(dock, /HOME = "\/var\/lib\/vyre\/agents\/%s\/home" % USER/);
   assert.match(dock, /SHOW = "\/var\/lib\/vyre\/x\/%s\/show-chrome" % USER/);
+  // the glass bar, the rounded icons and the name above the one under the pointer; it starts no other program than the three it is for, and shapes only its own windows
+  assert.match(dock, /BAR_W, BAR_H, BAR_R = 276, 84, 26/);
+  assert.match(dock, /REST, NEAR, UNDER = 56, 62, 68/);
+  assert.match(dock, /class Tip:/);
+  assert.match(dock, /XShapeCombineMask/);
+  assert.deepEqual([...dock.matchAll(/spawn\(\[("[^"]+")/g)].map(m => m[1]), ['"/usr/bin/xterm"', '"/usr/bin/pcmanfm"'], "a terminal and the file manager, nothing else");
+  assert.doesNotMatch(dock, /\bexec\(|\beval\(|__import__|importlib/, "no code is loaded or run from anywhere");
   assert.match(holder, /SHOW = "\/var\/lib\/vyre\/x\/ag%d\/show-chrome" % N/, "the holder makes the same FIFO, in the folder only the browser uid may write");
   assert.match(holder, /os\.chmod\(SHOW, 0o620\)/, "the agent's group may write it and nobody else may read it");
   assert.match(holder, /os\.read\(show, 4096\)\s+# what was written is never looked at/);

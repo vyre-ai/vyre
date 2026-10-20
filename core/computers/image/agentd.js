@@ -47,7 +47,7 @@ export const browserOf = u => {
   const uid = u.uid + BROWSER_OFFSET, home = `${BROWSERS}/agb${uid}`;
   // trusted: the X cookie of the screen's owner (Xvnc, the window manager, Chrome: all the browser uid's), 0600. xauth: the agent's own, UNTRUSTED cookie (the X SECURITY extension), the only one the agent can read.
   // vncSock and vncPass: the screen's socket and password file, the browser uid's too.
-  return { uid, user: `agb${uid}`, home, trusted: `${home}/xauth`, xauth: `${XDIR}/ag${u.uid}/xauth`, vncSock: `${home}/vnc.sock`, vncPass: `${home}/vnc.pass` };
+  return { uid, user: `agb${uid}`, home, trusted: `${home}/xauth`, xauth: `${XDIR}/ag${u.uid}/xauth`, vncSock: `${home}/vnc.sock`, vncPass: `${home}/vnc.pass`, name: `${home}/agent-name` };
 };
 
 /**
@@ -110,8 +110,68 @@ export function planFolders(u) {
   ];
 }
 
-/** The desk's fixed files, root's and read-only in the image (Dockerfile): the window manager's settings (no menus, no launchers of its own) and the Vyre mark the wallpaper is made from. */
-export const DESK = Object.freeze({ fluxbox: "/etc/vyre-desk/fluxbox/init", mark: "/usr/share/vyre-desk/mark.png", background: "#0E0D0C" });
+/** The desk's fixed files, root's and read-only in the image (Dockerfile): the window manager's settings (no menus, no launchers of its own), the Vyre mark and the fonts the wallpaper is made from, the dock's pictures and the page Chrome opens for a new tab. */
+export const DESK = Object.freeze({
+  fluxbox: "/etc/vyre-desk/fluxbox/init", mark: "/usr/share/vyre-desk/vyre-mark.png", newtab: "/usr/share/vyre-desk/newtab.html", dock: "/usr/share/vyre-desk/dock", background: "#0E0D0C",
+  fontRegular: "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf", fontBold: "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+});
+/** The name an agent's desk shows: letters, digits, spaces, dot, apostrophe and hyphen, 32 characters at most. Nothing else reaches ImageMagick's text (no %, no @file, no backslash) or the new-tab page. @param {unknown} s */
+export const deskNameOf = s => typeof s === "string" ? s.normalize("NFC").replace(/[^A-Za-z0-9À-ɏ .'-]/g, "").replace(/\s+/g, " ").trim().slice(0, 32) : "";
+/** The faces' colours: one warm or cool tone per agent, picked by its uid. */
+const FACES = ["#E8B86A", "#8FB7E8", "#B8A4FF", "#7FD1B0", "#F08A7A", "#D9C27A", "#7FB8C9", "#C79BD6"];
+/**
+ * The halftone field behind the Vyre mark, the same dots as the welcome screen's (apps/app/screens/first-run/field-core.js: a grid whose size and light follow two slow waves, a little violet where
+ * they crest), caught at one moment and held calm around the mark, under the name and over the dock. Pure. @param {number} w @param {number} h
+ * @returns {{ x: number, y: number, r: number, a: number, rgb: [number, number, number] }[]}
+ */
+export function deskDots(w, h) {
+  const g = Math.max(18, Math.round(w / 60)), cx = w / 2, cy = h * 0.46, out = [];
+  const clamp = (/** @type {number} */ v) => Math.min(1, Math.max(0, v));
+  for (let y = g / 2; y < h; y += g) {
+    for (let x = g / 2; x < w; x += g) {
+      const w1 = Math.sin(x * 0.006 + 3.3) + Math.sin(y * 0.008 - 2.6), w2 = Math.sin((x + y) * 0.004 + 4.1 + Math.sin(2 + y * 0.003) * 2);
+      let v = Math.pow(Math.max(0, (w1 * 0.3 + w2 * 0.7) * 0.5 + 0.5), 1.7);
+      const qx = (x - cx) / (w * 0.27), qy = (y - cy) / (h * 0.4);
+      v *= 0.08 + 0.92 * clamp((Math.sqrt(qx * qx + qy * qy) - 0.7) / 0.6);   // calm around the mark
+      if (y > h - 230) v *= Math.max(0.2, (h - y) / 230);                      // calm over the dock
+      if (x < 300 && y < 90) v *= 0.15;                                         // calm under the name
+      const a = Math.min(0.42, 0.03 + v * 0.4);
+      if (a < 0.055) continue;
+      const m = clamp((w1 * 0.6 - 0.15) * 1.6) * 0.55;
+      out.push({ x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10, r: Math.round((0.8 + v * 2.4) * 100) / 100, a: Math.round(a * 100) / 100,
+        rgb: /** @type {[number, number, number]} */ ([241 + (184 - 241) * m, 238 + (164 - 238) * m, 230 + (255 - 230) * m].map(Math.round)) });
+    }
+  }
+  return out;
+}
+/**
+ * The wallpaper, drawn by ImageMagick at the screen's size: a dark field, the halftone dots, a warm glow, the large Vyre mark in the middle, and in the top left corner the agent's face (a round
+ * monogram in its own colour) and name, so a person can tell whose computer this is. No other text. @param {string} size WIDTHxHEIGHT @param {string} name @param {number} uid @param {string} out
+ */
+export function wallpaperArgv(size, name, uid, out) {
+  const [w, h] = size.split("x").map(Number), mark = Math.round(h * 0.5), lift = Math.round(h * 0.04);
+  /** @type {Map<number, string[]>} */
+  const rows = new Map();
+  for (const d of deskDots(w, h)) {
+    if (!rows.has(d.y)) rows.set(d.y, []);
+    /** @type {string[]} */ (rows.get(d.y)).push(`fill rgba(${d.rgb.join(",")},${d.a}) circle ${d.x},${d.y} ${d.x + d.r},${d.y}`);
+  }
+  // the glow is drawn small and blown up: a soft pool of warm light behind the mark
+  const gx = Math.round(w / 8), gy = Math.round((h / 2 - lift) / 4);
+  const argv = ["/usr/bin/convert", "-size", size, `xc:${DESK.background}`,
+    "(", "-size", `${Math.round(w / 4)}x${Math.round(h / 4)}`, "xc:black", "-fill", "#33291A", "-draw", `circle ${gx},${gy} ${gx + Math.round(h / 12)},${gy}`, "-blur", "0x24", "-resize", `${size}!`, ")", "-compose", "Screen", "-composite", "-compose", "over",
+    "-stroke", "none"];
+  for (const r of rows.values()) argv.push("-draw", r.join(" "));
+  argv.push("(", DESK.mark, "-resize", `${mark}x${mark}`, ")", "-gravity", "center", "-geometry", `+0-${lift}`, "-composite", "-geometry", "+0+0");
+  const who = deskNameOf(name);
+  if (who) {
+    const face = FACES[uid % FACES.length];
+    argv.push("-gravity", "NorthWest", "-fill", face, "-draw", "circle 44,44 44,58", "-fill", "#14120F", "-font", DESK.fontBold, "-pointsize", "16", "-annotate", "+38+36", who[0].toUpperCase(),
+      "-fill", "rgba(241,238,230,0.66)", "-font", DESK.fontRegular, "-pointsize", "15", "-annotate", "+68+37", who);
+  }
+  argv.push(`PNG24:${out}`);
+  return argv;
+}
 /** A screen size Xvnc and the wallpaper may be given: WIDTHxHEIGHT, nothing else. @param {unknown} s */
 const sizeOf = s => typeof s === "string" && /^[1-9][0-9]{2,3}x[1-9][0-9]{2,3}$/.test(s) ? s : "1440x900";
 
@@ -123,7 +183,7 @@ export const longRunning = argv => Object.assign(argv, { detach: true });
  * and a VncAuth password's 8 significant characters guard nothing a stranger can reach), a window manager, Chrome with the agent's own profile, and the desk (the wallpaper, and the
  * agent's own dock of Chrome, Terminal and Files). The VNC password file is
  * written by the agent's own helper from standard input; Xvnc reads it by path.
- * @param {{ user: string, uid: number, display: number }} u @param {{ memoryMb?: number, procs?: number, size?: string }} [lim]
+ * @param {{ user: string, uid: number, display: number, name?: string }} u @param {{ memoryMb?: number, procs?: number, size?: string }} [lim]
  */
 export function planStartScreen(u, lim = {}) {
   check(u);
@@ -137,9 +197,11 @@ export function planStartScreen(u, lim = {}) {
   const trusted = Object.assign([...bs(), "/usr/bin/xauth", "-f", b.trusted, "source", "-"], { input: `add ${D} . ${crypto.randomBytes(16).toString("hex")}\n` });
   // generated by the running server, so it waits for it to be up
   const untrusted = Object.assign([...bs(onScreen), "/usr/bin/xauth", "-f", b.xauth, "generate", D, ".", "untrusted"], { retry: { tries: 40, delayMs: 250 } });
-  const size = sizeOf(lim.size), wallpaper = `${b.home}/wallpaper.png`;
+  const size = sizeOf(lim.size), wallpaper = `${b.home}/wallpaper.png`, who = deskNameOf(u.name);
   return [
     [...bs(), "/usr/bin/rm", "-f", b.trusted, b.xauth, b.vncSock],
+    // the agent's name for its desk: a file in the browser uid's own folder, which the Chrome holder reads (the new-tab page shows it); the wallpaper below is drawn with it too
+    mayFail(Object.assign([...bs(), "/usr/bin/tee", b.name], { input: who })),
     trusted,
     [...bs(), "/usr/bin/chmod", "0600", b.trusted],
     longRunning([...bs(), "/usr/bin/Xvnc", D, "-geometry", size, "-depth", "24", "-rfbport", "-1", "-rfbunixpath", b.vncSock, "-rfbunixmode", "0600",
@@ -153,8 +215,8 @@ export function planStartScreen(u, lim = {}) {
     // Chrome is started by a holder that keeps Chrome's debugging pipe (no TCP debug port): agentd-chrome.py, with no argument. The profile, the pipe's socket and the memory are the browser uid's too. The profile survives sleep.
     // No address-space cap on Chrome (an explicit noAddressCap only this call sets; RLIMIT_DATA, which counts committed private memory and not Chrome's reservations, bounds it instead): it reserves far more virtual memory than it uses, and under RLIMIT_AS it dies at start (security-live 18 Oct). Its memory is held by the computer's own limit and its process count by --nproc.
     longRunning([...asBrowser(u, { ...lim, noAddressCap: true }), "/usr/bin/python3", "-I", "/opt/agentd/agentd-chrome.py"]),
-    // The wallpaper, as the screen's owner: the Vyre mark, small, in the middle of a dark screen of this size, set on the root window. A failure costs the picture, never the screen.
-    mayFail([...bs(), "/usr/bin/convert", "-size", size, `xc:${DESK.background}`, "(", DESK.mark, "-resize", "112x112", ")", "-gravity", "center", "-composite", `PNG24:${wallpaper}`]),
+    // The wallpaper, as the screen's owner: a dark screen of this size with the welcome screen's halftone dots, the large Vyre mark, and the agent's face and name in a corner (wallpaperArgv), set on the root window. A failure costs the picture, never the screen.
+    mayFail([...bs(), ...wallpaperArgv(size, who, u.uid, wallpaper)]),
     longRunning([...bs(onScreen), "/usr/bin/display", "-window", "root", wallpaper]),
     // The dock (Chrome, Terminal, Files) runs as the AGENT with its untrusted cookie, like any window the agent opens: what it starts (a terminal, the file manager) is the agent's, in the
     // agent's folder. Its Chrome button only asks the holder to show Chrome (agentd-chrome.py: a FIFO the agent may write to, read as "open a tab"); it never reaches Chrome's pipe.
