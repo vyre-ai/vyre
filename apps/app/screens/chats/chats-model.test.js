@@ -91,6 +91,7 @@ test("a person who has chats sees them with the gap above; the gap fills the pag
   assert.deepEqual(chatsView({ from: "live", gap, rows: [], live: true }), { body: "gap", banner: false });
   assert.deepEqual(chatsView({ from: "none", gap: null, rows: [], live: true }), { body: "loading", banner: false });
   assert.deepEqual(chatsView({ from: "none", gap: null, rows: [], live: false }), { body: "offline", banner: false });
+  assert.deepEqual(chatsView({ from: "failed", gap: null, rows: [], live: true }), { body: "failed", banner: false }, "a read that failed or ran out of time is a note, never the skeleton");
   assert.deepEqual(chatsView({ from: "live", gap: null, rows: [], live: true }), { body: "empty", banner: false });
   assert.deepEqual(chatsView({ from: "unsupported", gap, rows: [row], live: true }), { body: "unsupported", banner: false });
 });

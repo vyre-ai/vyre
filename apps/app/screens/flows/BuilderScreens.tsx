@@ -102,7 +102,7 @@ export function MadeFlowScreen({ id }: { id: string }) {
 /** A Flow stored on the box, opened in the builder. Saving writes a new version (the box asks for the person's yes again); steps the builder cannot show are kept as they were. */
 export function StoredFlowEditor({ id, flow, onSaved }: { id: string; flow: unknown; onSaved: () => void }) {
   const options = useFlowOptions();
-  const triggerSources = useTriggerSources();
+  const triggerSources = useTriggerSources(id);
   const showing = useSpaces((s) => s.space);
   const role = useMembers((s) => s.spaces.find((x) => x.id === showing)?.role);
   const staff = role === "owner" || role === "admin" || allowsMock();

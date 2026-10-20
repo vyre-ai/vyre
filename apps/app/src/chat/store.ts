@@ -20,6 +20,7 @@ import { createGroup } from "./group.js";
 import { hasSessionCache, loadSessionCache, saveSessionCache } from "./session-cache.js";
 import { newUuid } from "@vyre/chat-core/composer-state.js";
 import { decryptUserMessage, openPrivateKey } from "./private-text.js";
+import { createUnsent, type SendSpec } from "./unsent.js";
 
 
 export type Meta = { state: string; turn: string | null; stopping: boolean; word: string; busy: boolean; canStop: boolean; queue: readonly Item[]; connection: StreamState; saved: boolean; rev: number };
@@ -52,9 +53,15 @@ export type ChatStore = {
   sendTo(text: string, o: { to: string[]; fanout: boolean; parent?: string; replyTo?: string; mode?: "steer" | "queue"; mentions?: { kind: string; id: string; name: string }[]; attachments?: Attached[] }): Promise<string | null>;
   /** Social actions; each is a no-op when the source does not have it. */
   social: { keep(group: string, message: string): void; react(message: string, emoji: string, remove?: boolean): void; pin(message: string, pinned: boolean): void; markRead(upto: number): void };
+  /** A message the box did not take ("Not sent"): send it again (the same words, the same message id), or delete it. Resolves with why it failed again, or null. */
+  retrySend(key: string): Promise<string | null>;
+  discardSend(key: string): boolean;
   /** Edit and retry, retry and branch: only a real session has them (the mock does not). */
   readonly actions: Partial<Pick<SessionActions, "editRetry" | "retry" | "branch">> | null;
 };
+
+type SendOpts = { mentions?: { kind: string; id: string; name: string }[]; mode?: "steer" | "queue"; attachments?: Attached[] };
+type SendToOpts = SendOpts & { to: string[]; fanout: boolean; parent?: string; replyTo?: string };
 
 const withActions = (source: StreamSource): Partial<SessionActions & GroupActions & { typing(): void }> => source as unknown as Partial<SessionActions & GroupActions & { typing(): void }>;
 
@@ -82,6 +89,7 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
   /** @type {Frame[]} */ let frameLog: Frame[] = [];
   const cached = loadSessionCache(session);
   if (cached?.frames?.length) frameLog = cached.frames as Frame[];
+  let restored = false;
   /** Delta frames waiting to be seen: their message, the length that must show, and when they were emitted. */
   const pending: { key: string; end: number; t: number; first: boolean }[] = [];
   const seenFirst = new Set<string>();
@@ -198,34 +206,48 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
     // The person left this chat: nothing of it stays searchable. Otherwise the index follows what the chat holds now.
     if (frames.some((f) => isKind(f, "participant-left") && String(f.data?.who) === group.viewer)) messageIndex.drop(session); else indexMessages();
     frameLog = frameLog.concat(frames).slice(-400);
-    saveSessionCache(session, { head: folder.last, frames: frameLog });
+    unsent.settle();
+    saveCache();
   }
+  const saveCache = () => saveSessionCache(session, { head: folder.last, frames: frameLog, unsent: unsent.list() });
   function onFrame(f: Frame) {
     buffer.push(f);
     if (!scheduled) { scheduled = true; queueMicrotask(flush); }
   }
 
-  /** The words show at once, dimmed, and the box's own row replaces them; a refusal (or a throw) takes them back out and says why. */
-  async function withOptimistic(text: string, message: string, run: () => Promise<string | null>): Promise<string | null> {
-    const key = folder.addOptimistic(text, message);
-    for (const f of [...layoutSubs]) f();
-    let why: string | null;
-    try { why = await run(); } catch (e) { why = e instanceof Error && e.message ? e.message : "That did not send."; }
-    if (why && folder.dropOptimistic(key)) for (const f of [...layoutSubs]) f();
-    return why;
-  }
+  /**
+   * Every send of every chat screen goes through here (chat/unsent.js): the words show at once, dimmed, and the box's own row replaces them. A refusal, no answer or a throw never takes them back
+   * out: the row stays as "Not sent" with the reason, Retry (the same words and message id, so nothing is said twice) and Delete, and it is kept with the chat's cache.
+   */
+  const unsent = createUnsent({
+    folder,
+    perform: (s: SendSpec) => (s.via === "sendTo" ? sendToRun(s.text, { ...(s.o as SendToOpts), message: s.message }) : sendPlain(s.text, { ...(s.o as SendOpts), message: s.message })),
+    changed: (key: string) => { notifyRow(key); for (const f of [...layoutSubs]) f(); },
+    saved: () => saveCache(),
+  });
 
-  /** The plain send: the group route, the session's own, or the source's. */
-  async function sendPlain(text: string, o?: { message?: string; mentions?: { kind: string; id: string; name: string }[]; mode?: "steer" | "queue"; attachments?: Attached[] }): Promise<string | null> {
+  /** The plain send: the group route, the session's own, or the source's. The client message id rides on every path, so a retry is the same message. */
+  async function sendPlain(text: string, o?: SendOpts & { message?: string }): Promise<string | null> {
       const a = withActions(source);
       // A group chat on a real box (it has assistants in its participant list) goes through stream.send, which routes by mention.
       if (a.sendGroupText && group.participants().some((p) => p.family === "assistant")) {
-        const r = await a.sendGroupText(text, { ...chipsOf(o?.mentions), ...(o?.mode ? { mode: o.mode } : {}), ...(o?.attachments?.length ? { attachments: o.attachments } : {}) });
+        const r = await a.sendGroupText(text, { ...chipsOf(o?.mentions), ...(o?.message ? { message: o.message } : {}), ...(o?.mode ? { mode: o.mode } : {}), ...(o?.attachments?.length ? { attachments: o.attachments } : {}) });
         return r.ok ? null : r.reason;
       }
       if (a.sendText) return a.sendText(text, o);
       source.send(text);
       return null;
+  }
+
+  /** The send to chosen assistants (a fan-out, a reply): the group route when the source has it, else the plain send. */
+  async function sendToRun(text: string, o: SendToOpts & { message: string }): Promise<string | null> {
+      const a = withActions(source);
+      if (a.sendGroupText && (o.replyTo || group.participants().some((p) => p.family === "assistant"))) {
+        const r = await a.sendGroupText(text, { to: o.to, message: o.message, ...(o.mode ? { mode: o.mode } : {}), ...(o.replyTo ? { replyTo: o.replyTo } : {}), ...chipsOf(o.mentions), ...(o.attachments?.length ? { attachments: o.attachments } : {}) });
+        return r.ok ? null : r.reason;
+      }
+      if (source.sendGroup && (o.to.length || o.fanout || o.parent || o.replyTo)) { source.sendGroup(text, o); return null; }
+      return sendPlain(text, { message: o.message, ...(o.mentions?.length ? { mentions: o.mentions } : {}), ...(o.mode ? { mode: o.mode } : {}), ...(o.attachments?.length ? { attachments: o.attachments } : {}) });
   }
 
   const store: ChatStore = {
@@ -237,6 +259,8 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
         flush();
         replay = true;
       }
+      // what the person sent that the box did not take, the last time this chat was open: still here, "Not sent", after the history it followed
+      if (cached?.unsent?.length && !restored) { restored = true; unsent.restore(cached.unsent); }
       conn = source.connect({ from: folder.last, onFrame, onState: (s) => { connection = s; bumpMeta(); } });
     },
     stop() { conn?.close(); conn = null; },
@@ -260,9 +284,10 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
     },
     async send(text, o) {
       if (!text.trim()) return null;
-      const message = newUuid();
-      return withOptimistic(text, message, () => sendPlain(text, { ...o, message }));
+      return unsent.send({ via: "send", text, message: newUuid(), ...(o ? { o: { ...o } } : {}) });
     },
+    retrySend: (key) => unsent.retry(key),
+    discardSend: (key) => unsent.discard(key),
     async interrupt() {
       if (!store.meta().canStop) return null;
       stopping = true;
@@ -285,16 +310,7 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
     learnNames(list) { if (group.learn(list)) for (const f of [...groupSubs]) f(); },
     async sendTo(text, o) {
       if (!text.trim()) return null;
-      const message = newUuid();
-      return withOptimistic(text, message, async () => {
-      const a = withActions(source);
-      if (a.sendGroupText && (o.replyTo || group.participants().some((p) => p.family === "assistant"))) {
-        const r = await a.sendGroupText(text, { to: o.to, ...(o.mode ? { mode: o.mode } : {}), ...(o.replyTo ? { replyTo: o.replyTo } : {}), ...chipsOf(o.mentions), ...(o.attachments?.length ? { attachments: o.attachments } : {}) });
-        return r.ok ? null : r.reason;
-      }
-      if (source.sendGroup && (o.to.length || o.fanout || o.parent || o.replyTo)) { source.sendGroup(text, o); return null; }
-      return sendPlain(text, { ...(o.mentions?.length ? { mentions: o.mentions } : {}), ...(o.mode ? { mode: o.mode } : {}), ...(o.attachments?.length ? { attachments: o.attachments } : {}) });
-      });
+      return unsent.send({ via: "sendTo", text, message: newUuid(), o: { ...o } });
     },
     social: {
       keep: (g, m) => source.keep?.(g, m),
