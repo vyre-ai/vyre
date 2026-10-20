@@ -917,9 +917,9 @@ export default {
         if (!isPerson(caller) && !meta0.firstParty && !meta0.agent && /^(?:mcp|harness)(?::|$)/.test(String(caller || ""))) throw Object.assign(new Error("an unnamed model session asks no agent: it has no agent grants of its own to act under; ask the person to put the question to the agent"), { code: "denied" });
         // HD-9: a model's words go out as this module, which skips the thread scope checks, so a session may not use them to reach a wider agent than itself: the assistant (every project)
         // is the person's and the verified assistant's to ask, and an agent only reaches agents whose projects are within its own grant.
-        // Onboarding's greeting is relayed as the person finishing it (core/modules/relay-context.js; relayedBy is the registry's own mark, never a caller's word): a person's own ask, not a model's words.
-        const greeting = meta0.relayedBy === "module:onboard" && meta0.relayedByFirstParty === true;
-        if (!isPerson(caller) && !meta0.firstParty && !greeting && meta0.agentKind !== "assistant") {
+        // A call whose kernel chain is a person and no agent (onboarding's greeting, relayed as the person finishing it: core/modules/relay-context.js) is that person's own ask, not a model's words.
+        const ownAsk = !isPerson(caller) && !meta0.firstParty && K ? await (async () => { try { const c = await K.chain(meta0); const hops = c && Array.isArray(c.hops) ? c.hops : []; return hops.length > 0 && hops[0].actor && hops[0].actor.kind === "person" && hops.every((/** @type {any} */ x) => x && x.actor && x.actor.kind !== "agent"); } catch { return false; } })() : false;
+        if (!isPerson(caller) && !meta0.firstParty && !ownAsk && meta0.agentKind !== "assistant") {
           const target = get(String(i.agent));
           const within = target && Array.isArray(target.projects) && (!Array.isArray(meta0.granted) || target.projects.every(p => meta0.granted.includes(p)));
           if (target && !within) throw Object.assign(new Error(`${target.name} sees more than this session does: ask the person, who can ask it directly`), { code: "denied" });

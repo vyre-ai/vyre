@@ -290,7 +290,7 @@ export default {
         const d = await door.open({ ...(i.space ? { space: i.space } : {}) }, meta);
         let role = null; try { role = d.gateway.members.roleOf(d.chain.hops[0].actor); } catch { role = null; }
         if (role !== "owner" && role !== "admin") throw refuse("Only an owner or an admin seals a field. Ask one of them.", "not_allowed");
-        if (!d.gateway.migrate || !d.gateway.seal) throw refuse("this Space has no sealing process, so a field cannot be sealed here", "unavailable");
+        if (!d.gateway.migrate || !d.gateway.seal) throw refuse("this Space has no sealing process, so a field cannot be sealed here; ask the owner to seal it on the Space's server", "unavailable");
         const out = await d.gateway.migrate.sealField(d.chain, { type: String(i.type || ""), field: String(i.field || ""), class: i.class ? String(i.class) : "free" });
         return { ...out, acted_in: await actedIn(d.space) };
       },
