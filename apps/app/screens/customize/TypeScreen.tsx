@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Platform, Pressable, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Banner, Button, Card, EmptyState, Field, FieldEditor, FieldRows, GroupedList, LoadingState, SectionLabel, Sheet, Tabs, Text, showToast, applyDraft, checkField, draftOf, newDraft, useUiTheme } from "@vyre/ui";
@@ -12,9 +12,12 @@ import { PipelinesEditor } from "./PipelinesEditor";
 import { InlineTitle } from "./InlineTitle";
 import { moveField, parseRule, putField, regroup } from "../../ui/setup/typeedit.js";
 import { fieldTokens, tokenList } from "../../ui/setup/fieldtokens.js";
+import { ID_NOTE, isRecordIdField } from "../../ui/records/record-id.js";
 
 // The roles a field can be hidden from (kernel/contracts/fields.d.ts hidden_from). The owner always sees every field.
-const ROLES: [string, string][] = [["admin", "Admins"], ["manager", "Managers"], ["member", "Members"], ["temp", "Temporary members"]];
+/** How long after the last Move up or Move down the new order is saved. */
+const MOVE_MS = 700;
+const ROLES: [string, string][] =[["admin", "Admins"], ["manager", "Managers"], ["member", "Members"], ["temp", "Temporary members"]];
 
 /** Copy text to the clipboard: the browser's on the web, the phone's otherwise. */
 async function copyText(text: string) {
@@ -30,11 +33,25 @@ export function TypeFields({ type }: { type: string }) {
   useEffect(() => { if (!defs.length) void load(); }, []);
   const def = defs.find((d) => d.name === type);
   const [edit, setEdit] = useState<null | { orig?: any; draft: Draft; rules: Rules; tried: boolean }>(null);
+  // Moving fields up and down shows at once and is saved once, MOVE_MS after the last press: each records.define is a change to the type in the store (on Twenty, seconds), so five presses are one.
+  const [moved, setMoved] = useState<{ type: string; fields: any[] } | null>(null);
+  const moveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pending = useRef<null | (() => void)>(null);
+  // leaving the pane saves a move still waiting
+  useEffect(() => () => { if (moveTimer.current) clearTimeout(moveTimer.current); pending.current?.(); }, []);
   if (!def) return null;
+  const fieldsNow: any[] = moved && moved.type === def.name ? moved.fields : def.fields;
+  const moveOne = (n: string, dir: -1 | 1) => {
+    const next = moveField(fieldsNow, n, dir);
+    setMoved({ type: def.name, fields: next });
+    if (moveTimer.current) clearTimeout(moveTimer.current);
+    pending.current = () => { pending.current = null; save({ ...def, fields: next } as Def); };
+    moveTimer.current = setTimeout(() => { moveTimer.current = null; pending.current?.(); setMoved(null); }, MOVE_MS);
+  };
   const types = defs.map((d) => ({ name: d.name, label: d.label, plural: (d.plural as string) ?? `${d.label}s` }));
   const self = types.find((t) => t.name === def.name)!;
   const groups: Group[] = def.groups ?? [];
-  const rows = def.fields.filter((f) => f.kind !== "stage").map((f) => draftOf(f) as Draft & { name: string });
+  const rows = fieldsNow.filter((f) => f.kind !== "stage").map((f) => draftOf(f) as Draft & { name: string });
   const siblings = def.fields.map((f) => ({ name: f.name, label: f.label, kind: f.kind, options: f.options }));
   const tokens = fieldTokens(def as any, defs as any);
   const copy = (text: string, what: string) => { void copyText(text).then(() => showToast(`${what} copied.`), () => showToast("Copying did not work here. Select the text and copy it.")); };
@@ -67,7 +84,7 @@ export function TypeFields({ type }: { type: string }) {
         onChange={({ groups: g, items }) => save({ ...def, groups: g.length ? g : undefined, fields: regroup(def.fields, items) } as Def)}
         renderItems={(items, group) => (
           <View className="gap-s2">
-            <FieldRows fields={items} types={types} tokens={tokens} onCopy={copy} selected={edit?.orig?.name} onOpen={(n) => open(def.fields.find((f) => f.name === n))} onMove={(n, dir) => save({ ...def, fields: moveField(def.fields, n, dir) } as Def)} />
+            <FieldRows fields={items} types={types} tokens={tokens} onCopy={copy} selected={edit?.orig?.name} locked={(f) => (isRecordIdField(f) ? ID_NOTE : undefined)} onOpen={(n) => { const f = def.fields.find((x) => x.name === n); if (!isRecordIdField(f)) open(f); }} onMove={moveOne} />
             <View className="flex-row"><Button kind="ghost" size="sm" icon="plus" label="Add a field" onPress={() => open(undefined, group)} /></View>
           </View>
         )} />

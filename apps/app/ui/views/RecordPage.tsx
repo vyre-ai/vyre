@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { Pressable, View } from "react-native";
+import { Platform, Pressable, View } from "react-native";
 import { Text } from "../components/Text";
+import { ID_NOTE, isRecordIdField, recordIdOf } from "../records/record-id.js";
 import { Card, Divider } from "../components/Card";
 import { GroupedList } from "../components/GroupedList";
 import { RelatedSection } from "../records/RelatedSection";
@@ -32,6 +33,13 @@ import { actorWords, ago, assistantNote, canSealField, eventWhat, fieldStates, f
 import type { RecordsWorld } from "./shared";
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+/** Copy a record's ID: the browser's clipboard on the web, the phone's otherwise. */
+async function copyId(text: string) {
+  if (Platform.OS === "web") { if (typeof navigator !== "undefined" && navigator.clipboard) { await navigator.clipboard.writeText(text); return; } throw new Error("no clipboard"); }
+  const mod = await import("expo-clipboard");
+  await mod.setStringAsync(text);
+}
 
 /**
  * The record page: all the fields in order (press one to change it), the stage steps, You or Your assistant sees, Add a field, the timeline from the Event log,
@@ -90,22 +98,39 @@ export function RecordPage({ def, rec, world, events, env, onOpen, story, onNew,
   const empty = listed.filter((f: any) => isBlank(f) && !isLockedField(f));
 
   const fieldRow = (f: any) => {
+    // The record's ID is Vyre's (record-id.js): a quiet line with a copy button, never an editor, never sealed.
+    if (isRecordIdField(f)) {
+      const id = recordIdOf(rec);
+      return (
+        <View key={f.name} className={cn("gap-s1 px-s4 py-s3", !phone && "flex-row items-center gap-s3")}>
+          <View className={cn("flex-row flex-wrap items-center gap-s2", !phone && "flex-1")}><Text tone="label">{f.label}</Text></View>
+          <View className={cn("min-w-0 flex-row items-center gap-s2", !phone && "flex-[3]")}>
+            <Text selectable>{id || "Given when saved"}</Text>
+            {id ? <IconButton icon="copy" label={`Copy ${f.label}`} onPress={() => void copyId(id).then(() => showToast(`${f.label} copied.`), () => showToast("Copying did not work here. Select the text and copy it."))} /> : null}
+            <Text size="caption" tone="label">{ID_NOTE}</Text>
+          </View>
+        </View>
+      );
+    }
     const isEditing = editing === f.name && !ai;
     const value = valueFor(f);
     const sealed = isSealedField(f);
-    // A field the kernel owns, computes or keeps read-only (a task's status, an ID) is shown and never offered for editing: the gateway refuses a person's write to it.
+    // A field Vyre keeps (the kernel's own, computed, read-only, an ID, a weighted value) is shown, never edited, and never offered to be sealed (isLockedField includes isKeptField).
     const locked = isLockedField(f);
     const plainEditable = !ai && !locked && f.kind !== "sealed" && f.kind !== "link" && f.kind !== "ref" && f.kind !== "file";
     const shown = renderField({ kind: f.kind, definition: f, value, mode: "view", read_only: true, reveal: ai ? undefined : revealFor(f) }, env);
-    const items = [
-      ...(locked ? [] : [{ label: "Edit", onPress: () => { setEditing(f.name); setDraft(undefined); } }]),
+    const items = locked ? [] : [
+      { label: "Edit", onPress: () => { setEditing(f.name); setDraft(undefined); } },
       ...(canSealField(f) ? [{ label: `Seal this field for all ${vd.plural.toLowerCase()}`, onPress: () => setConfirm({ f }) }] : []),
     ];
     // Desktop: the menu shows on hover (or while the row is being edited). Phone: tap the row to edit, long-press for the menu.
-    const menuNode = !ai && !phone && items.length ? (
-      <View className="flex-none" style={{ opacity: hover === f.name || isEditing ? 1 : 0 }}>
-        <Menu trigger={<IconButton icon="more" label={`${f.label}, more`} />} items={items} />
-      </View>
+    // a locked field has nothing to offer: its menu keeps its place, unseen and not pressable, so the rows line up
+    const menuNode = !ai && !phone ? (
+      items.length ? (
+        <View className="flex-none" style={{ opacity: hover === f.name || isEditing ? 1 : 0 }}>
+          <Menu trigger={<IconButton icon="more" label={`${f.label}, more`} />} items={items} />
+        </View>
+      ) : <View className="flex-none" style={{ opacity: 0 }} pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants"><IconButton icon="more" label={`${f.label}, more`} /></View>
     ) : null;
     return (
       <Pressable key={f.name} disabled={ai || !phone || isEditing} onPress={plainEditable ? () => { setEditing(f.name); setDraft(undefined); } : undefined} onLongPress={items.length ? () => setRowMenu({ f, items }) : undefined}

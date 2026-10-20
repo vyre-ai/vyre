@@ -5,7 +5,11 @@ import { renderField } from "../fields/registry";
 import type { FieldEnv } from "../fields/types";
 import { titleOf, val, viewDefOf } from "./logic.js";
 
-export type RecordsWorld = { types: any[]; byType: Record<string, any[]>; actors: any[]; me?: string };
+/**
+ * The records a screen draws. A world read whole has every record of every type; a partial one (Records opening from its kept copy or a first page, ui/views/records-cache.js) has one type's
+ * first rows, the box's `counts` for the tabs and the `links` titles those rows point at.
+ */
+export type RecordsWorld = { types: any[]; byType: Record<string, any[]>; actors: any[]; me?: string; counts?: Record<string, number>; links?: Record<string, { title: string; type: string; id: string }>; partial?: boolean };
 
 /** One field of one record, drawn by the kind's renderer in its compact form: what lists, boards and agendas show. */
 export function fieldNode(f: any, rec: any, env: FieldEnv) {

@@ -1,6 +1,7 @@
 // @ts-check
 // CSV in, record values out (Records import): parse a CSV, say which fields an import can fill, turn a row into values, and add the rows one by one.
 import { parseDay, parseNum } from "../fields/logic.js";
+import { isKeptField } from "./record-id.js";
 
 /** A CSV as headers and rows (objects by header). Quotes, doubled quotes, commas and line breaks inside quotes, CRLF, a byte order mark and blank lines are read; nothing else is guessed. @param {string} text */
 export function parseCsv(text) {
@@ -22,8 +23,11 @@ export function parseCsv(text) {
 }
 
 const KINDS = new Set(["text", "url", "number", "money", "boolean", "date", "datetime", "choice", "rating", "rich_text"]);
-/** The fields an import can fill: the plain kinds, never a stage, a link, a file, a sealed value, a computed or hidden field. @param {any[]} fields */
-export const importableFields = (fields) => fields.filter((f) => KINDS.has(f.kind) && !f.hidden && !f.computed && !f.owned_by && !f.read_only && !f.seal);
+/**
+ * The fields an import can fill: the plain kinds, never a stage, a link, a file, a sealed value, a computed or hidden field, and never the record's ID (Vyre makes it). A sheet's own "ID" column
+ * maps to an ordinary field of the type, or is left out. @param {any[]} fields
+ */
+export const importableFields = (fields) => fields.filter((f) => KINDS.has(f.kind) && !f.hidden && !f.computed && !f.owned_by && !f.read_only && !f.seal && !isKeptField(f));
 
 /** One row as the values of the fields it is matched to. Empty cells leave a field out; what does not fit is named and left out. @param {any[]} fields @param {Record<string, string>} mapping @param {Record<string, string>} row */
 export function coerceRow(fields, mapping, row) {

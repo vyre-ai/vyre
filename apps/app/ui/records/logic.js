@@ -1,5 +1,6 @@
 // @ts-check
 import { fmtDate } from "../fields/logic.js";
+import { isKeptField } from "./record-id.js";
 // The pure half of the create form, the one timeline and the import wizard (Records).
 
 /** @typedef {{ name: string, label: string, kind: string, required?: boolean, hidden?: boolean, unique?: boolean, options?: string[] }} F */
@@ -17,7 +18,7 @@ const BOOKKEEPING = /** @type {Record<string, Set<string>>} */ ({ task: new Set(
 export const isInternalField = (f, type) => f.hidden === true || (f.name === "extra" && f.kind === "text") || (Array.isArray(f.hidden_from) && f.hidden_from.includes("owner")) || !!(type && BOOKKEEPING[type]?.has(f.name));
 
 /** A field only the system writes: owned by the kernel (a task's status), computed, or read-only (an ID). The record page shows it and never offers to change it; the create form never asks for it. @param {any} f */
-export const isLockedField = (f) => !!(f.owned_by || f.computed || f.read_only);
+export const isLockedField = (f) => !!(f.owned_by || f.computed || f.read_only || isKeptField(f));
 
 /** The fields of a type a person reads and fills: every field but the internal ones. The record page and the create form both start from this. @param {{ name: string, fields: any[] }} def */
 export const personFields = (def) => (def.fields || []).filter((f) => !isInternalField(f, def.name));

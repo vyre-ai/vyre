@@ -46,3 +46,50 @@ export async function mintRef({ type, start, create }) {
   }
   throw Object.assign(new Error("This record could not be given its ID just now. Try again."), { code: "unavailable" });
 }
+
+/** What a caller is told when a create names the record's ID: Vyre makes it. */
+export const ID_GIVEN = "A record's ID is made by Vyre when the record is made. Leave the ID out and the record gets the next one.";
+/** What a caller is told when a change names the record's ID. */
+export const ID_CHANGED = "A record's ID is made when the record is made and never changes.";
+
+const blank = (/** @type {unknown} */ v) => v === undefined || v === null || (typeof v === "string" && v.trim() === "");
+const names = (/** @type {any} */ o, /** @type {string} */ k) => Boolean(o) && typeof o === "object" && Object.prototype.hasOwnProperty.call(o, k);
+/** The keys that are a record's identity: the store's own id and address on every type, and the ID field on a type that has one. @param {boolean} hasRefField */
+const identity = (hasRefField) => ["id", "urn", ...(hasRefField ? ["ref"] : [])];
+
+/**
+ * The words a create is refused with when its data names the record's identity, or null. The store's id (`id`, `urn`) is never the caller's on any type; the ID field (`ref`) is not
+ * the caller's on a type that has one. An empty value counts as left out, so a form that sends every field, blanks included, still makes the record.
+ * @param {any} data @param {boolean} hasRefField
+ */
+export function idOnCreate(data, hasRefField) {
+  for (const k of identity(hasRefField)) if (names(data, k) && !blank(data[k])) return ID_GIVEN;
+  return null;
+}
+
+/** The data with the identity keys a create left empty taken out, so the store never sees them. @param {any} data @param {boolean} hasRefField */
+export function withoutBlankIds(data, hasRefField) {
+  if (!data || typeof data !== "object") return data;
+  const out = { ...data };
+  for (const k of identity(hasRefField)) if (names(out, k) && blank(out[k])) delete out[k];
+  return out;
+}
+
+/**
+ * The words a change is refused with when it sets a field Vyre keeps (a read-only field such as a deal's weighted value, which the tools work out from amount and probability), or
+ * null. The kernel itself refuses a computed field and one it owns; a read-only field is refused here. @param {any[]} fields @param {any} patch
+ */
+export function keptOnUpdate(fields, patch) {
+  if (!patch || typeof patch !== "object") return null;
+  for (const f of fields || []) {
+    if (!f || f.name === "ref" || !names(patch, f.name)) continue;
+    if (f.read_only === true || f.name === "weighted_value") return `${f.label || f.name} is worked out by Vyre, so it cannot be changed by hand. Change the fields it comes from instead.`;
+  }
+  return null;
+}
+
+/** The words a change is refused with when it names the record's identity (any value, an empty one too: clearing the ID is changing it), or null. @param {any} patch @param {boolean} hasRefField */
+export function idOnUpdate(patch, hasRefField) {
+  for (const k of identity(hasRefField)) if (names(patch, k)) return ID_CHANGED;
+  return null;
+}

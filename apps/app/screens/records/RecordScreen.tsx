@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
+import { useStore } from "@vyre/ui";
+import type { RecordsWorld } from "../../ui/views/shared";
 import { ScrollView, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Appear, allowsMock, Banner, Button, IconButton, Menu, Sheet, Text, showToast, factsOf, EmptyState, ErrorState, PageHeader, RecordPage, SkeletonRows, titleOf, urnParam, useFieldEnv, useRecordEvents, useRecordsWorld, viewDefOf } from "@vyre/ui";
@@ -25,12 +27,31 @@ import { openExternal } from "../../src/shell/open-external";
 export function RecordScreen({ id, onClose, onOpen }: { id: string; onClose?: () => void; onOpen?: (urn: string) => void }) {
   const router = useRouter();
   const SPACES = useShell((s) => s.data.spaces);
-  const { data: world, loading, error, reload } = useRecordsWorld();
+  const { data: whole, loading, error, reload } = useRecordsWorld();
+  const urn = urnParam(id);
+  // Opened by its address (a link, the Records side panel): the record itself is read with records.get beside the types, so its page draws without waiting for every record of
+  // every type, and a record the world does not hold yet is still found. The whole world (shared with Records) fills in links and related records behind it.
+  const store = useStore();
+  const [direct, setDirect] = useState<{ urn: string; world: RecordsWorld | null; missing: boolean } | null>(null);
+  const inWhole = whole && urn ? Object.values(whole.byType).flat().some((r: any) => r.urn === urn) : false;
+  useEffect(() => {
+    if (!urn || inWhole) return;
+    let live = true;
+    void Promise.all([store.get(urn).catch(() => null), Promise.resolve(store.types()).catch(() => null)]).then(([r, types]) => {
+      if (!live || !types) return;
+      setDirect({ urn, missing: !r, world: r ? { types: types as any[], byType: { [r.type]: [r] }, actors: whole?.actors ?? [], me: whole?.me, partial: true } : null });
+    });
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urn, inWhole, store]);
+  const answered = direct && direct.urn === urn ? direct : null;
+  const world: RecordsWorld | undefined = inWhole || !urn ? whole : answered?.world ?? whole;
+  /** Asked for by address and not yet answered: the page waits for records.get before it says the record is not here. */
+  const waiting = Boolean(urn && !inWhole && !answered);
   const open = useCallback((urn: string) => (onOpen ? onOpen(urn) : router.push(`/u/record/${urn.split("/").pop()}` as never)), [router, onOpen]);
   const openTag = useCallback((t: string) => router.push(href(t) as never), [router]);
   const env = useFieldEnv(world, open, openTag);
   const mv = useMoveStage(env, reload);
-  const urn = urnParam(id);
   const rec = world ? Object.values(world.byType).flat().find((r) => (urn ? r.urn === urn : r.id === id)) : undefined;
   const lay = useTypeLayout(rec?.type);
   const [logged, setLogged] = useState(0);
@@ -48,7 +69,7 @@ export function RecordScreen({ id, onClose, onOpen }: { id: string; onClose?: ()
   const email = emailOf(rec?.data);
   const back = () => (onClose ? onClose() : router.canGoBack() ? router.back() : router.replace(`/u/records/${rec?.type ?? "contact"}` as never));
   if (error && !world) return <ErrorState title="This record did not load" reason={error.message} retry={reload} />;
-  if (loading && !world) return <View className="min-h-0 flex-1"><PageHeader title="Record" onBack={back} /><View className="p-s4"><SkeletonRows rows={4} /></View></View>;
+  if ((loading && !world) || (waiting && !rec)) return <View className="min-h-0 flex-1"><PageHeader title="Record" onBack={back} /><View className="p-s4"><SkeletonRows rows={4} /></View></View>;
   const def = rec && world?.types.find((t) => t.name === rec.type);
   if (!world || !rec || !def) return <EmptyState title="That record is not here" body="It may have been removed, or it lives in a space you cannot see." action={{ label: "Go back", onPress: back }} />;
   const title = titleOf(def, rec);
