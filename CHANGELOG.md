@@ -2,6 +2,11 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## 0.6.5
+
+- fix(spawner): a session in a chat with no project joins the work folder's group, so it can enter its chat's folder (every plain chat failed its confinement check).
+- fix(threads): a resume of a session that never began starts it fresh; an error result with no text shows its errors.
+
 ## 0.6.4
 
 - fix(computers): one docker events stream for the module's life. The watcher was opened inside the sweep timer, so every tick added a stream; the proxy allows four and answered 429, and the server ran hot retrying. Reconnects now close the old request first, run one at a time, back off with jitter to a minute, and log only when the reason changes.
