@@ -85,7 +85,7 @@ test("a bad proof, a no from a label, a no from the person's session, a stale id
 test("signin.end ends this terminal's sessions, and a password session where no terminal can be read", async () => {
   const m = await mod();
   assert.deepEqual(await m.tools["signin.end"]({}, {}), { ended: 1 }, "a terminal the daemon cannot read ends only a password session");
-  assert.deepEqual(await m.tools["signin.end"]({}, { terminal: T }), { ended: 1 });
+  assert.deepEqual(await m.tools["signin.end"]({}, { terminal: T }), { ended: 2 });
   assert.deepEqual(m.ended, ["password", T.key, "password"]);
 });
 
