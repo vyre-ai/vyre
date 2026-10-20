@@ -11,6 +11,21 @@ import { WatchersTab } from "./WatchersTab";
 import type { TriggerSources } from "@vyre/ui";
 import { RunSteps } from "./RunSteps";
 import { REFUND_DRAFT, SAMPLE_OPTIONS } from "./starters.js";
+import { stageLine } from "./real-model.js";
+import { fromDefinition as flowFromDefinition } from "../../ui/flows/logic.js";
+
+// A Playbook stage opened in the Flow builder (kernel/flows/stage-flow.js): its stage trigger, its to-dos as task steps with their slots, and the move on.
+const STAGE_FLOW = {
+  format: 1, name: "stage-sample", label: "Ticket: Open", authorship: "kit",
+  playbook: { key: "type:ticket::Open", type: "ticket", stage: "Open", from: "sample" },
+  trigger: { on: "stage", type: "ticket", stage: "Open" },
+  steps: [
+    { id: "task_1", kind: "assign", label: "Draft the reply", title: "Draft the reply", to: "teammate:research", output: { kind: "note" }, reviewer: { who: "person:ana" }, await: true },
+    { id: "task_2", kind: "assign", label: "Check the details", title: "Check the details", to: "person:chris", output: { kind: "note" }, checker: "person:ana", await: true },
+    { id: "move", kind: "stage", label: "Move on to Review", type: "ticket", record: { expr: "trigger.id" }, to: "Review" },
+  ],
+};
+const STAGE_OPTIONS = { ...SAMPLE_OPTIONS, types: [...SAMPLE_OPTIONS.types, { name: "ticket", label: "Ticket", fields: [{ name: "title", label: "Title" }, { name: "stage", label: "Stage", kind: "stage", options: ["Open", "Review", "Closed"] }], stages: [{ name: "Open" }, { name: "Review" }, { name: "Closed" }] }] };
 
 const BASE = REFUND_DRAFT as FlowDraft;
 const EDITOR: FlowDraft = {
@@ -82,6 +97,14 @@ export default function ShotScreen() {
     return (
       <Frame back="/u/flows" title="Refund request, run of Today 10:05" sub="Every step with what went in and came out.">
         <Card flush><RunSteps painted={PAINTED} steps={STEPS as never} fmt={(ms) => `t${ms}`} rail initialOpen="create1" /></Card>
+      </Frame>
+    );
+  }
+  if (k === "stage") {
+    return (
+      <Frame back="/u/flows" title="Ticket: Open" sub="A Playbook stage">
+        <Text tone="muted">{stageLine(STAGE_FLOW) || ""}</Text>
+        <FlowBuilder draft={flowFromDefinition(STAGE_FLOW) as FlowDraft} onChange={() => {}} options={STAGE_OPTIONS as never} initialOpen="task_1" />
       </Frame>
     );
   }

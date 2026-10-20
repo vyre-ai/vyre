@@ -16,7 +16,7 @@ const require = createRequire(process.env.PW_FROM || path.join(process.env.HOME,
 const { chromium } = require("playwright");
 
 const ROUTES = ["u/apps", "u/settings/customize", "u/settings/customize/contact", "u/now", "u/now?scenario=client-pays", "u/now/needs", "u/now/doing", "u/projects", "u/playbooks", "u/playbooks/tpl_ad-campaign", "u/records/contact", "u/records/note", "u/records/matter", "u/calendar", "u/drive", "u/sites",
-  "u/flows", "u/flows/shot?k=editor", "u/flows/shot?k=trigger", "u/flows/shot?k=run", "u/flows/shot?k=playbook", "u/flows/shot?k=kit", "u/flows/shot?k=watchers", "u/flows/shot?k=newwatcher", "u/flows/shot?k=webhook", "u/flows/shot?k=watcherpick", "u/chats", "u/chats/new-thread", "u/chats?list=1", "u/chats/new", "u/kits", "u/memory", "u/vault", "u/engineer", "u/spaces", "u/access", "u/appearance", "u/about", "u/settings", "u/settings/account", "u/settings/ai",
+  "u/flows", "u/flows/shot?k=editor", "u/flows/shot?k=trigger", "u/flows/shot?k=run", "u/flows/shot?k=playbook", "u/flows/shot?k=stage", "u/flows/shot?k=kit", "u/flows/shot?k=watchers", "u/flows/shot?k=newwatcher", "u/flows/shot?k=webhook", "u/flows/shot?k=watcherpick", "u/chats", "u/chats/new-thread", "u/chats?list=1", "u/chats/new", "u/kits", "u/memory", "u/vault", "u/engineer", "u/spaces", "u/access", "u/appearance", "u/about", "u/settings", "u/settings/account", "u/settings/ai",
   "u/settings/assistants", "u/settings/customize/matter", "u/settings/devices", "u/settings/notifications", "u/settings/privacy", "u/settings/rules", "u/settings/audit",
   "u/settings/seeing", "u/settings/updates", "u/wink", "u/wink/invite", "u/wink/lend", "onboard",
   // the welcome flow's newer screens, from the sample world's fixtures (screens/first-run/mock.js SHOT_TABLE)
