@@ -7,6 +7,14 @@ import { boot } from "./testing/boot.js";
 
 const GOOD = "test-key-1234567890abcdef";
 
+/** A home with no inference door (no sealing process: a development file key), the way the direct path under VYRE_LEGACY_DIRECT_MODEL is meant to run. The kernel is on by default now, so a home built here has the door, and an API-key
+ *  turn then goes through it as the person the turn is for (0104de03, door-wire); that path is test/door-wire-daemon.test.js. @param {any} t */
+function noDoor(t) {
+  const saved = process.env.VYRE_KERNEL_FILE_KEY;
+  process.env.VYRE_KERNEL_FILE_KEY = "1";
+  t.after(() => { if (saved === undefined) delete process.env.VYRE_KERNEL_FILE_KEY; else process.env.VYRE_KERNEL_FILE_KEY = saved; });
+}
+
 /** A service: GET /v1/models (and OpenRouter-style /v1/auth/key) check the key; POST /v1/chat/completions streams an echo and says which key it saw. */
 async function service(t) {
   const seen = [];
@@ -82,7 +90,8 @@ test("api key: check_only checks the key with its provider and keeps nothing, fo
 });
 
 test("api key: an OpenAI-compatible key is checked, vaulted, bound to its address, never returned, and a thread on it sends the key only there", async t => {
-  process.env.VYRE_LEGACY_DIRECT_MODEL = "1";   // this harness has no inference door; the door path is lib/door-bridge.test.js
+  process.env.VYRE_LEGACY_DIRECT_MODEL = "1";
+  noDoor(t);
   const w = await boot(t, { driver: "cli", vault: { "seed-item": "seed-value" } });
   const s = await service(t);
   const r = await w.tool("sessions.accounts.key", { kind: "openai-compatible", key: GOOD, base_url: `${s.base}/v1`, model: "m1", label: "My lab server" });
@@ -99,7 +108,7 @@ test("api key: an OpenAI-compatible key is checked, vaulted, bound to its addres
   const th = (await w.tool("threads.start", { cwd: w.work, provider: "openai-compatible", account: rows[0].id, prompt: "hello", surface: "deck" })).data;
   await w.finished(th.id);
   const text = (await w.events(th.id)).filter(e => e.type === "thread.text" && e.payload.done).map(e => e.payload.text).join(" ");
-  assert.match(text, /echo m1: hello/, "DIAG the thread answered through the account's address and model " + JSON.stringify((await w.events(th.id)).map(e => [e.type, e.payload && (e.payload.text || e.payload.error || e.payload.message || e.payload.reason)]).slice(-12)).slice(0, 1500) + JSON.stringify(s.seen.map(x => [x.method, x.url])));
+  assert.match(text, /echo m1: hello/, "the thread answered through the account's address and model");
   assert.ok(s.seen.some(x => x.method === "POST" && x.auth), "the key reached the chat call");
   // The item is bound to its address (origin, port included), and removing the account removes the key from the Vault too.
   const listed = () => w.tool("vault.list", {}).then(r => (r.data.items || r.data).filter(x => x.name === rows[0].vault_item));
