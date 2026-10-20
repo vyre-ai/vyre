@@ -3,14 +3,14 @@
 // (sessions.accounts.list answers only theirs); the server stamps the person from who saves the version, refuses anyone but the Flow's maker or the owner for themselves, and refuses an account that is not
 // theirs (kernel/flows/runs-as.js). The fallback answers when the main one is out of credits, rate limited, signed out or not answering (core/daemon/flow-model.js).
 
-import { AIS } from "../../../../lib/ai-ids.js";
+import { AIS, KEY_ACCOUNTS } from "../../../../lib/ai-ids.js";
 
 /** The one line the tab says. */
 export const AI_ACCOUNTS_LINE = "Runs on these accounts no matter who or what starts it.";
 /** The providers a Flow's AI step can run on (the inference door's drivers): keys, then sign-ins (core/daemon/flow-model.js). */
-export const AI_STEP_PROVIDERS = Object.freeze(["openrouter", "openai-compatible", ...AIS]);
+export const AI_STEP_PROVIDERS = Object.freeze([...KEY_ACCOUNTS, ...AIS]);
 const SIGNIN = new Set(AIS);
-const NAMES = /** @type {Record<string, string>} */ ({ openrouter: "OpenRouter", "openai-compatible": "OpenAI-compatible", claude: "Claude", codex: "Codex", grok: "Grok" });
+const NAMES = /** @type {Record<string, string>} */ ({ openrouter: "OpenRouter", "openai-compatible": "OpenAI-compatible", opencode: "OpenCode", claude: "Claude", codex: "Codex", grok: "Grok" });
 /** The step kinds that call a model on the Flow's accounts. */
 const AI_KINDS = new Set(["classify", "extract"]);
 

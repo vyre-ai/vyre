@@ -16,6 +16,7 @@ test("modelChoice: a provider, provider/model or a bare Claude model name; nothi
   assert.deepEqual(modelChoice("codex"), { provider: "codex", label: "codex" });
   assert.deepEqual(modelChoice("grok/grok-4"), { provider: "grok", model: "grok-4", label: "grok/grok-4" });
   assert.deepEqual(modelChoice("openrouter/anthropic/claude-x"), { provider: "openrouter", model: "anthropic/claude-x", label: "openrouter/anthropic/claude-x" });
+  assert.deepEqual(modelChoice("opencode/glm-5.3"), { provider: "opencode", model: "glm-5.3", label: "opencode/glm-5.3" });
   assert.deepEqual(modelChoice("opus"), { provider: "claude", model: "opus", label: "claude/opus" });
   assert.deepEqual(modelChoice("claude-opus-5-5"), { provider: "claude", model: "claude-opus-5-5", label: "claude/claude-opus-5-5" });
   for (const bad of ["--dangerously-skip-permissions", "-m", "codex /x", "nope/thing", "a b", "x".repeat(200), "../../etc"]) assert.throws(() => modelChoice(bad), /model is|not a provider/, bad);

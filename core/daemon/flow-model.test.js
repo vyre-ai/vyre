@@ -37,7 +37,7 @@ const benClaude = { id: "acc_ben_claude", provider: "claude", kind: "setup-token
 const benKey = { id: "acc_ben_or", provider: "openrouter", kind: "api-key", label: "Ben's OpenRouter", person: BEN, own_vault: true, secret: BEN_KEY };
 
 test("the door's providers: keys first, then the sign-ins", () => {
-  assert.deepEqual([...DOOR_PROVIDERS], ["openrouter", "openai-compatible", "claude", "codex", "grok"]);
+  assert.deepEqual([...DOOR_PROVIDERS], ["openrouter", "openai-compatible", "opencode", "claude", "codex", "grok"]);
 });
 
 test("a member's Claude sign-in named under Runs on: her token, lent from her own vault, to the Claude driver; never the owner's", async () => {
@@ -93,4 +93,37 @@ test("Runs on accepts her own sign-in, never someone else's", async () => {
   assert.equal(await w.m.accountOk({ person: BEN, account: benClaude.id, provider: "claude" }), true);
   assert.equal(await w.m.accountOk({ person: BEN, account: ownerClaude.id, provider: "claude" }), false);
   assert.equal(await w.m.accountOk({ person: BEN, account: benClaude.id }), true, "found without naming the provider");
+});
+
+const OC = "oc-test-key-0123456789abcdef", OWNER_OC = "oc-owner-key-0123456789abcdef";
+
+test("a member's OpenCode Go account sends her key, the run id, and flattened text", async () => {
+  const owner = { id: "acc_owner_oc", provider: "opencode", kind: "api-key", label: "Owner OpenCode", person: null, secret: OWNER_OC, model: "glm-5.3", go_only: false };
+  const ben = { id: "acc_ben_oc", provider: "opencode", kind: "api-key", label: "Ben OpenCode", person: BEN, own_vault: true, vault_item: "oc", secret: OC, model: "glm-5.3", go_only: true };
+  const w = world([owner, ben]);
+  await w.call({ person: BEN, account: ben.id, provider: "opencode", run: "run_42", model: "glm-5.3", messages: [{ role: "user", content: [{ type: "text", text: "hi" }] }] });
+  const d = w.doors[0];
+  assert.equal(d.provider, "opencode");
+  assert.equal(d.go, true);
+  assert.equal(d.session, "run_42");
+  assert.equal(d.credential.key, OC);
+  assert.equal(d.credential.base, undefined);
+  assert.equal(d.messages[0].content, "hi");
+  assert.equal(JSON.stringify(w.doors).includes(OWNER_OC), false);
+});
+
+test("an OpenCode account that is not on Go sends neither go nor a session", async () => {
+  const ben = { id: "acc_ben_oc", provider: "opencode", kind: "api-key", label: "Ben OpenCode", person: BEN, secret: OC, model: "glm-5.3", go_only: false };
+  const w = world([ben]);
+  await w.call({ person: BEN, account: ben.id, provider: "opencode", run: "run_9", model: "glm-5.3" });
+  assert.equal(w.doors[0].go, undefined);
+  assert.equal(w.doors[0].session, undefined);
+});
+
+test("OpenCode Go with no run passes an empty session so the call is not sent", async () => {
+  const ben = { id: "acc_ben_oc", provider: "opencode", kind: "api-key", label: "Ben OpenCode", person: BEN, secret: OC, model: "glm-5.3", go_only: true };
+  const w = world([ben]);
+  await w.call({ person: BEN, account: ben.id, provider: "opencode", model: "glm-5.3" });
+  assert.equal(w.doors[0].go, true);
+  assert.equal(w.doors[0].session, "");
 });

@@ -35,6 +35,12 @@ test("a key's prefix says what it is, and anything else says nothing", () => {
   assert.equal(keyKindOf(""), null);
 });
 
+test("a long key that is not another provider's is an OpenCode key", () => {
+  assert.deepEqual(keyKindOf("oc-" + "a".repeat(20)), { kind: "opencode", provider: "opencode", label: "OpenCode key" });
+  assert.equal(keyKindOf("hello"), null);
+  assert.equal(keyKindOf(""), null);
+});
+
 test("a key's shape: 12 to 400 characters without spaces or control characters", () => {
   assert.equal(keyShapeOk("sk-ant-123456789"), true);
   assert.equal(keyShapeOk("short"), false);

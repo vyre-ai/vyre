@@ -50,7 +50,7 @@ const ANTHROPIC_PREFIXES = CREDENTIAL_PREFIXES.filter((p) => anthropicKind(p + "
 /**
  * What an API key is, from its prefix: the kind the server's key tool takes (sessions.accounts.key), the provider mark to show, a name to offer, and for xAI the one address it is sent to. Anthropic keys start
  * sk-ant-, OpenRouter keys sk-or-, xAI keys xai-, other OpenAI-style keys sk-. Null when the prefix says nothing.
- * @param {string} key @returns {{ kind: "anthropic-compatible" | "openai-compatible" | "openrouter", provider: string, label: string, base_url?: string } | null}
+ * @param {string} key @returns {{ kind: "anthropic-compatible" | "openai-compatible" | "openrouter" | "opencode", provider: string, label: string, base_url?: string } | null}
  */
 export function keyKindOf(key) {
   const k = String(key || "").trim();
@@ -58,6 +58,7 @@ export function keyKindOf(key) {
   if (/^sk-or-/i.test(k)) return { kind: "openrouter", provider: "openrouter", label: "OpenRouter key" };
   if (/^xai-/i.test(k)) return { kind: "openai-compatible", provider: "grok", label: "Grok key", base_url: "https://api.x.ai/v1" };
   if (/^sk-/i.test(k)) return { kind: "openai-compatible", provider: "codex", label: "OpenAI key" };
+  if (keyShapeOk(k)) return { kind: "opencode", provider: "opencode", label: "OpenCode key" };
   return null;
 }
 

@@ -2,6 +2,10 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## 0.6.4
+
+- feat(accounts): one OpenCode key in Settings, AI accounts. Only use OpenCode Go when that key lists Go models. Unchecked, chats, agents, group chats, teammates, Routines and Flows use the regular inference models only. The two catalogues are never mixed. A limit uses plain words. A Flow's fallback takes over for credits, a rate limit, a refused key or no answer. A Go call with no conversation id is not sent and does not fall back.
+
 ## 0.6.3
 
 - feat(vault): an item's page has Used with, the hosts its secrets may go to (read with vault.use.find, changed with vault.use.set; the hosts written on the item stay, the ones you allow can be removed), next to its plain fields and Allowed in scripts. No second store. Merged the train's placeholder review fixes with the simple Vault; the four reds of run 39350707365 fixed in place: vault.templates and vault.template.suggest in the presence list, hooks.flow tools in the door's owner list, the web-address bind in kernel/flows/runner.js back to its size, the web-address approver check reads roleAtLeast, and read-tools.generated.js named as a tool-name list.

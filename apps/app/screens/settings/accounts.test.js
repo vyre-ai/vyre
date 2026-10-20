@@ -80,13 +80,13 @@ test("one list: every provider is a row of the same shape, in a fixed order, its
   const b = box();
   const blocks = m.providerBlocks(await accountsSource(b.call).list());
   assert.deepEqual(b.seen.map((x) => x.tool), ["sessions.accounts.list"], "one call drives every row");
-  assert.deepEqual(blocks.map((p) => p.id), ["claude", "codex", "grok", "openrouter", "openai-compatible"], "the same order connected or not; none is lifted out");
-  assert.deepEqual(blocks.map((p) => Object.keys(p).sort().join()), Array(5).fill("accounts,connected,id,key,name,signIn,status,vendor"), "every provider is drawn from the same shape");
-  assert.deepEqual(blocks.map((p) => [p.name, p.vendor]), [["Claude", "Anthropic"], ["Codex", "OpenAI"], ["Grok", "xAI"], ["OpenRouter", "OpenRouter"], ["OpenAI-compatible", "Any key"]]);
+  assert.deepEqual(blocks.map((p) => p.id), ["claude", "codex", "grok", "openrouter", "openai-compatible", "opencode"], "the same order connected or not; none is lifted out");
+  assert.deepEqual(blocks.map((p) => Object.keys(p).sort().join()), Array(6).fill("accounts,connected,id,key,name,signIn,status,vendor"), "every provider is drawn from the same shape");
+  assert.deepEqual(blocks.map((p) => [p.name, p.vendor]), [["Claude", "Anthropic"], ["Codex", "OpenAI"], ["Grok", "xAI"], ["OpenRouter", "OpenRouter"], ["OpenAI-compatible", "Any key"], ["OpenCode", "OpenCode"]]);
   assert.deepEqual(blocks.map((p) => [p.connected, p.status]), [
-    [true, "Connected as this computer's sign-in"], [true, "Connected as me@example.com, Acme"], [true, "Connected as Grok"], [false, "Not connected"], [false, "Not connected"],
+    [true, "Connected as this computer's sign-in"], [true, "Connected as me@example.com, Acme"], [true, "Connected as Grok"], [false, "Not connected"], [false, "Not connected"], [false, "Not connected"],
   ]);
-  assert.deepEqual(blocks.map((p) => [p.signIn, p.key]), [[true, "anthropic-compatible"], [true, null], [true, null], [false, "openrouter"], [false, "openai-compatible"]], "sign-in where the provider has one, a key where keys are supported");
+  assert.deepEqual(blocks.map((p) => [p.signIn, p.key]), [[true, "anthropic-compatible"], [true, null], [true, null], [false, "openrouter"], [false, "openai-compatible"], [false, "opencode"]], "sign-in where the provider has one, a key where keys are supported");
   assert.deepEqual(blocks[1].accounts.map((a) => a.id), ["a2", "a3"], "each account sits under its own provider");
   assert.deepEqual(m.providerBlocks([], true).map((p) => p.key), m.providerBlocks([]).map((p) => p.key), "a member can add a key too, to her own Vault");
 });
@@ -113,6 +113,10 @@ test("Use an API key under a provider: its own kind, a key of another provider i
   assert.match(/** @type {any} */ (keyInputFor("claude", OR)).problem, /not look like a Claude key/);
   assert.match(/** @type {any} */ (keyInputFor("codex", OAI)).problem, /connects by signing in/);
   assert.match(/** @type {any} */ (keyInputFor("openrouter", "short")).problem, /does not look like an API key/);
+  const OC = "oc-" + "a".repeat(20);
+  assert.deepEqual(keyInputFor("opencode", OC), { input: { kind: "opencode", key: OC, label: "OpenCode key", name: "OpenCode key" } });
+  assert.match(/** @type {any} */ (keyInputFor("opencode", OR)).problem, /Add it under OpenRouter/);
+  assert.match(/** @type {any} */ (keyInputFor("opencode", OC, "", "https://opencode.ai")).problem, /one address/);
   assert.match(/** @type {any} */ (keyInputFor("openai-compatible", OAI, "", "http://x.example")).problem, /https/);
   const { accountsSource } = await import("./accounts-source.ts");
   const ok = box({ "sessions.accounts.key": { data: { account: "ac_9", provider: "openrouter", label: "OpenRouter key" } } });

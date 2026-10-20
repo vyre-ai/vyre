@@ -35,6 +35,7 @@ import { connectOwn, noPerson } from "../../lib/own-account.js";
 import { projectRecordIdOf } from "../../lib/project-id.js";
 import { rekeyLegacy } from "./rekey.js";
 import { LIVE_STATUSES } from "../../lib/thread-status.js";
+import { AIS, KEY_ACCOUNTS } from "../../lib/ai-ids.js";
 import { repoRoot, currentBranch, ensureWorktree, isOwnWorktree, worktreePath, branchOf, mergeBaseIn, aheadOf, shaRange,
   headSha, resetTo, mergeBranchIn, stillConflicted, compareAndSwap, detectTestCommand, B } from "./git.js";
 
@@ -115,7 +116,7 @@ export const MIGRATIONS = [
 export const STOP_WAIT_MS = 10_000;
 
 /** The providers a session can run on (core/sessions PROVIDERS). */
-const PROVIDER_IDS = ["claude", "codex", "grok", "openrouter", "openai-compatible"];
+const PROVIDER_IDS = [...AIS, ...KEY_ACCOUNTS];
 /**
  * What team.ask's `model` means: "codex" or "grok/<model>" or "claude/opus" (a provider, optionally a model of its own), or a bare Claude model name ("opus"). Null for none. Anything else is refused,
  * so a request never carries a word the launch would read as a flag.

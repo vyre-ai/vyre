@@ -38,7 +38,9 @@ import { createSendContext } from "./context.js";
 import { chatFolderFor } from "./chat-folder.js";
 import { validZone, zoneFrom } from "../../lib/time/index.js";
 import { withinOrThrow } from "../../lib/within.js";
+import { AIS, KEY_ACCOUNTS } from "../../lib/ai-ids.js";
 
+const CHAT_PROVIDERS = new Set([...AIS, ...KEY_ACCOUNTS]);
 const MIGRATIONS = [`
   CREATE TABLE stream_groups_members (
     grp TEXT NOT NULL, who TEXT NOT NULL, thread TEXT, cwd TEXT, name TEXT, asker TEXT, answer TEXT,
@@ -1284,7 +1286,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
       let want = to;
       if (!mentionedIn({ participants: participants(g), mentions: [to] })[0]) {
         const m = /^(?:model:)?([a-z][a-z0-9-]{0,40})(?:\/([A-Za-z0-9][A-Za-z0-9._:/-]{0,80}?))?(?:#[0-9]{1,6})?$/.exec(to);
-        if (m && ["claude", "codex", "grok", "openrouter", "openai-compatible"].includes(m[1]) && !to.startsWith("person:") && !to.startsWith("assistant:")) {
+        if (m && CHAT_PROVIDERS.has(m[1]) && !to.startsWith("person:") && !to.startsWith("assistant:")) {
           want = /^model:.+#[0-9]{1,6}$/.test(to) ? to : `model:${m[1]}/${m[2] || "default"}#${100000 + (crypto.randomBytes(3).readUIntBE(0, 3) % 899999)}`;
           const there0 = g.bots.get(authorOf);
           join(grp, want, { cwd: (there0 && there0.cwd) || (kernelOn() ? chatFolder(grp) : undefined) });

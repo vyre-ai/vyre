@@ -21,7 +21,7 @@ test("checkResidency refuses with code residency for each provider the policy le
   const asked = /** @type {any[]} */ ([]);
   const call = async (/** @type {string} */ tool, /** @type {any} */ input) => { asked.push([tool, input.key]); return { data: { value } }; };
   await checkResidency({ call }, "claude");
-  for (const p of ["codex", "grok", "openrouter", "openai-compatible"]) await assert.rejects(() => checkResidency({ call }, p), e => /** @type {any} */ (e).code === "residency" && /do not allow/.test(/** @type {any} */ (e).message), p);
+  for (const p of ["codex", "grok", "openrouter", "openai-compatible", "opencode"]) await assert.rejects(() => checkResidency({ call }, p), e => /** @type {any} */ (e).code === "residency" && /do not allow/.test(/** @type {any} */ (e).message), p);
   value = [];
   await checkResidency({ call }, "grok");
   assert.ok(asked.every(a => a[0] === "settings.get" && a[1] === SETTING));

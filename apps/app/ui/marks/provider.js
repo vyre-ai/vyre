@@ -11,6 +11,7 @@ const KNOWN = {
   grok: { name: "Grok", vendor: "xAI", mono: "Gk", icon: "logo-grok" },
   openrouter: { name: "OpenRouter", vendor: "OpenRouter", mono: "Or", icon: "logo-openrouter" },
   "openai-compatible": { name: "OpenAI-compatible", vendor: "Any key", mono: "Ok", icon: "key" },
+  opencode: { name: "OpenCode", vendor: "OpenCode", mono: "Oc", icon: "spark" },
 };
 
 const known = (/** @type {string | null | undefined} */ provider) => KNOWN[String(provider || "").toLowerCase().trim()];

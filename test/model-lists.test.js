@@ -12,7 +12,7 @@ const mk = (/** @type {any} */ over = {}) => { /** @type {any[]} */ const asked 
 
 test("each provider is asked at its own address with its own header, and the answer is names, never the body or the key", async () => {
   const { d, asked } = mk();
-  assert.deepEqual([...MODEL_LISTING_PROVIDERS].sort(), ["claude", "codex", "grok", "openai-compatible"]);
+  assert.deepEqual([...MODEL_LISTING_PROVIDERS].sort(), ["claude", "codex", "grok", "openai-compatible", "opencode"]);
   for (const provider of ["claude", "codex", "grok"]) {
     const names = await d[provider].models({ account: { id: `a-${provider}` } });
     assert.deepEqual(names, [{ id: "m1", label: "Model One" }, { id: "m2" }, { id: "m3" }, { id: "m4" }], "id and display name; a number and a null are not model entries");

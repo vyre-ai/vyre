@@ -4023,7 +4023,7 @@ export default {
       // The Claude CLI resolves the name itself, so nothing can pin it: look it up again before every spawn and refuse (the lookup race is what is left).
       if (a.base_url && a.provider === "claude" && !(await hostSafe(String(a.base_url)))) throw Object.assign(new Error(`${a.label}'s address is not a place a key may be sent now`), { code: "bad_input" });
       if (a.base_url) { if (a.provider === "claude") own.ANTHROPIC_BASE_URL = String(a.base_url); else own.VYRE_API_BASE_URL = String(a.base_url); }
-      if (a.model && a.provider !== "claude") own.VYRE_API_MODEL = String(a.model);
+      if (a.model && a.provider !== "claude") own.VYRE_API_MODEL = String(a.model); if (a.go_only) own.VYRE_OPENCODE_GO = "1";
       return { auth: a.kind === "api-key" ? "api-key" : "subscription", env: { [name]: String(v), ...own } };
     };
     // On a box the spawner puts each account in its own uid's HOME. Elsewhere a provider that

@@ -9,6 +9,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { ROLE_IDS } from "../kernel/contracts/index.js";
 import { AIS } from "../lib/skill-library.js";
+import { KEY_ACCOUNTS } from "../lib/ai-ids.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SURFACES = ["apps/app", "local", "web"];
@@ -32,7 +33,7 @@ function owners() {
     const j = JSON.parse(fs.readFileSync(f, "utf8"));
     for (const t of (j.does && j.does.tools) || []) tools.add(typeof t === "string" ? t : t.name);
   }
-  return /** @type {Record<string, Set<string>>} */ ({ tools, roles: new Set(ROLE_IDS), providers: new Set([...AIS, "openrouter", "openai-compatible"]) });
+  return /** @type {Record<string, Set<string>>} */ ({ tools, roles: new Set(ROLE_IDS), providers: new Set([...AIS, ...KEY_ACCOUNTS]) });
 }
 
 const LIST = /\[\s*((?:"[^"\n]*"|'[^'\n]*')\s*,\s*(?:(?:"[^"\n]*"|'[^'\n]*')\s*,?\s*){1,})\]/g;

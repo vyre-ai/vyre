@@ -1,15 +1,17 @@
 // AI accounts from sessions.accounts.list, the one source every row reads: one list of providers, each drawn the same way, with the accounts the person has under it, one line for each
 // state, and the sign-in flow's steps. No provider comes first or gets a card of its own. Pure: no calls.
 import { ACCOUNTS_COPY, PROVIDERS, keyKindOf, keyShapeOk } from "../first-run/ai-accounts-model.js";
+import { KEY_ACCOUNTS } from "../../../../lib/ai-ids.js";
 import { providerName as nameOf, providerVendor } from "../../ui/marks/provider.js";
 
 export type Account = {
   id: string; provider: string; label: string; kind: string; isDefault: boolean; pending: boolean; needs: "sign-in" | "confirm" | null;
   signedIn: boolean; synthetic: boolean; who: string; item: string | null; baseUrl: string | null; privacy: boolean | null; privacyLabel: string; privacyNote: string;
+  goOnly?: boolean; goOk?: boolean;
 };
 export type Flow = { id: string; step: string; url?: string; code?: string; message?: string; provider: string };
 /** The kinds the server's key tool (sessions.accounts.key) takes. */
-export type KeyKind = "anthropic-compatible" | "openrouter" | "openai-compatible";
+export type KeyKind = "anthropic-compatible" | "openrouter" | "openai-compatible" | "opencode";
 
 /** The provider's display name: "codex" is "Codex", an unknown one is capitalised as given. */
 export const providerName = (p: unknown): string => nameOf(String(p || ""));
@@ -24,11 +26,12 @@ const CONNECT: Record<string, { signIn: boolean; key: KeyKind | null }> = {
   grok: { signIn: true, key: null },
   openrouter: { signIn: false, key: "openrouter" },
   "openai-compatible": { signIn: false, key: "openai-compatible" },
+  opencode: { signIn: false, key: "opencode" },
 };
 
 /** The providers in the order shown: the AI providers' own list (lib/ai-ids.js), then the two key-only ones, then any other a row names. The same order whether or not one is connected. */
 export function providerOrder(rows: Account[]): string[] {
-  const out: string[] = [...PROVIDERS, "openrouter", "openai-compatible"];
+  const out: string[] = [...PROVIDERS, ...KEY_ACCOUNTS];
   for (const a of rows) if (!out.includes(a.provider)) out.push(a.provider);
   return out;
 }
@@ -55,6 +58,7 @@ export function accountsOf(d: any): Account[] {
       baseUrl: typeof a.base_url === "string" && a.base_url ? a.base_url : null,
       privacy: typeof a.privacy === "boolean" ? a.privacy : null,
       privacyLabel: typeof a.privacy_label === "string" ? a.privacy_label : "", privacyNote: typeof a.privacy_note === "string" ? a.privacy_note : "",
+      ...(a.provider === "opencode" ? { goOnly: a.go_only === true, goOk: a.go_ok === true } : {}),
     }));
 }
 
@@ -126,8 +130,11 @@ export function keyInputFor(provider: string, key: string, label = "", baseUrl =
   const kind = CONNECT[provider]?.key;
   if (!kind) return { problem: `${providerName(provider)} connects by signing in, not with a key.` };
   const seen = keyKindOf(k);
-  if (kind !== "openai-compatible" && seen?.kind !== kind) return { problem: `That does not look like a ${providerName(provider)} key.` };
-  if (kind === "openai-compatible" && seen && seen.kind !== "openai-compatible") return { problem: `That key is for ${providerName(seen.provider)}. Add it under ${providerName(seen.provider)}.` };
+  if (kind === "opencode") {
+    if (seen && seen.kind !== "opencode") return { problem: `That key is for ${providerName(seen.provider)}. Add it under ${providerName(seen.provider)}.` };
+    if (String(baseUrl || "").trim()) return { problem: "OpenCode has one address." };
+  } else if (kind !== "openai-compatible" && seen?.kind !== kind) return { problem: `That does not look like a ${providerName(provider)} key.` };
+  else if (kind === "openai-compatible" && seen && seen.kind !== "openai-compatible") return { problem: `That key is for ${providerName(seen.provider)}. Add it under ${providerName(seen.provider)}.` };
   const base = String(baseUrl || "").trim() || (kind === "openai-compatible" ? seen?.base_url ?? "" : "");
   if (base && !safeUrl(base)) return { problem: "The address must start with https://." };
   const name = String(label || "").trim() || `${providerName(provider)} key`;

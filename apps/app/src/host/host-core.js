@@ -9,7 +9,7 @@
 import { claimIdentity } from "../identity/claim.js";
 import { codeKey, newCode } from "../identity/recovery.js";
 import { fromSeed } from "../identity/keys.js";
-import { AIS } from "../../../../lib/ai-ids.js";
+import { AIS, KEY_ACCOUNTS } from "../../../../lib/ai-ids.js";
 import { scrub } from "../../../../lib/scrub.js";
 import { lookOf } from "../../ui/chat/agent-look.js";
 import { SPACE_NAME_SAY, commandOk, passwordOk, personRoutes, placeKind, spaceAddressOf, spaceKey, usernameOf } from "../../../../lib/first-run-shape.js";
@@ -100,7 +100,7 @@ export function createHost(o) {
    * @param {any} ports @param {string} box @param {string} space the team's Space id: the app routes a joined team's calls through its door by it @param {{ kind: string, key: string, label: string, password: string, base_url?: string }} i
    */
   /** The key kind each provider's account is added as. */
-  const COPY_KINDS = /** @type {Record<string, string>} */ ({ claude: "anthropic-compatible", openrouter: "openrouter", "openai-compatible": "openai-compatible" });
+  const COPY_KINDS = /** @type {Record<string, string>} */ ({ claude: "anthropic-compatible", ...Object.fromEntries(KEY_ACCOUNTS.map((k) => [k, k])) });
   /** The person's OTHER paired server (the current Space's, else the first that is not the one made here), for reads when another Space is added: its box and the Space's name. */
   const otherServer = async () => {
     const k = await o.store.load();
@@ -121,7 +121,7 @@ export function createHost(o) {
   /** @param {any} ports @param {any} box @param {any} space @param {any} i */
   const memberKey = async (ports, box, space, i) => {
     // every kind the owner can add; the provider an account of it is made for (an OpenAI-style key, xAI's included, is an openai-compatible account at its address)
-    const provider = { "anthropic-compatible": "claude", openrouter: "openrouter", "openai-compatible": "openai-compatible" }[/** @type {"anthropic-compatible" | "openrouter" | "openai-compatible"} */ (i.kind)];
+    const provider = i.kind === "anthropic-compatible" ? "claude" : KEY_ACCOUNTS.includes(String(i.kind)) ? String(i.kind) : "";
     if (!provider) throw bad("That kind of key is not supported here.", "bad_kind");
     // A member's key goes through the team server's member door into HER OWN Vault, and the account the server makes names that item with her as its person (sessions_accounts.person, own_vault): it is lent
     // only for her own turns. The app turns this path on (src/host/index.ts memberKeyPath); a host made without it tells a member to ask the owner.
@@ -903,7 +903,7 @@ export function createHost(o) {
       if (!o.space) throw unsupported();
       const { box, role, space } = await serverOfThisRun("Add an AI account once your space is online.", true);
       const kind = String((input && input.kind) || "");
-      if (!["anthropic-compatible", "openai-compatible", "openrouter"].includes(kind)) throw bad("That kind of key is not supported here.", "bad_kind");
+      if (!new Set(["anthropic-compatible", ...KEY_ACCOUNTS]).has(kind)) throw bad("That kind of key is not supported here.", "bad_kind");
       const key = String((input && input.key) || "").trim();
       if (key.length < 12 || key.length > 400 || /[\s\u0000-\u001f\u007f]/.test(key)) throw bad("That does not look like an API key.", "bad_key");
       const label = String((input && input.label) || "").trim();

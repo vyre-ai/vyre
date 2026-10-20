@@ -1,7 +1,9 @@
 // @ts-check
 // model-lists: where each provider lists its models, and how its API key asks (R031-84). The inference door's `listModels` calls these drivers; the door checks the chain and the sink and clamps the
 // answer to { id, label? } entries, and the driver alone holds the endpoint and the key slot. The key comes from `keyOf(account)` for one request and is never returned, logged or put in an error. A provider's own
-// header names live here and nowhere else.
+// header names live here and nowhere else. OpenCode's paths and keep rules live in lib/opencode.js.
+
+import { modelsUrl, listHeaders, keepModel } from "../../lib/opencode.js";
 
 /** @type {Record<string, { url: (a: any) => string | null, headers: (key: string) => Record<string, string> }>} */
 const BY_PROVIDER = {
@@ -9,6 +11,7 @@ const BY_PROVIDER = {
   codex: { url: () => "https://api.openai.com/v1/models", headers: (k) => ({ authorization: `Bearer ${k}` }) },
   grok: { url: () => "https://api.x.ai/v1/models", headers: (k) => ({ authorization: `Bearer ${k}` }) },
   "openai-compatible": { url: (a) => (a.base_url ? `${String(a.base_url).replace(/\/$/, "")}/models` : null), headers: (k) => ({ authorization: `Bearer ${k}` }) },
+  opencode: { url: (a) => modelsUrl(a && a.go_only === true), headers: (k) => listHeaders(k) },
 };
 /** The providers that can be asked. */
 export const MODEL_LISTING_PROVIDERS = Object.freeze(Object.keys(BY_PROVIDER));
@@ -49,7 +52,12 @@ export function modelListDrivers(io) {
         try { res = await io.fetch(url, { headers: { accept: "application/json", ...spec.headers(String(key)) }, timeoutMs: 15_000 }); }
         catch (e) { throw new Error(e instanceof Error ? e.message.replaceAll(String(key), "[key]").slice(0, 100) : "could not be read"); }
         if (!res.ok) throw new Error(res.status === 401 || res.status === 403 ? "the key was refused" : `HTTP ${res.status}`);
-        return namesOf(await res.json());
+        let body = await res.json();
+        if (provider === "opencode") {
+          const rows = Array.isArray(body && body.data) ? body.data : Array.isArray(body && body.models) ? body.models : [];
+          body = { data: rows.filter((r) => keepModel(a.go_only === true, r)) };
+        }
+        return namesOf(body);
       },
     };
   }

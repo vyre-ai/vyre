@@ -4,7 +4,7 @@
 // call (core/daemon/lend-key.js); a home account's key comes from the Switchboard's accountKey, which reads only the home's own rows. The inference door is then called as that person's chain with that key.
 // Nothing is sent when there is no account: the caller gets code no_account and the runner says "Connect an AI account to run this Flow".
 //
-// The door has a driver for every kind of account a person holds: the API keys (openrouter, openai-compatible: core/sessions/drivers/openrouter.js) and the sign-ins (a Claude setup token or login, a Codex
+// The door has a driver for every kind of account a person holds: the API keys (openrouter, openai-compatible, opencode) and the sign-ins (a Claude setup token or login, a Codex
 // login, a Grok login, and the keys those CLIs take: core/sessions/drivers/signin-door.js, one non-interactive turn of the provider's own CLI). The driver is picked by the account's provider.
 //
 // Main and fallback: a Flow names a MAIN account and, if it wants, a FALLBACK one (its AI accounts tab). The fallback answers only when the main one's failure is of a class another account could help with
@@ -12,13 +12,14 @@
 // generic: any caller with a person (a Flow's AI step, a Routine, a Watcher) calls `call` with that person.
 
 import { isLoopbackHost } from "../../lib/api-endpoint.js";
+import { KEY_ACCOUNTS } from "../../lib/ai-ids.js";
 import { ACCOUNT_ENV } from "../../lib/credential-env.js";
 import { aiErrorClass } from "../../lib/ai-errors.js";
 import { FALLBACK_CLASSES, kindWords } from "../../kernel/flows/runs-as.js";
 import { modelFor } from "../sessions/drivers/openrouter.js";   // the chat driver's own pick of an OpenRouter model (its default when the account names none)
 
 /** The API-key providers (an HTTP call with the key) and the sign-in providers (the provider's own CLI, on the person's subscription or key). */
-export const KEY_PROVIDERS = Object.freeze(["openrouter", "openai-compatible"]);
+export const KEY_PROVIDERS = KEY_ACCOUNTS;
 export const SIGNIN_PROVIDERS = Object.freeze(["claude", "codex", "grok"]);
 /** The providers the inference door has a driver for, in the order a default is looked for: a key first (as before), then a sign-in. */
 export const DOOR_PROVIDERS = Object.freeze([...KEY_PROVIDERS, ...SIGNIN_PROVIDERS]);
@@ -31,6 +32,13 @@ const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Ob
 function testBase() {
   const u = process.env.VYRE_OPENROUTER_URL;
   try { const x = new URL(String(u)); return x.protocol === "http:" && isLoopbackHost(x.hostname) ? String(u) : null; } catch { return null; }
+}
+
+/** OpenCode messages are text before the door sees them, so a tool part is not scanned as an array. @param {unknown} c */
+function flatText(c) {
+  if (typeof c === "string") return c;
+  if (Array.isArray(c)) return c.map((b) => (typeof b === "string" ? b : b && typeof b === "object" ? String(/** @type {any} */ (b).text || /** @type {any} */ (b).content || "") : "")).join("");
+  return c == null ? "" : String(c);
 }
 
 /**
@@ -103,10 +111,12 @@ export function flowModel(o) {
             const credential = { account: { id: String(a.id), provider, kind: String(a.kind), label: String(a.label), person: a.person ? String(a.person) : null, ...(typeof a.uid === "number" ? { uid: a.uid } : {}) }, env: name ? { [name]: /** @type {string} */ (key) } : {}, home };
             return { a, out: await q.door.call({ chain: await q.chainFor(q.person), purpose: q.purpose, provider, model: asked || "default", max_output_tokens: q.max_tokens, messages: q.messages, credential, ...(q.expect ? { expect: q.expect } : {}) }) };
           }
-          const base = a.base_url ? String(a.base_url) : a.provider === "openrouter" ? testBase() : null;
+          const base = a.provider === "opencode" ? null : a.base_url ? String(a.base_url) : a.provider === "openrouter" ? testBase() : null;
           const m = a.provider === "openrouter" ? modelFor({ model: asked }, {}) : asked || null;
           if (!m) throw refuse(`${a.label} has no model chosen: choose one for it under the Flow's AI accounts`, "bad_request");
-          return { a, out: await q.door.call({ chain: await q.chainFor(q.person), purpose: q.purpose, provider, model: m, max_output_tokens: q.max_tokens, messages: q.messages, credential: { key, ...(base ? { base } : {}) } }) };
+          const go = provider === "opencode" && Boolean(a.go_only);
+          const messages = provider === "opencode" && Array.isArray(q.messages) ? q.messages.map((/** @type {any} */ msg) => ({ ...msg, content: flatText(msg && msg.content) })) : q.messages;
+          return { a, out: await q.door.call({ chain: await q.chainFor(q.person), purpose: q.purpose, provider, model: m, max_output_tokens: q.max_tokens, messages, credential: { key, ...(base ? { base } : {}) }, ...(go ? { go: true, session: String(q.run || "") } : {}) }) };
         } catch (e) {
           const x = /** @type {any} */ (e) || {}, label = a ? String(a.label) : pick ? String(pick.account) : "AI account";
           // the account's name rides on the failure (for the card); a frozen error (a door refusal) is copied with its words, code and class
