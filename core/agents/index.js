@@ -917,7 +917,9 @@ export default {
         if (!isPerson(caller) && !meta0.firstParty && !meta0.agent && /^(?:mcp|harness)(?::|$)/.test(String(caller || ""))) throw Object.assign(new Error("an unnamed model session asks no agent: it has no agent grants of its own to act under; ask the person to put the question to the agent"), { code: "denied" });
         // HD-9: a model's words go out as this module, which skips the thread scope checks, so a session may not use them to reach a wider agent than itself: the assistant (every project)
         // is the person's and the verified assistant's to ask, and an agent only reaches agents whose projects are within its own grant.
-        if (!isPerson(caller) && !meta0.firstParty && meta0.agentKind !== "assistant") {
+        // Onboarding's greeting is relayed as the person finishing it (core/modules/relay-context.js; relayedBy is the registry's own mark, never a caller's word): a person's own ask, not a model's words.
+        const greeting = meta0.relayedBy === "module:onboard" && meta0.relayedByFirstParty === true;
+        if (!isPerson(caller) && !meta0.firstParty && !greeting && meta0.agentKind !== "assistant") {
           const target = get(String(i.agent));
           const within = target && Array.isArray(target.projects) && (!Array.isArray(meta0.granted) || target.projects.every(p => meta0.granted.includes(p)));
           if (target && !within) throw Object.assign(new Error(`${target.name} sees more than this session does: ask the person, who can ask it directly`), { code: "denied" });
@@ -1044,6 +1046,8 @@ export default {
       run: async (i, { caller }) => {
         if (String(caller || "") !== "module:vyred") throw Object.assign(new Error("only the Space's own host wakes an agent for a task"), { code: "denied" }); // internal-word: the caller label, not shown text
         const a = must(i.agent);
+        // Rule 2: a task's job runs for the person it is for (who gave it, a Flow's run_as). A task with nobody (no approver, assigned_by or requested_for) starts nothing, and no wake is claimed: the host marks it stuck
+        if (!i.approver && K) throw Object.assign(new Error(noPerson("Give the task again from your own signed-in Vyre, so it runs for you.")), { code: "denied" });
         const task = String(i.task);
         const claim = db.prepare("INSERT OR IGNORE INTO agents_wakes (task, agent, at) VALUES (?,?,?)").run(task, a.name, Date.now());
         // a retry: a wake that failed may be claimed again, once

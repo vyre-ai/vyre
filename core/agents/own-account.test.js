@@ -22,6 +22,12 @@ const ACCOUNTS = pathToFileURL(path.join(path.dirname(new URL(import.meta.url).p
 const THREADS = `export default { async start(ctx) {
   ctx.tool("threads.launch", { internal: true, run: async i => { (globalThis.__launched ||= []).push(i); return { id: "job" + globalThis.__launched.length }; } });
   ctx.tool("threads.get", { effect: "read", run: async () => ({ thread: null }) });
+  ctx.tool("threads.send", { run: async i => ({ sent: true, thread: i.thread }) });
+  return {};
+} };`;
+// The onboarding module's one call this test needs: the greeting it sends when the owner finishes onboarding, relayed as the person on the call (core/onboard meet()).
+const ONBOARD = `export default { async start(ctx) {
+  ctx.tool("onboard.greet", { run: async () => { const r = await ctx.call("agents.ask", { agent: "ava", text: "Say hello.", wait: false, surface: "onboard" }, { relay: true }); if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r.data; } });
   return {};
 } };`;
 const PROJECTS = `export default { async start(ctx) {
@@ -43,18 +49,20 @@ export default { async start(ctx) {
   return {};
 } };`;
 
-async function world(/** @type {any} */ t) {
+async function world(/** @type {any} */ t, { greeter = false } = {}) {
   const home = tempHome(t);
   const root = path.join(home, "mods");
-  writeModule(root, "threads", { roles: ["box", "local"], does: { tools: ["threads.launch", "threads.get"] } }, THREADS);
+  writeModule(root, "threads", { roles: ["box", "local"], does: { tools: ["threads.launch", "threads.get", "threads.send"] } }, THREADS);
+  if (greeter) writeModule(root, "onboard", { roles: ["box", "local"], does: { tools: ["onboard.greet"] } }, ONBOARD);
   writeModule(root, "projects", { roles: ["box", "local"], does: { tools: ["projects.list"] } }, PROJECTS);
   writeModule(root, "assistant", { roles: ["box", "local"], does: { tools: ["assistant.capabilities"] } }, ASSISTANT);
   writeModule(root, "sessions", { roles: ["box", "local"], does: { tools: ["sessions.accounts.resolve"] } }, SESSIONS);
   const k = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 6) });
   const db = open(path.join(home, "vyre.db"));
-  const reg = new Registry({ db, events: new Events(db), config: { role: "local" }, paths: { root: home }, log: () => {}, kernelFor: k.kernelFor });
+  // the greeter stand-in sits where Vyre's own onboard module would: first party, so the registry's relay list applies to it
+  const reg = new Registry({ db, events: new Events(db), config: { role: "local" }, paths: { root: home }, log: () => {}, kernelFor: k.kernelFor, ...(greeter ? { firstPartyRoots: [root] } : {}) });
   const core = discover([path.join(path.dirname(new URL(import.meta.url).pathname), "..")]).filter(f => f.manifest?.name === "agents");
-  await reg.start([...core, ...discover([root])], { role: "local" });
+  await reg.start([...core, ...discover([root], greeter ? { firstPartyRoots: [root] } : {})], { role: "local" });
   t.after(async () => { await reg.stop?.(); db.close(); delete /** @type {any} */ (globalThis).__launched; delete /** @type {any} */ (globalThis).__accounts; });
   const call = (/** @type {string} */ tool, /** @type {any} */ input = {}, caller = "local") => reg.call(tool, input, caller);
   const made = await call("agents.create", { name: "juno", kind: "agent", projects: [] });
@@ -66,7 +74,7 @@ async function world(/** @type {any} */ t) {
   let n = 0;
   const wake = (/** @type {string | undefined} */ approver) => call("agents.wake", { task: `t${++n}`, agent: "juno", title: "Refund R-9", ...(approver ? { approver } : {}) }, "module:vyred");
   const job = (/** @type {string | undefined} */ person) => call("agents.job", { agent: "juno", prompt: "Draft the digest", ...(person ? { person } : {}) }, "module:planner");
-  return { call, accounts, home0, last, count, wake, job, db };
+  return { call, reg, accounts, home0, last, count, wake, job, db };
 }
 const NONE = /Connect your own AI account in Settings, AI accounts, to use juno\./;
 
@@ -99,15 +107,19 @@ test("a member with no AI account of her own is refused for a task wake in plain
   assert.equal(w.count(), before);
 });
 
-test("the owner's task wake and a wake for nobody run as before: the owner's own (the agent's or the home's), no member account named", async t => {
+test("the owner's task wake runs as before, on the owner's own (the agent's or the home's); a wake for nobody starts nothing", async t => {
   const w = await world(t);
   await w.accounts.add({ provider: "claude", label: "Ana's Claude", kind: "login", person: ANA });
   assert.equal((await w.wake(OWNER)).error, undefined);
   assert.equal(w.last().account, undefined, "the owner's run names no member's account");
   assert.equal(w.last().run_as, OWNER);
-  assert.equal((await w.wake(undefined)).error, undefined);
-  assert.equal(w.last().account, undefined);
-  assert.equal(w.last().for_person, undefined);
+  // Rule 2: a task with nobody it is for starts no job, on anyone's account
+  const before = w.count();
+  const none = await w.wake(undefined);
+  assert.equal(none.error && none.error.code, "denied", JSON.stringify(none));
+  assert.match(none.error.message, /No person asked for this, so no agent was started\./);
+  assert.equal(w.count(), before, "NEGATIVE: nothing was launched");
+  assert.equal(w.db.prepare("SELECT COUNT(*) n FROM agents_wakes WHERE task = 't2'").get().n, 0, "and no wake was claimed");
 });
 
 test("a member with only Codex, or only an API key, runs agents on it", async t => {
@@ -235,4 +247,23 @@ test("Rule 2: a call whose chain is only the home's own services starts no agent
   assert.equal(up.error, undefined, JSON.stringify(up.error));
   assert.equal(w.db.prepare("SELECT by FROM agents_versions WHERE agent = 'kit' ORDER BY n DESC").get().by, OWNER);
   assert.equal(w.count(), before, "and none of it started a thread");
+});
+
+test("Rule 2: the onboarding greeting is asked as the owner who finishes onboarding (relayed), and the same call with no person proved is refused", async t => {
+  const w = await world(t, { greeter: true });
+  assert.equal((await w.call("agents.create", { name: "ava", kind: "assistant" })).error, undefined);
+  const before = w.count();
+  // no person proved on the call: nothing to relay, so the greeting names nobody and starts nothing
+  const nobody = await w.reg.call("onboard.greet", {}, "local");
+  assert.ok(nobody.error, JSON.stringify(nobody));
+  assert.match(nobody.error.message, /No person asked for this, so no agent was started\./);
+  assert.equal(w.count(), before, "NEGATIVE: no agent was started");
+  // the owner finishing onboarding: the greeting runs for the owner, on the owner's own (the assistant's or the home's), never as the module
+  const owner = { kernelFacts: { kind: "device", device_key_id: "d-owner", person: OWNER, path: "direct", session: "s-owner" } };
+  const greeted = await w.reg.call("onboard.greet", {}, "local", owner);
+  assert.equal(greeted.error, undefined, JSON.stringify(greeted.error));
+  assert.equal(w.count(), before + 1, "one thread, the greeting");
+  assert.equal(w.last().agent, "ava");
+  assert.equal(w.last().for_person, OWNER, "asked as the owner");
+  assert.equal(w.last().account, undefined, "on the owner's own, no member account named");
 });

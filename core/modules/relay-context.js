@@ -8,7 +8,8 @@ export const FIRST_RUN_RELAY = Object.freeze({
   mentions: ["vault.mention.search", "vault.mention.resolve"],
   identity: ["spaces.identity.create", "vault.master.install", "spaces.identity.self", "spaces.identity.device", "spaces.identity.published-key"], // identity.create claims the name; vault.master.install installs the held key
   // First-run and pair-install run on the person's surface: they relay the caller to identity, spaces, wink, vault and devices tools.
-  onboard: ["spaces.list", "spaces.invites.", "identity.", "wink.install.", "vault.space.create", "spaces.publish-server-space", "vault.put", "vault.", "link.", "relay.", "sessions.accounts.", "onboard."],
+  // agents.ask: the assistant's first greeting when the owner finishes onboarding, asked as that person (Rule 2: no person, no agent work), never as the module
+  onboard: ["spaces.list", "spaces.invites.", "identity.", "wink.install.", "vault.space.create", "spaces.publish-server-space", "vault.put", "vault.", "link.", "relay.", "sessions.accounts.", "onboard.", "agents.ask"],
 });
 
 /**
