@@ -582,6 +582,7 @@ export const READ_TOOLS = [
  "vault.state",
  "vault.sweep",
  "vault.tagged",
+ "vault.templates",
  "vault.use.find",
  "vault.used-by",
  "vault.uses",

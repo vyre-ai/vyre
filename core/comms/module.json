@@ -74,7 +74,11 @@
         "id": "sending",
         "kind": "env-set",
         "provider": "sending-service",
-        "purpose": "Send your Flows' email through your own sending service (Resend, Mailgun, Postmark, SendGrid or SMTP)"
+        "purpose": "Send your Flows' email through your own sending service (Resend, Mailgun, Postmark, SendGrid or SMTP)",
+        "test": {
+          "tool": "comms.service.test",
+          "asks": "email"
+        }
       }
     ]
   },

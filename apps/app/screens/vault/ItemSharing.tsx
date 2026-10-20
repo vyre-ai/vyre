@@ -1,4 +1,4 @@
-// "Who has it" for one item of the Space's vault: the people, groups and agents that hold it, each at Fill in, Read or Edit and rotate, and the Share sheet to add more. It asks the box for the shares
+// "Who has it" for one item of the Space's vault: the people, groups and agents that hold it, each at Can use it, Can see it or Can change it, and the Share sheet to add more. It asks the box for the shares
 // when the item is opened and writes each change at once (vault.access.set); the kernel decides, and a refusal comes back as words.
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
@@ -13,7 +13,7 @@ import { nameOf } from "./share-model.js";
 const EMPTY: Directory = { people: [], groups: [], agents: [] };
 
 export type Api = NonNullable<VaultData["sharing"]>;
-/** `api` is the Space's sharing of an item, or (connection) a member's own app connection, which is shared at Fill in only. */
+/** `api` is the Space's sharing of an item, or (connection) a member's own app connection, which is shared at Can use it only. */
 export function ItemSharing({ api: sharing, item, connection }: { api: Api; item: VItem; connection?: boolean }) {
   const [state, setState] = useState<{ shares: Share[]; dir: Directory; me: string | null; levels?: Level[] } | null>(null);
   const [err, setErr] = useState("");

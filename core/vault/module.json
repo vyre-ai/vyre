@@ -189,6 +189,8 @@
       { "name": "vault.uses", "effect": "read", "reach": "person" },
       { "name": "vault.need", "effect": "read", "reach": "person" },
       { "name": "vault.connect", "effect": "write", "reach": "person" },
+      { "name": "vault.templates", "effect": "read", "reach": "person" },
+      { "name": "vault.template.suggest", "effect": "write", "reach": "person" },
       { "name": "vault.connections.list", "effect": "read", "reach": "anyone" },
       { "name": "vault.connections.get", "reach": "modules" },
       { "name": "vault.connections.grant", "effect": "write", "reach": "person" },

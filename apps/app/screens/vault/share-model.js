@@ -1,10 +1,10 @@
-// share-model: the rules of the Vault's share sheet, without a screen (the owner's words: Fill in, Read, Edit and rotate). Which levels each grantee may hold, which agents a member may offer, what is left
+// share-model: the rules of the Vault's share sheet, without a screen (the product map's words: Can use it, without seeing it; Can see it; Can change it). Which levels each grantee may hold, which agents a member may offer, what is left
 // to add, and the plain notes. The kernel decides what is allowed (kernel/seal/uses.js); this only keeps the screen from offering what the kernel would refuse.
 
-/** The kernel's levels, in order, with the owner's words. use is Fill in, reveal is Read, edit is Edit and rotate. */
-export const LEVELS = /** @type {const} */ ([["use", "Fill in"], ["reveal", "Read"], ["edit", "Edit and rotate"]]);
+/** The kernel's levels, in order, in the product map's words (20 Oct 2026). use: it is used for them; reveal: they can see it; edit: they can also change and rotate it. */
+export const LEVELS = /** @type {const} */ ([["use", "Can use it, without seeing it"], ["reveal", "Can see it"], ["edit", "Can change it"]]);
 export const levelWord = (/** @type {string} */ l) => (LEVELS.find(x => x[0] === l) || [l, l])[1];
-export const LEVEL_HELP = { use: "Uses it, never sees it", reveal: "Also sees the value, and can copy it", edit: "Also changes it, rotates the key" };
+export const LEVEL_HELP = { use: "It is used for them. They never see it", reveal: "They can also see the value and copy it", edit: "They can also change it and rotate the key" };
 
 /** The levels one grantee may hold. An agent, and anyone on an app connection, only Fill in. @param {"person"|"group"|"agent"} kind @param {{ connection?: boolean, levels?: string[] }} [o] */
 export function allowedLevels(kind, { connection = false, levels } = {}) {
@@ -54,7 +54,7 @@ const cap = (/** @type {string} */ s) => s.charAt(0).toUpperCase() + s.slice(1);
 /** The note on an app connection: which agents hold it, and what still waits. @param {string} app @param {any[]} shares @param {any[]} agents */
 export function connectionNote(app, shares, agents) {
   const names = shares.map(s => agents.find(a => a.id === s.id)).filter(Boolean).map(a => a.name);
-  return `${names.length ? joinNames(names) : "An agent you share it with"} can act in ${app} as you, and only fill in. Anything that sends or changes data still waits for your yes.`;
+  return `${names.length ? joinNames(names) : "An agent you share it with"} can act in ${app} as you, and only use it, without seeing it. Anything that sends or changes data still waits for your yes.`;
 }
 
 const plural = (/** @type {number} */ n, /** @type {string} */ w) => `${n} ${w}`;

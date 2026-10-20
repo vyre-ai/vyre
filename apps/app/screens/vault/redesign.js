@@ -1,4 +1,5 @@
-// The Vault screen's rules as pure functions: which group an item sits in, its health, the top summary, and the sharing levels (Can use / Can edit, the same words as flows and agents).
+// The Vault screen's rules as pure functions: which group an item sits in, its health, the top summary, and the sharing levels (Can use it, without seeing it / Can see it / Can change it).
+import { searchItems } from "./env-model.js";
 
 /** How long a revealed value stays up. A person clicks Reveal; there is no Touch ID for now, and an assistant never sees a value. */
 export const REVEAL_MS = 60_000;
@@ -9,9 +10,15 @@ export const CLIPBOARD_MS = 30_000;
 export const GROUPS = /** @type {const} */ (["Apps you connected", "AI models", "Email and sending", "Phone and texts", "Google and Microsoft", "Code and hosting", "Messaging", "Logins", "SSH keys", "Secure notes", "Any API key"]);
 
 /** Sharing levels. "use" lets an agent or flow use the item without seeing it; "edit" also lets the person change it. */
-export const LEVELS = /** @type {const} */ ({ use: { label: "Can use", help: "Uses it without seeing the value." }, edit: { label: "Can edit", help: "Can also change or replace it." } });
+export const LEVELS = /** @type {const} */ ({ use: { label: "Can use it, without seeing it", help: "Uses it without seeing the value." }, edit: { label: "Can change it", help: "Can also see, change or replace it." } });
 
-/** @typedef {{ id: string, sp: string, group: string, kind?: string, sharedWithMe?: boolean, name: string, detail: string, sites?: string[], secret: string, daysLeft?: number | null, lastUsedDays?: number | null, usedBy: { kind: 'flow'|'agent'|'connection'|'project', name: string }[], shared: { who: string, level: 'use'|'edit' }[] }} VItem */
+/**
+ * One item as the Vault shows it. `fields` are its field names (never a value), each plain or secret; `folder` is its Shared folder (a named vault); `can` is what a member may do
+ * with an item shared with her (use, reveal, edit); `values` is the sample world's own made-up values.
+ * @typedef {{ id: string, sp: string, group: string, kind?: string, sharedWithMe?: boolean, name: string, detail: string, sites?: string[], secret: string, daysLeft?: number | null,
+ *   lastUsedDays?: number | null, usedBy: { kind: 'flow'|'agent'|'connection'|'project', name: string }[], shared: { who: string, level: 'use'|'edit' }[],
+ *   fields?: { name: string, plain: boolean }[], folder?: { id: string, name: string } | null, provider?: string, can?: string[], url?: string, hosts?: string[], values?: Record<string, string> }} VItem
+ */
 
 /** @param {VItem} v @returns {'expiring'|'expired'|'unused'|'ok'} */
 export function healthOf(v) {
@@ -32,13 +39,17 @@ export function summaryOf(items) {
   return { ...n, line: `${n.total} ${n.total === 1 ? "item" : "items"}${bits.length ? ": " + bits.join(", ") : ", all healthy"}` };
 }
 
-/** Items shown under a scope ("space" or "mine") and a search, as the GroupedList wants them: each carries its `group`. @param {VItem[]} items @param {'space'|'mine'} scope @param {string} q */
+/** Items shown under a scope ("mine", or "shared") and a search, as the GroupedList wants them: each carries its `group`. @param {VItem[]} items @param {'shared'|'space'|'mine'} scope @param {string} q */
 export function visible(items, scope, q = "", nav = ALL) {
   const f = q.trim().toLowerCase();
-  return items.filter((v) => (scope === "mine" ? v.sp === "mine" : v.sp !== "mine") && inNav(v, nav) && (!f || v.name.toLowerCase().includes(f) || v.detail.toLowerCase().includes(f) || v.group.toLowerCase().includes(f)));
+  const inScope = items.filter((v) => (scope === "mine" ? v.sp === "mine" : v.sp !== "mine") && inNav(v, nav));
+  if (!f) return inScope;
+  // a field's name finds its item too (typing LOCATION_ID finds GHL Sales): env-model.js searchItems compares names in their one form
+  const byField = new Set(searchItems(inScope.map((v) => ({ id: v.id, name: v.name, fields: v.fields ?? [] })), q).map((x) => x.id));
+  return inScope.filter((v) => byField.has(v.id) || v.detail.toLowerCase().includes(f) || v.group.toLowerCase().includes(f));
 }
 
-/** What the sidebar panel can pick: everything, one group, what needs a look ("Expiring": expiring or expired), or what others shared in ("Shared with me"). @typedef {{ kind: 'all' } | { kind: 'group', group: string } | { kind: 'expiring' } | { kind: 'shared' }} Nav */
+/** What the sidebar panel can pick: everything, one group, what needs a look ("Expiring": expiring or expired), what others shared in ("Shared with me"), or one Shared folder. @typedef {{ kind: 'all' } | { kind: 'group', group: string } | { kind: 'expiring' } | { kind: 'shared' } | { kind: 'folder', folder: string }} Nav */
 /** @type {Nav} */
 export const ALL = { kind: "all" };
 
@@ -47,6 +58,7 @@ export function inNav(v, nav) {
   if (nav.kind === "group") return v.group === nav.group;
   if (nav.kind === "expiring") { const h = healthOf(v); return h === "expiring" || h === "expired"; }
   if (nav.kind === "shared") return Boolean(v.sharedWithMe);
+  if (nav.kind === "folder") return (v.folder?.name ?? "") === nav.folder;
   return true;
 }
 
@@ -54,12 +66,14 @@ export function inNav(v, nav) {
 export function navCounts(items) {
   /** @type {Record<string, number>} */ const groups = {};
   for (const g of GROUPS) groups[g] = items.filter((v) => v.group === g).length;
-  return { all: items.length, groups, expiring: items.filter((v) => inNav(v, { kind: "expiring" })).length, shared: items.filter((v) => v.sharedWithMe).length };
+  /** @type {Record<string, number>} */ const folders = {};
+  for (const v of items) if (v.folder) folders[v.folder.name] = (folders[v.folder.name] ?? 0) + 1;
+  return { all: items.length, groups, folders, expiring: items.filter((v) => inNav(v, { kind: "expiring" })).length, shared: items.filter((v) => v.sharedWithMe).length };
 }
 
 /** The words for an empty page under a panel pick. @param {Nav} nav */
 export function navEmpty(nav) {
-  return nav.kind === "group" ? `Nothing in ${nav.group} yet.` : nav.kind === "expiring" ? "Nothing is expiring." : nav.kind === "shared" ? "Nobody has shared an item with you." : "";
+  return nav.kind === "group" ? `Nothing in ${nav.group} yet.` : nav.kind === "folder" ? `Nothing in ${nav.folder} yet.` : nav.kind === "expiring" ? "Nothing is expiring." : nav.kind === "shared" ? "Nobody has shared an item with you." : "";
 }
 
 /** The groups that have items, in order (the list shows no empty group). @param {VItem[]} items */

@@ -99,6 +99,7 @@ test("D. one approval path: what waits on the person is ONE list (approvals.item
     "core/mail/index.js": "mail finds its own held sends",
     "core/modules/relay-allowed.js": "the relay list of tool names a module may ask as the person; nothing reads a list", "core/work/threads.js": "counts, per thread, what the Gate holds for this person (the Gate filters to what they may handle); no draft, recipient or summary is read",
     "core/modules/door-lists.js": "the door gate's lists of tool names; nothing reads a list",
+    "apps/app/src/real/read-tools.generated.js": "the chat's generated list of read-only tool names; nothing reads a list",
     "apps/app/src/state/live.ts": "the app's Now list: moves onto approvals.items in work/approvals-app-031 (waits on B)", "apps/app/src/state/needs-model.ts": "same, and it names the gate.held and ask.* events",
     "apps/app/screens/vault/more-source.ts": "the vault screen's own pending list",
   };

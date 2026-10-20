@@ -85,7 +85,9 @@ test("presence: every value-out or access-giving tool declares it, with a summar
     // A space item is placed on an outbound request while nobody is unlocked. The response comes back with the value redacted, the same shape as vault.request.
     "vault.space.use",
     // Items by placeholder (use.js): vault.use.find gives names, field names and plain values, never a secret; vault.use.env answers an agent session's vault run, sealed to the run's own key, only for items the person marked Allowed in scripts (that setting, vault.use.set, asks for presence).
-    "vault.use.find", "vault.use.env"]);
+    "vault.use.find", "vault.use.env",
+    // The Add sheet's app templates (tools/templates.js): field names and help lines for an app typed by name, never a value; the person's own view (reach: person). Nothing is shown or given out.
+    "vault.templates", "vault.template.suggest"]);
   // Internal tools (vault.release, vault.master.install, …): modules-only plumbing, no presence card.
   for (const n of tools.keys()) {
     const def = tools.get(n);

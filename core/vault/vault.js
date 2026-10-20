@@ -35,9 +35,9 @@ import { isAsker, requestCap } from "./asker.js";
 import { normalize as normalizeApiCredential } from "./api-request.js";
 import { parseFile as parseImport, plan as planImport } from "./import.js";
 import { REMIND_MIGRATION } from "./remind.js";
-import { KINDS, PERSONAL_KINDS, defaultField, checkFields, cleanDetails, derivedDetails } from "../../lib/vault-kinds/kinds.js";
+import { KINDS, PERSONAL_KINDS, defaultField, checkFields, cleanDetails, derivedDetails } from "../../lib/vault-kinds/kinds.js"; import { fieldIn } from "../../lib/env-name.js";
 import { findEnvFiles, readEnv, rewriteEnv, isEnvName, gitState } from "./envfiles.js";
-import { FILL_MIGRATION, FILL_KEY_MIGRATION } from "./fill.js";
+import { FILL_MIGRATION, FILL_KEY_MIGRATION } from "./fill.js"; import { lentToAgent } from "./lent.js";
 import { totp } from "./totp.js";
 import { generate } from "./generate.js";
 import { Share, SHARE_MIGRATIONS, MEMBER_MIGRATIONS } from "./share.js";
@@ -1398,7 +1398,7 @@ export class Vault {
         name: r.name, kind: r.kind, description: r.description, fields: json(r.fields, []),
         ...(r.url ? { url: r.url } : {}), hosts: json(r.hosts, []), rotate: Boolean(r.rotate), ...(r.rotate ? { why: r.rotate } : {}),
         ...(r.origin ? { origin: r.origin } : {}), updated: r.updated, vault: r.vault || AGENTS,
-        ...(r.details && r.details !== "{}" ? { details: json(r.details, {}) } : {}),
+        ...(r.details && r.details !== "{}" ? { details: json(r.details, {}) } : {}), ...(r.named ? { folder: String(r.named) } : {}),
         grants: grants.filter(g => g.item === r.name).map(g => ({ module: g.module, ...(g.watcher ? { watcher: g.watcher } : {}), ...(g.project ? { project: g.project } : {}) })),
       }));
     const personal = this.hasAccount() ? (this.pvk ? "unlocked" : "locked") : "none";
@@ -1501,16 +1501,6 @@ export class Vault {
   granted({ name, module, watcher = "", project }) { return this.releases.allowed({ name, module, watcher, project }); }
 
   /**
-   * An agent's own watcher (core/watchers, owner kind agent) uses what is lent to its agent, with no grant of its own: the item must be one the agent may read
-   * right now by its standing kernel grant (never a lease held to a conversation). Only the watchers module asks, for a named watcher.
-   * @param {string} name @param {string} module @param {string} watcher @param {string} agent
-   */
-  async lentToAgent(name, module, watcher, agent) {
-    if (module !== "watchers" || !watcher || !agent || !this.access || typeof this.access.effectFor !== "function") return false;
-    return (await this.access.effectFor(String(agent), String(name), "vault.read")) === "allow";
-  }
-
-  /**
    * Hand one value to one module. The grant is the boundary: the loader's needs.vault check is
    * only a courtesy, since a module could reach this tool through ctx.call directly.
    */
@@ -1527,9 +1517,8 @@ export class Vault {
     if (!mod) { this.audit("release", name, who, false, "not a module"); throw new Error("only modules may ask the vault for a value"); }
     await this.key();
     // Publish asks for a deployment, and a deployment holds its secret as its own kernel grant: that grant, and not a grant to the module, is what lets the value out (R032-11).
-    const g = mod === "publish" ? Boolean(deployment && this.access && this.access.deploymentMay(String(name), String(deployment))) : this.granted({ name, module: mod, watcher, project }) || (await this.lentToAgent(name, mod, watcher, agent));
-    if (!g) {
-      this.audit("release", name, who, false, "no grant");
+    const g = mod === "publish" ? Boolean(deployment && this.access && this.access.deploymentMay(String(name), String(deployment))) : this.granted({ name, module: mod, watcher, project }) || (await lentToAgent(this, name, mod, watcher, agent));
+    if (!g) { this.audit("release", name, who, false, "no grant");
       if (mod === "watchers" && watcher && agent) throw new Error(`Needs access to ${name}: let ${agent} use it in the Vault (Can use it, without seeing it)`);
       throw new Error(mod === "publish" ? `${name} is not granted to this deployment · give it from the deployment's secrets` : `${name} is not granted to ${watcher ? `${mod}/${watcher}` : mod} · vyre vault grant ${name} ${mod}${watcher ? ` --watcher ${watcher}` : ""}`);
     }
@@ -1539,7 +1528,7 @@ export class Vault {
     if (r.kind === "passkey") { this.audit("release", name, who, false, "passkey"); throw new Error(`${name} is a passkey; it signs inside the vault and is never handed out`); }
     if (r.kind === "api-credential") { this.audit("release", name, who, false, "api-credential"); throw new Error(`${name} is an api-credential; it is used only by vault.request and is never handed out`); }
     const f = await this.fields(r);
-    const want = field || defaultField(r.kind, json(r.fields, []));
+    const want = fieldIn(Object.keys(f), field || defaultField(r.kind, json(r.fields, [])) || "");   // a field is named case-insensitively (lib/env-name.js): ghl_api_key finds GHL_API_KEY
     if (!want) { this.audit("release", name, who, false, "no field named"); throw new Error(`${name} is ${r.kind === "env-set" ? "an env-set" : `a ${r.kind}`}; name the field you want`); }
     if (!(want in f)) { this.audit("release", name, who, false, `no field ${want}`); throw new Error(`${name} has no field ${want}`); }
     this.audit("release", name, who, true, field ? `field ${field}` : null);
@@ -1559,7 +1548,7 @@ export class Vault {
       const f = await this.fields(r);
       if (r.kind === "env-set" && !it.field) Object.assign(env, f);
       else {
-        const want = it.field || defaultField(r.kind, json(r.fields, []));
+        const want = fieldIn(Object.keys(f), it.field || defaultField(r.kind, json(r.fields, [])) || "");
         if (!want || !(want in f)) throw new Error(`${it.name} has no field ${want || "(name one)"}`);
         env[it.env || envName(it.name)] = f[want];
       }

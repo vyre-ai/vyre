@@ -24,6 +24,7 @@ import { isPerson } from "../../lib/caller.js";
 import { vaultFieldIsSecret } from "../../lib/secret-schema.js";
 import { SPEC } from "../../lib/vault-kinds/kinds.js";
 import { isAsker, requestCap } from "./asker.js";
+import { canon } from "../../lib/env-name.js";
 import { sealFor } from "./crypto.js";
 import { presence, quoted } from "./tools/presence.js";
 import { checkTarget, classify, presetFor, parseFields, summarize, approvalHash, buildUrl, checkQuery, SHARED_SUFFIXES } from "./api-request.js";
@@ -61,7 +62,7 @@ const bad = (/** @type {string} */ msg, code = "bad_input") => Object.assign(new
 const printable = (/** @type {any} */ s, /** @type {number} */ n) => String(s).replace(/[^\x20-\x7e]/g, "?").slice(0, n);
 
 /** A name as the Vault compares it: upper case, every run of other characters one underscore. "Northwind CRM" and northwind-crm are both NORTHWIND_CRM. @param {unknown} s */
-export const canon = s => String(s ?? "").trim().toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+export { canon };
 
 /** A host that is really an address. A secret goes to a named host only. @param {string} h */
 const isAddress = h => net.isIP(h.replace(/^\[|\]$/g, "")) !== 0 || h.includes(":") || /^(0x[0-9a-f]+|\d+)$/i.test(h.split(".").pop() || "");

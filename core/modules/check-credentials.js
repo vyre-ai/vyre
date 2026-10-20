@@ -24,6 +24,9 @@ export function checkCredentials(list) {
     // multiple: one item per account, named <module>-<label> when the person connects it.
     if (c.multiple !== undefined && typeof c.multiple !== "boolean") out.push(`${at}.multiple must be true or false`);
     if (c.multiple === true && c.item !== undefined) out.push(`${at}.item cannot be set with multiple: each item is named <module>-<label>`);
+    // test: the module's own tool that proves a filled need works (the Vault's "Test it"), and what it asks the person first (an email address to send a test to).
+    if (c.test !== undefined && (!c.test || typeof c.test !== "object" || typeof c.test.tool !== "string" || !/^[a-z][a-z0-9-]*(\.[a-z0-9-]+)+$/.test(c.test.tool) || (c.test.asks !== undefined && c.test.asks !== "email")))
+      out.push(`${at}.test must be { tool: "<module>.<name>", asks?: "email" }`);
   }
   return out;
 }
