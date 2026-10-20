@@ -85,8 +85,8 @@ export function UiShell({ children }: { children: React.ReactNode }) {
       if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return;
       if (e.key === ",") { e.preventDefault(); router.push("/u/spaces" as never); return; }
       if (e.key.toLowerCase() === "l" && !allowsMock()) { e.preventDefault(); void lockIdentity().then((r: { ok: boolean; message?: string }) => { if (r.ok) lockChanged(); else showToast(r.message ?? "That did not go through."); }); return; }
-      // inside Chat, Cmd N opens the New menu (ChatsSidebar), which starts a thread with anyone
-      if (e.key.toLowerCase() === "n" && !/^\/u\/chats/.test(window.location.pathname)) { e.preventDefault(); router.push("/u/chats/new-thread" as never); return; }
+      // Cmd N is a new chat with your assistant, in every place
+      if (e.key.toLowerCase() === "n") { e.preventDefault(); router.push("/u/chats/new-thread" as never); return; }
       if (e.key.toLowerCase() === "b" && arranged.bottom.some((b) => b.id === "build")) { e.preventDefault(); router.push("/u/playbooks" as never); return; }
       // Cmd 1 to Cmd 9 pick the Space in that place of the footer menu
       const to = spaceForKey(DATA.spaces, e.key);

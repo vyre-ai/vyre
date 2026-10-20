@@ -296,6 +296,7 @@ function PhoneShell(p: ShellProps) {
         {tabs.map((it) => <Tab key={it.id} it={it} on={cur === it.id} onPress={() => p.onNavigate(it.href)} />)}
         <Tab it={{ id: "more", label: "More", icon: "more", href: "" }} on={inMore || more} onPress={() => setMore(true)} />
       </View>
+      <PhoneWho />
       <Sheet open={more} onClose={() => setMore(false)} title="More">
         <View>
           {rest.map((it) => (
@@ -324,12 +325,24 @@ export function Shell(p: ShellProps) {
   );
 }
 
+/** On a phone there is no right pane: whoever was opened (a long press on a face) comes up as a sheet. */
+function PhoneWho() {
+  const who = useWho((s) => s.who);
+  const Pane = useWho((s) => s.Pane);
+  return (
+    <Sheet open={Boolean(who && Pane)} onClose={closeWho} title="Details">
+      {who && Pane ? <Pane kind={who.kind} id={who.id} onClose={closeWho} /> : null}
+    </Sheet>
+  );
+}
+
 /** The right pane: whoever was opened (a chat's title, a right-click on an avatar or a row), beside the main view. Its width is the person's, kept per computer, with the same handle as the sidebar; Escape and the close button shut it, Cmd Option B toggles it. */
 function SidePane() {
   const { color } = useUiTheme();
   const who = useWho((s) => s.who);
   const Pane = useWho((s) => s.Pane);
   const toggle = useWho((s) => s.toggle);
+  const last = useWho((s) => s.last);
   const w = useStoredWidth("who-pane", RAIL.panelWidth, RAIL.panelMin, RAIL.panelMax);
   useEffect(() => {
     if (Platform.OS !== "web" || typeof window === "undefined") return;
@@ -341,7 +354,15 @@ function SidePane() {
     window.addEventListener("keydown", on);
     return () => window.removeEventListener("keydown", on);
   }, [toggle]);
-  if (!who) return null;
+  if (!who) return last ? (
+    <View style={{ position: "absolute", top: 12, right: 12, zIndex: 5 }}>
+      <Tip label="Show details" hint="Cmd Option B">
+        <Pressable accessibilityRole="button" accessibilityLabel="Show details" onPress={toggle} style={({ hovered, focused }: any) => [{ width: 32, height: 32, borderRadius: RAIL.rowRadius, alignItems: "center", justifyContent: "center", backgroundColor: hovered || focused ? color.hover : "transparent" } as any]}>
+          <Icon name="info" tone="text-2" size={RAIL.iconSize} />
+        </Pressable>
+      </Tip>
+    </View>
+  ) : null;
   return (
     <View role="complementary" accessibilityLabel="Details" style={{ width: w.width, flexShrink: 0, flexGrow: 0, borderLeftWidth: 1, borderColor: color.edge, backgroundColor: color.bg }}>
       <View style={{ height: RAIL.topH, flexDirection: "row", alignItems: "center", justifyContent: "flex-end", paddingHorizontal: RAIL.gutter }}>

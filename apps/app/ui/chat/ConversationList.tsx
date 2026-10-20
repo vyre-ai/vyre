@@ -54,7 +54,7 @@ function ConvoRow({ c, selected, when, menu, onOpen }: { c: Convo; selected?: bo
           ...(focused ? { outlineStyle: "solid", outlineWidth: 2, outlineColor: color.primary, outlineOffset: -2 } : {}), ...ease } as any]}>
         {({ hovered, focused }: any) => (
           <>
-            <View style={{ width: 32, height: 32, alignItems: "center", justifyContent: "center" }}><Face c={c} /></View>
+            <Pressable accessible={false} delayLongPress={350} onLongPress={() => { const w = whoOf(c); if (w) openWho(w.kind, w.id); else if (menu && menu.length) setSheet(true); }} style={{ width: 32, height: 32, alignItems: "center", justifyContent: "center" }}><Face c={c} /></Pressable>
             <View style={{ flex: 1, minWidth: 0 }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8, height: 20 }}>
                 <Text medium numberOfLines={1} style={{ flex: 1, fontSize: RAIL.labelSize, lineHeight: RAIL.labelLine }}>{c.title}</Text>

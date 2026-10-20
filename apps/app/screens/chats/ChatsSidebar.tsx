@@ -94,13 +94,7 @@ export function ChatsSidebar() {
     if (c.chat) { router.push({ pathname: "/u/chats/[id]", params: { id: c.chat } }); return; }
     void startChat({ people: c.person ? [c.person] : [], agents: c.agent ? [c.agent] : [] }).then((x) => { if ("chat" in x) { void refresh(); router.push({ pathname: "/u/chats/[id]", params: { id: x.chat } }); } else showToast(x.say); }).catch(() => showToast("That did not go through."));
   };
-  // The New menu: To:, agents (each starts a thread), people, New group, New agent, New Flow. Cmd N opens it.
-  useEffect(() => {
-    if (typeof document === "undefined") return;
-    const onKey = (e: KeyboardEvent) => { if ((e.key === "n" || e.key === "N") && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) { e.preventDefault(); toggleCompose(); } };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, []);
+  // The New menu (the + button): To:, agents (each starts a thread), people, New group, New agent, New Flow. Cmd N is the shell's: a new chat with your assistant, everywhere.
   const byId = new Map(convos.map((c) => [c.id, c]));
   // every agent you can start a thread with, by its display name: your assistant first (its own chat), then the Space's agents
   const agentRows = newMenuAgents(convos);

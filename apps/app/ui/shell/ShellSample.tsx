@@ -6,6 +6,7 @@ import { SidebarRow } from "./SidebarRow";
 import { TILE_PALETTE } from "../marks/space-tile.js";
 import { Shell, type NavDef, type ShellSpace } from "./Shell";
 import { RAIL } from "./rail-tokens.js";
+import { useUiTheme } from "../theme";
 import type { PanelDef } from "./SidebarPanel";
 
 /** A small logo a person might upload, as a PNG data image (a navy square). */
@@ -48,11 +49,12 @@ const RECORDS: PanelDef = {
 
 /** The real Shell around a sample page, in the state asked for: main, folded, or a place's panel. folded-account and folded-space are the folded rail for the picture tests that press its face or its Space. */
 export function ShellSample({ state = "main", logo = true }: { state?: "main" | "folded" | "projects" | "records" | "projects-folded" | "folded-account" | "folded-space" | "menu"; logo?: boolean }) {
+  const { phone } = useUiTheme();
   const spaces = logo ? SPACES : SPACES.map((s) => ({ ...s, logo: null }));
   const panel = state === "projects" || state === "projects-folded" ? PROJECTS : state === "records" ? RECORDS : null;
   const current = panel ? (panel.id === "projects" ? "/u/project/p2" : "/u/records/contact") : "/u/projects";
   return (
-    <View style={{ width: 880, height: 700, overflow: "hidden", borderRadius: 16 }}>
+    <View style={{ width: phone ? "100%" : 880, height: 700, overflow: "hidden", borderRadius: 16 }}>
       <Shell {...NAV} panel={panel} folded={state === "folded" || state === "projects-folded" || state.startsWith("folded-")} onSearch={() => {}} current={current} onNavigate={() => {}} spaces={spaces} space="spc_juniperstudi" onSpace={() => {}} user={{ name: "Alex Morgan", sub: "alex.vyre.run" }}>
         <View style={{ padding: RAIL.contentPad, gap: 20 }}>
           <Text size="page" strong>Projects</Text>
