@@ -242,7 +242,7 @@ export async function serve(o) {
     // Checked again here, at the moment of starting, not only when the request came in.
     const w = s.watcher ? { who: s.watcher.who, why: null } : whoFor(s.req);
     if (!w.who) { try { s.control.end(JSON.stringify({ error: w.why }) + "\n"); } catch {} end(id, w.why || "refused"); return; }
-    const who = w.who;
+    let who = w.who;
     if (s.watcher) {
       // Its own fresh folder, made as that uid (root here has no right to write into one it does not own).
       env.HOME = who.home; env.TMPDIR = path.join(who.home, "tmp");
@@ -260,6 +260,12 @@ export async function serve(o) {
       if (o.makeDir) { try { o.makeDir(env.TMPDIR, who); } catch (e) { log(`spawner: cannot make ${env.TMPDIR}: ${/** @type {Error} */ (e).message}`); } }
     }
     const cwd = path.resolve(String(s.req.cwd || (s.watcher ? who.home : work)));
+    // A chat with no project works under the work folder's chats/, which is the work folder's group (core/stream/chat-folder.js: search-only parents, a keyed-hash name).
+    // With project groups an account joins only its projects' groups, so it could not enter its own chat's folder and every plain chat failed its confinement check.
+    // A session started there joins the work folder's group too, as that folder's design says every session does.
+    if (!s.watcher && who.account !== undefined && cwd.startsWith(path.join(work, "chats") + path.sep)) {
+      try { const g = fs.statSync(work).gid; if (!who.groups.includes(g)) who = { ...who, groups: [...who.groups, g] }; } catch { /* no work folder: the cd below says so */ }
+    }
     const argv = s.watcher ? (wl.wrap || watcherWrap)(s.req.argv, cwd, who) : wrap(s.req.argv, cwd, who);
     // A folder in the runner's home is made as that user, which owns that home (mkdir -p: root
     // here cannot even look inside it).
