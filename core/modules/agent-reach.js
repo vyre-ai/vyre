@@ -191,6 +191,7 @@ export const PERSON_ONLY = new Map([
   ["records.rollup.add", "adds a total to a Space's type: the person's own act, like records.define"],
   ["records.reveal", "reveals a sealed value: needs the person's Face ID"],
   ["records.forget", "forgets a record for good: the person's own act with their presence (an assistant proposes with records.forget.propose)"],
+  ["records.field.seal", "seals a field for every record of a type and scrubs the old values: cannot be undone, an owner's or admin's own act with their presence"],
   ["records.dev-seed", "a development-build seed for the walk, never an assistant's"],
   ["roles.create", "makes a role: the person's own act"],
   ["roles.update", "changes what a role gives to everyone who holds it: the person's own act"],

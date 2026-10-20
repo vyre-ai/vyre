@@ -1,43 +1,41 @@
 import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { routeFacts, sampleCall } from "./webhook-model.js";
+import { addressFacts, lastWords, curlSample, formSample, sizeWords } from "./webhook-model.js";
 
-const hooks = (o = {}) => ({ enabled: true, listening: true, routes: [{ name: "orders", scheme: "hmac-sha256", header: "x-signature", secret: "orders-hook" }], public: { available: true, base: "https://box.example" }, urls: { orders: "https://box.example/hooks/orders" }, ...o });
+const URL1 = "https://team.example/hooks/orders-" + "a".repeat(64);
+const hook = (o = {}) => ({ open: true, address: { path: "/hooks/orders-" + "a".repeat(64), url: URL1 }, why: null, last: null, check: null, ...o });
 
-test("a route reachable from the internet shows its address, header and Vault item", () => {
-  const f = routeFacts(hooks(), "orders");
-  assert.equal(f.url, "https://box.example/hooks/orders");
-  assert.equal(f.header, "x-signature");
-  assert.equal(f.secret, "orders-hook");
-  assert.equal(f.next, "none");
+test("an open address reachable from the internet is the one address to copy", () => {
+  assert.deepEqual(addressFacts(hook()), { state: "live", address: URL1, line: "" });
 });
 
-test("a route that cannot be reached says why, in plain words, and what to do", () => {
-  const off = routeFacts(hooks({ enabled: false, listening: false, public: { available: false, why: "x" }, urls: { orders: null } }), "orders");
-  assert.equal(off.next, "enable");
-  assert.match(off.line, /listener is off/);
-  const noAddr = routeFacts(hooks({ public: { available: false, why: "the box has no public address yet" }, urls: { orders: null } }), "orders");
-  assert.equal(noAddr.next, "wait");
-  assert.equal(noAddr.line, "the box has no public address yet");
-  assert.equal(routeFacts(hooks(), "nope").next, "open");
-  assert.equal(routeFacts(null, "x").next, "none");
+test("an address the internet cannot reach yet says why in one plain line, and shows no address", () => {
+  const f = addressFacts(hook({ address: { path: "/hooks/orders-x", url: null }, why: "The public address is not up yet. Senders on the internet reach it once the server has its public address." }));
+  assert.equal(f.state, "here");
+  assert.equal(f.address, "");
+  assert.match(f.line, /not up yet/);
+  assert.equal(addressFacts(hook({ open: false, address: null, why: null })).state, "off");
+  assert.match(addressFacts(hook({ open: false, address: null, why: null })).line, /Turn the Flow on/);
+  assert.equal(addressFacts(null).state, "none");
 });
 
-test("the sample call signs with the Vault item's value, which is never in the text", () => {
-  const c = sampleCall("https://box.example/hooks/orders", "hmac-sha256", "x-signature");
-  assert.match(c, /curl -X POST 'https:\/\/box.example\/hooks\/orders'/);
-  assert.match(c, /x-signature: \$\(printf/);
-  assert.match(c, /SECRET='<the value of the Vault item>'/);
-  assert.match(sampleCall("", "github", ""), /X-Hub-Signature-256: sha256=/);
-  assert.match(sampleCall("u", "stripe", ""), /Stripe CLI/);
+test("the last delivery is when, OK or refused and why, and its size; never more", () => {
+  assert.equal(lastWords(null), "Nothing has arrived yet.");
+  assert.equal(lastWords({ when: "Today 10:05", ok: true, bytes: 2048 }), "Today 10:05: OK. 2.0 KB.");
+  assert.equal(lastWords({ when: "Today 10:06", ok: false, why: "the token does not match", bytes: 210 }), "Today 10:06: refused, the token does not match. 210 bytes.");
+  assert.equal(lastWords({ ok: true, test: true, bytes: 70 }), "the test from Vyre, OK. 70 bytes.");
+  assert.equal(sizeWords(300 * 1024), "300 KB");
 });
 
-test("the webhook fields name the Vault item and offer to add it there", async () => {
+test("the samples post JSON or a form to the address, and need nothing else", () => {
+  assert.match(curlSample(URL1), /^curl -X POST 'https:\/\/team\.example\/hooks\/orders-a+' -H 'content-type: application\/json'/);
+  assert.match(formSample(URL1), /<form method="post" action="https:\/\/team\.example\/hooks\/orders-a+">/);
+});
+
+test("the trigger editor offers one address, Copy, Send a test, the last delivery and the signature check under Advanced", async () => {
   const fs = await import("node:fs");
   const src = fs.readFileSync(new URL("./WebhookFields.tsx", import.meta.url), "utf8");
-  assert.match(src, /Add the secret in the Vault/);
-  assert.match(src, /Reveal the secret/);
-  assert.match(src, /openVault/);
-  assert.doesNotMatch(src, /vault\.generate|secret_once/, "the editor never makes or shows a secret itself");
+  for (const words of ["Send a test", "Get a new address", "Advanced, verify a signature", "Last delivery"]) assert.ok(src.includes(words), words);
+  assert.doesNotMatch(src, /Open the route|Turn the listener on/, "no separate steps to open a route or turn the listener on");
 });

@@ -67,6 +67,8 @@ export type { MenuItem } from "./components/Menu";
 export { showToast, comingSoon, ToastHost } from "./components/Toast";
 export { Table } from "./components/Table";
 export { useVirtualRows } from "./lib/useVirtualRows";
+// Every popover drawn as a plain view closes on a press outside and on Esc (Menu has it from its primitive).
+export { usePopoverDismiss } from "./lib/useDismiss";
 export type { Column, TableProps } from "./components/Table";
 export { Board } from "./components/Board";
 export type { BoardColumn, BoardProps } from "./components/BoardStacked";
@@ -183,7 +185,7 @@ export { ActivityFeed } from "./records/ActivityFeed";
 export type { Activity } from "./records/ActivityFeed";
 export { ImportWizard, IMPORT_STEPS } from "./records/ImportWizard";
 export type { ImportIssue, DupeRule } from "./records/ImportWizard";
-export { groupRelated, viaOf, prefillFromLink, factsOf, createPayload, formErrors, formOrder, guessMapping, importIssues, importSummary, timelineOf } from "./records/logic.js";
+export { groupRelated, viaOf, prefillFromLink, factsOf, createPayload, formErrors, formOrder, guessMapping, importIssues, importSummary, timelineOf, isInternalField, isLockedField, personFields, taskRequestOf } from "./records/logic.js";
 export { FlowBuilder } from "./flows/FlowBuilder";
 export type { TriggerSources } from "./flows/trigger-sources";
 export { StepCard } from "./flows/StepCard";
@@ -211,6 +213,6 @@ export type { FileViewerProps } from "./files/FileViewer";
 export type { FileSource, FileBody, FileVersion, SaveResult } from "./files/source";
 export {
   SlashChips, LaterPlannerNote, laterWords, ChatForkPanel, BackgroundTasksCard, RewindSheet, SecondOpinionSheet, PanelCapabilityRows,
-  FEATURED_SLASHES, NATIVE_SLASHES, displayName, ConversationList, ConversationTypes, NewPopover, newMenuRows, ConversationHeader, NewAgentDialog, AgentLookPicker, lookSeed, lookOf, AgentComputerPane, computerOf, computerWords, computerActions, DOCK, convosFrom, convoChips, convosShown, convoKindWord, convoSections, CONVO_TYPES, agentLine, summaryLine, placeOf, PARTS, partsOf, withParts, setPart, rememberLook, lookFor,
+  FEATURED_SLASHES, NATIVE_SLASHES, displayName, ConversationList, ConversationTypes, NewPopover, newMenuRows, newMenuAgents, ConversationHeader, NewAgentDialog, AgentLookPicker, lookSeed, lookOf, AgentComputerPane, computerOf, computerProblem, computerWords, computerActions, DOCK, convosFrom, convoChips, convosShown, convoKindWord, convoSections, CONVO_TYPES, agentLine, summaryLine, placeOf, PARTS, partsOf, withParts, setPart, rememberLook, lookFor,
 } from "./chat";
 export type { LaterPlannerState, BackgroundTask, RewindPoint, OpinionTarget, PanelCapabilityRowsProps, Convo, ComputerView, NewAgentValues } from "./chat";

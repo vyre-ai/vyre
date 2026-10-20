@@ -67,7 +67,7 @@ test("group chat on a real daemon: @ lists the chat's members and agents, # list
   // the model the chat was made with is a slot, and the chip that switches it is named for it
   assert.equal(slotNames(got).length, 1, JSON.stringify(got.slots));
   const people = peopleFor({ actors, agents, viewer: me, here: members.filter((m) => m.id !== `person:${me}`).map((m) => ({ name: m.name, family: m.family })) });
-  assert.ok(people.some((p) => p.name === "kit" && p.family === "assistant"), `@ lists kit (the person's own assistant): ${JSON.stringify(people)}`);
+  assert.ok(people.some((p) => p.id === "kit" && p.name === "Kit" && p.family === "assistant"), `@ lists kit (the person's own assistant): ${JSON.stringify(people)}`);
 
   // # : the records the person may read, named by title, with the sealed ones marked
   const types = (await data("records.types", {})).types ?? (await data("records.types", {}));

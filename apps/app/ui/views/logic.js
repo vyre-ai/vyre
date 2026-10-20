@@ -158,11 +158,14 @@ export function rowsByDay(rows, dateName, ym) {
 
 // ------------------------------------------------------------------------------------------------------------------------------------ record page
 
-/** The confirm for "Seal this field for all <type>": it names how many records have a value. @param {any} def @param {any} f @param {any[]} pool @param {any} [vd] */
+/** A field the kernel can seal in place (gateway.migrate.sealField): plain text that is not unique, computed, removed, the system's own or a fast field still waiting to be made real. @param {any} f */
+export const canSealField = (f) => !isSealedField(f) && ["text", "rich_text", "url"].includes(f.kind) && !f.unique && !f.computed && !f.hidden && !f.owned_by && !f.read_only && !f.fast;
+
+/** The confirm for "Seal this field for all <type>": it names how many records have a value, and that it cannot be undone. @param {any} def @param {any} f @param {any[]} pool @param {any} [vd] */
 export function sealSpec(def, f, pool, vd = viewDefOf(def)) {
   const n = pool.filter((r) => !isEmpty(val(r, f.name))).length, word = lc(vd.plural);
   return { title: `Seal ${f.label} for all ${word}?`, action: "Seal",
-    body: `${n} of ${pool.length} ${word} ${n === 1 ? "has a value" : "have a value"} for ${lc(f.label)}. Agents will see "${f.label} on file, sealed" on each and will never get the value. You can still reveal it with Face ID.` };
+    body: `${n} of ${pool.length} ${word} ${n === 1 ? "has a value" : "have a value"} for ${lc(f.label)}. Agents will see "${f.label} on file, sealed" on each and will never get the value. You can still reveal it with Face ID. The old values are removed from the history too, so this cannot be undone.` };
 }
 
 /** What the banner says while the person looks as their assistant does. @param {any[]} sealedNow the sealed fields that hold a value on this record */

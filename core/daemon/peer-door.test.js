@@ -2,7 +2,7 @@ import "../../scripts/mac-test-guard.mjs";
 import "../runner/testing/hosted-guard.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createPeerDoor, STREAM_LIMITS } from "./peer-door.js";
+import { createPeerDoor, STREAM_LIMITS, loggedCall } from "./peer-door.js";
 import { peerClient } from "../../relay/client/peerclient.js";
 
 const ID = "abcdefghijklmnop";
@@ -570,4 +570,43 @@ test("ask door: forged asks from fresh channels do not spend the Space's allowan
   const ok = [];
   for (let i = 0; i < 4; i++) { const c = await w.open(w.askHello()); ok.push(await w.kcall(c, "requests.ask", [{}]).then(() => true, () => false)); }
   assert.deepEqual(ok, [true, true, true, false], "the forged ones did not use up the Space's three an hour: three valid asks are served, the fourth is refused by the Space-wide cap");
+});
+
+// ---- the door's call log: a call that fails or is slow is written down (tool, code, time), never its input ----
+test("the door logs a device's call that fails, with the tool, its code and the time, and never the call's input; a quick answer is not logged", async () => {
+  /** @type {string[]} */ const lines = [];
+  const registry = { call: async (/** @type {string} */ tool) => {
+    if (tool === "relay.device.info") return { data: { kind: "app", removed: false } };
+    if (tool === "wink.device.record") return { data: { owner: "per_x" } };
+    if (tool === "stream.send") return { error: { code: "slow_step", message: "slow_step: kernel-append: the server took too long, so this message was not saved. Try again." } };
+    return { data: { ok: true } };
+  } };
+  const kernel = { id: { space: "spc_aaaaaaaaaaaa", owner: "per_x" }, spaces: { for: () => null } };
+  const d = createPeerDoor({ kernel, registry, people: { list: () => [] }, now: () => 1000, log: m => lines.push(m), callerFacts: (c, p, via, k, cap, device) => (device ? { kind: "device", device_key_id: ID, person: "per_x", path: "relay" } : null) });
+  await assert.rejects(() => run(d, "stream.send", { chat: "c1", text: "the private words", message: "m1" }), e => e.code === "slow_step");
+  await run(d, "t.a", { text: "more private words" });
+  const calls = lines.filter(l => !/opened a peer stream/.test(l));
+  assert.equal(calls.length, 1, `one line, for the failed call: ${JSON.stringify(calls)}`);
+  assert.match(calls[0], /^peer door: stream\.send from device:abcdefgh failed \(slow_step\) after \d+\.\d s$/);
+  assert.ok(!lines.some(l => /private words|m1|c1/.test(l)), "no input reaches the log");
+});
+
+test("loggedCall: a call still waiting at the mark is logged then and again when it answers; a kernel call's refusal is logged with the call's name and code", async () => {
+  /** @type {string[]} */ const lines = [];
+  const log = (/** @type {string} */ m) => { lines.push(m); };
+  /** @type {(v: any) => void} */ let release = () => {};
+  const slow = new Promise(r => { release = r; });
+  const p = loggedCall(log, "device:abcdefghijklmnop", "stream.send", { text: "the words" }, () => slow, { slowMs: 30 });
+  await new Promise(r => setTimeout(r, 80));
+  assert.equal(lines.length, 1, "logged while it still waits, so a call that never ends is seen");
+  assert.match(lines[0], /^peer door: stream\.send from device:abcdefgh still waiting after \d+\.\d s$/);
+  release({ ok: true });
+  assert.deepEqual(await p, { ok: true });
+  assert.match(lines[1], /^peer door: stream\.send from device:abcdefgh answered after \d+\.\d s$/);
+  const refused = await loggedCall(log, "device:abcdefghijklmnop", "kernel.call", { call: "chats.append", args: ["the words"] }, async () => ({ ok: false, error: { code: "denied", message: "no" } }));
+  assert.equal(refused.ok, false, "the answer is passed on as it was");
+  assert.match(lines[2], /^peer door: kernel\.call chats\.append from device:abcdefgh failed \(denied\) after \d+\.\d s$/);
+  await loggedCall(log, "device:abcdefghijklmnop", "work.chat.get", { chat: "c1" }, async () => ({ chat: "c1" }));
+  assert.equal(lines.length, 3, "a quick answer writes nothing");
+  assert.ok(!lines.some(l => l.includes("the words")));
 });

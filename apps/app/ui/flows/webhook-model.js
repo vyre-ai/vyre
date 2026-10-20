@@ -1,27 +1,43 @@
 // @ts-check
-// A webhook route as the Flow editor shows it: the address, the header and the signature scheme, how to try it, and why it cannot be reached yet. Pure; hooks.list and hooks.status are read in screens/flows/watchers-source.ts.
+// A Flow's own webhook address as the trigger editor shows it: the address (or one plain line saying why there is none yet), the last delivery in words, and a sample a sender or a form can use.
+// Pure; hooks.flow is read in screens/flows/watchers-source.ts. The address carries its token, so nothing here logs it or puts it anywhere but the copy the person asked for.
 
-/** @typedef {{ name: string, scheme?: string, header?: string, secret?: string }} Route */
-/** @typedef {{ enabled: boolean, listening: boolean, routes: Route[], public: { available: boolean, base?: string, why?: string }, urls: Record<string, string | null> }} Hooks */
+/** @typedef {{ when?: string, at?: string, ok: boolean, why?: string, bytes: number, test?: boolean }} Last */
+/** @typedef {{ open: boolean, address: { path: string, url: string | null } | null, why: string | null, last: Last | null, check: { scheme: string, header?: string, secret: string } | null }} FlowHook */
 
-const SCHEME = /** @type {Record<string, string>} */ ({ "hmac-sha256": "the hex HMAC-SHA256 of the body", github: "GitHub's X-Hub-Signature-256", stripe: "Stripe's Stripe-Signature" });
-
-/** What a person needs about one route, in words: its address (or why it has none yet), the header the sender signs in, the Vault item that holds the secret, and what to do next. @param {Hooks | null} h @param {string} name */
-export function routeFacts(h, name) {
-  if (!h) return { found: false, url: "", line: "This box does not have webhooks.", next: "none", header: "", secret: "", scheme: "" };
-  const r = h.routes.find((x) => x.name === name);
-  if (!r) return { found: false, url: "", line: `/hooks/${name} is not open yet.`, next: "open", header: "", secret: "", scheme: "" };
-  const url = h.urls[name] || "";
-  const live = !!url;
-  const line = live ? "Reachable from the internet." : !h.enabled || !h.listening ? "The listener is off, so nothing can reach this route." : h.public.why || "The box has no public address yet, so only this machine can reach it.";
-  return { found: true, url, line, next: live ? "none" : !h.enabled || !h.listening ? "enable" : "wait", header: r.header || "", secret: r.secret || "", scheme: r.scheme || "" };
-}
-
-/** A command that sends a test delivery, for the sender's developer or for a terminal. The signature is computed from the secret in the Vault; the secret is never put in the text. @param {string} url @param {string} scheme @param {string} header */
-export function sampleCall(url, scheme, header) {
-  const sig = scheme === "hmac-sha256" ? `"${header || "x-signature"}: $(printf '%s' "$BODY" | openssl dgst -sha256 -hmac "$SECRET" -hex | sed 's/^.* //')"` : scheme === "github" ? `"X-Hub-Signature-256: sha256=$(printf '%s' "$BODY" | openssl dgst -sha256 -hmac "$SECRET" -hex | sed 's/^.* //')"` : null;
-  if (!sig) return `# ${scheme === "stripe" ? "Stripe signs its own deliveries: use the Stripe CLI (stripe trigger) pointed at the address above." : "This scheme is signed by the sender."}`;
-  return [`BODY='{"hello":"world"}'`, `SECRET='<the value of the Vault item>'`, `curl -X POST '${url || "https://<your address>/hooks/<route>"}' -H 'content-type: application/json' -H ${sig} -d "$BODY"`].join("\n");
-}
-
+/** The signature checks a sender may add, under "Advanced, verify a signature". */
+export const SIGN_SCHEMES = /** @type {[string, string][]} */ ([["none", "None"], ["hmac-sha256", "Signed body"], ["github", "GitHub"], ["stripe", "Stripe"]]);
+const SCHEME = /** @type {Record<string, string>} */ ({ "hmac-sha256": "a hex HMAC-SHA256 of the body, in the header you name", github: "GitHub's X-Hub-Signature-256", stripe: "Stripe's Stripe-Signature" });
 export const schemeWords = (/** @type {string} */ s) => SCHEME[s] ?? s;
+
+/** A size in plain words. @param {number} n */
+export const sizeWords = (n) => (n < 1024 ? `${n} bytes` : `${(n / 1024).toFixed(n < 10 * 1024 ? 1 : 0)} KB`);
+
+/**
+ * What the panel says: `live` (the address works from the internet), `here` (open, but the server has no public address yet, or webhooks are off: `line` says why and what to do), `off` (the Flow is
+ * off or not saved yet), or `none` (this server takes no webhooks). @param {FlowHook | null | undefined} h
+ */
+export function addressFacts(h) {
+  if (!h) return { state: "none", address: "", line: "This server does not take webhooks yet." };
+  if (!h.open || !h.address) return { state: "off", address: "", line: h.why || "Turn the Flow on and its address shows here." };
+  if (h.address.url) return { state: "live", address: h.address.url, line: "" };
+  return { state: "here", address: "", line: h.why || "The server has no public address yet, so senders on the internet cannot reach it." };
+}
+
+/** The last delivery in words: when, OK or refused and why, its size. Never the token or the body. @param {Last | null | undefined} l */
+export function lastWords(l) {
+  if (!l) return "Nothing has arrived yet.";
+  const when = l.when || l.at || "";
+  const what = l.ok ? (l.test ? "the test from Vyre, OK" : "OK") : `refused, ${l.why || "it did not check"}`;
+  return `${when ? `${when}: ` : ""}${what}. ${sizeWords(l.bytes)}.`;
+}
+
+/** A test a sender's developer can run: JSON to the address, nothing else needed (the token is in the address). @param {string} url */
+export function curlSample(url) {
+  return `curl -X POST '${url}' -H 'content-type: application/json' -d '{"name":"Sam Lee","email":"sam@example.com"}'`;
+}
+
+/** A form on a site that posts to the address: plain HTML, fields arrive as the Flow's trigger values. @param {string} url */
+export function formSample(url) {
+  return [`<form method="post" action="${url}">`, `  <input name="name" placeholder="Name">`, `  <input name="email" type="email" placeholder="Email">`, `  <button>Send</button>`, `</form>`].join("\n");
+}

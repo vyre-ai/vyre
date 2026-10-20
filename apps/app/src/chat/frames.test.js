@@ -290,6 +290,14 @@ test("join notices carry display names, never the raw id", () => {
   assert.equal(f.name("assistant:juno"), "Juno");
 });
 
+test("a blank chat's own AI (a model slot) joining makes no line, whatever name its run carried: never \"Engineer joined\" for an agent nobody picked", () => {
+  cur = 0;
+  const f = createFolder();
+  f.apply(gf("participant-joined", { who: "model:claude/default#123456", name: "Engineer" }));
+  f.apply(gf("participant-joined", { who: "model:claude/default#654321" }));
+  assert.deepEqual(f.rows.filter((r) => r.kind === "notice").map((r) => f.item(r.key)?.text), []);
+});
+
 test("a group chat has no status frames: it is working while any reply is open, ready otherwise", () => {
   cur = 0;
   const f = createFolder();

@@ -16,6 +16,7 @@
 // waiting a minute; only index.js runs a real interval.
 
 import crypto from "node:crypto";
+import { NO_DRIVER_WORDS } from "./plain.js";
 import net from "node:net";
 import { PORTS, SIZE } from "./driver/index.js";
 
@@ -74,7 +75,8 @@ const AGENT = /^[a-z][a-z0-9-]{0,40}$/;
 /** Member agent_id on a shared computer: agents.uid (agt_<uuid>), never a display name. */
 const MEMBER_AGENT_ID = /^[a-z][a-z0-9._-]{1,80}$/;
 
-export const NO_DRIVER = "no computer driver is configured on this machine: set computers.docker in config.json to the restricted Docker proxy";
+// What a person reads when this server has no computer driver (core/computers/plain.js): a box gets the docker-api proxy by itself (lib/computers-env.js), so this is a server the update has not reached yet.
+export const NO_DRIVER = NO_DRIVER_WORDS;
 
 // VNC authentication (RFB's DES challenge) only ever uses the first eight bytes of a password,
 // so the VNC password is eight characters. It guards a port on an internal network that only
@@ -753,6 +755,27 @@ export class Pool {
 
   /** @returns {any} */
   members(computerId) { return /** @type {any[]} */ (this.db.prepare("SELECT * FROM computers_members WHERE computer_id = ? ORDER BY agent_id").all(computerId)); }
+
+  /**
+   * The Space's one computer, made (browser kind) and running: the first agent that needs its own Linux user there brings it up, so
+   * waking an agent from the Computer tab works on a fresh server. Nothing about membership changes. Refuses a desktop row of that id.
+   * @param {string} computerId
+   */
+  async ensureSpace(computerId) {
+    if (!this.driver) throw new Error(NO_DRIVER);
+    if (!AGENT.test(String(computerId || ""))) throw new Error(`"${computerId}" is not a computer id`);
+    return this.serial(computerId, async () => {
+      const r = this.row(computerId);
+      if (!r) {
+        const at = this.now();
+        this.db.prepare(`INSERT INTO computers_computers (agent, container, state, vnc_password, helper_token, paused, created, updated, kind)
+          VALUES (?, NULL, 'none', ?, ?, 0, ?, ?, 'browser')`).run(computerId, vncPassword(), helperToken(), at, at);
+      } else if (r.kind !== "browser") {
+        throw new Error(`${computerId} already exists and is not a shared computer`);
+      }
+      await this.ensure(computerId);
+    });
+  }
 
   /**
    * Add an agent to a shared computer, making the computer first if computerId names none yet.

@@ -28,7 +28,7 @@ import { createFollow, follow, pillLabel } from "./follow.js";
 import type { StreamSource } from "./mock-stream";
 import { useSessionStream, type PerfSink } from "./store";
 import { ChatHeader } from "./ChatHeader";
-import { chatKind, threadsTab } from "./threads-model.js";
+import { chatKind, threadSub, threadsTab, titleFrom, untitledTitle } from "./threads-model.js";
 import { agentThreads } from "./threads-source";
 import { ForwardSheet } from "./ForwardSheet";
 import { OriginBlock } from "./OriginBlock";
@@ -40,6 +40,7 @@ import { callT } from "../real/call-tool";
 import { chatTools } from "../../screens/chat-tools/instance";
 import { openNewAgent } from "../../screens/chats/ChatsSidebar";
 import { Face } from "./Face";
+import { agentWords } from "../state/agent-name.js";
 import { type AboutInfo } from "./AboutSheet";
 import { ChatPanel, type PanelPage } from "./ChatPanel";
 import { FileViewerSheet } from "../../screens/drive/FileViewerSheet";
@@ -60,7 +61,7 @@ import { ChatExtras } from "./ChatExtras";
 import { LaterPlannerBar, useChatCapabilityChrome, useLaterPlanner } from "./ChatCapabilityChrome";
 import { PreviewPane } from "./PreviewPane";
 import { usePreviewPane } from "./previewPane";
-import { MovedLines, PlacementChip, usePlacement } from "./placement";
+import { MovedLines, PlacementSwitch, usePlacement } from "./placement";
 import { chipOf } from "../../screens/runner/runner-model.js";
 import { useChatMembers } from "./useChatMembers";
 import { useChatKeyLease } from "./useChatKeyLease";
@@ -74,6 +75,7 @@ import { useNeeds } from "../state/needs";
 import { heldFor } from "../state/held.js";
 import { useRouter } from "expo-router";
 import { useChats } from "../state/chats";
+import { refresh } from "../state/live";
 import { canFork } from "../../screens/chats/chats-model.js";
 import { findLabel, findMatches, headerParts, keyAction, lastOwnMessage, stepMatch } from "./polish.js";
 import { askedBefore, threadMay } from "./message-menu-model.js";
@@ -222,7 +224,8 @@ export function ChatScreen(p: ChatScreenProps) {
   const prefs = useChatPrefs();
   const muted = prefs.muted.includes(p.sessionId);
   const pinned = prefs.pinned.includes(p.sessionId);
-  const engineerChat = useChats().rows.find((c) => c.id === p.sessionId)?.engineer === true;
+  const chatRow = useChats().rows.find((c) => c.id === p.sessionId);
+  const engineerChat = chatRow?.engineer === true;
   const noFork = !canFork(useChats().rows.find((c) => c.id === p.sessionId));
   const setMuted = (on: boolean) => chatPrefs.setMuted(p.sessionId, on);
   const setPinned = (on: boolean) => chatPrefs.setPinned(p.sessionId, on);
@@ -384,15 +387,23 @@ export function ChatScreen(p: ChatScreenProps) {
       const body = withQuotes(text, highlights);
       setHighlights([]);
       const why = (o && (o.to.length || o.fanout)) || parent ? await store.sendTo(body, { to: o?.to ?? [], fanout: o?.fanout ?? false, replyTo: quoted?.message, ...(o?.mode ? { mode: o.mode } : {}), ...(o?.mentions?.length ? { mentions: o.mentions } : {}), ...(sending.attachments.length ? { attachments: sending.attachments } : {}) }) : await store.send(body, { ...(o?.mentions?.length ? { mentions: o.mentions } : {}), ...(o?.mode ? { mode: o.mode } : {}), ...(sending.attachments.length ? { attachments: sending.attachments } : {}) });
-      if (why) setNote(why);
-      else {
-        att.clear();
-        if (/^\/later\b/i.test(body.trim())) later.noteFromSend(body.trim());
-      }
+      // A send the box did not take stays in the thread as "Not sent", with its reason, Retry and Delete (store.ts), so the composer lets go of it either way.
+      att.clear();
+      if (!why && /^\/later\b/i.test(body.trim())) later.noteFromSend(body.trim());
     },
     [store, editing, actions, replyTo, highlights, att, later],
   );
   sendRef.current = (text: string) => onSend(text);
+  // A thread is named from its first message (a short title, as chat apps do), never left as "New chat": once, when the chat has a first message and no title of its own.
+  const titled = useRef(false);
+  useEffect(() => {
+    if (allowsMock() || loading || titled.current || !chatRow || !untitledTitle(chatRow.title) || chatRow.engineer || chatRow.pinned) return;
+    const first = rows.find((r) => r.kind === "user");
+    const t = first ? titleFrom(store.item(first.key)?.text) : "";
+    if (!t) return;
+    titled.current = true;
+    void chatTools.rename(p.sessionId, t).then((r) => { if (r.ok) void refresh(); });
+  }, [loading, rows, store, chatRow, p.sessionId]);
   const renderRow = useCallback((row: TranscriptRow) => <ChatRow store={store} row={row as never} ctx={ctx} />, [store, ctx]);
   const base = useRef(rows.length);
   base.current = Math.min(base.current, rows.length);
@@ -448,6 +459,8 @@ export function ChatScreen(p: ChatScreenProps) {
   const newThread = async (agent: string): Promise<string | null> => { const r = await agentThreads.start(agent); if ("problem" in r) return r.problem; openThread(r.thread); return null; };
   const answering = faces.filter((f) => f.family === "assistant" || f.family === "model").map((f) => f.name);
   const head = headerParts({ title: p.title, project: chatProject.current?.name ?? p.project ?? info.record?.title ?? null, space: info.space ?? null, answeredBy: answering, where: allowsMock() ? null : here.where });
+  // an agent chat is said by the agent's name as a person reads it ("Engineer", never "engineer"); the thread's own title follows only when it has one
+  const agentTitle = kind === "agent" && agentNames[0] ? agentWords(agentNames[0]) : "";
   const assistantsHere = faces.filter((f) => f.family === "assistant").length;
   // The sealed note speaks of the AI in the chat: with none here (a chat between people) it stays away until one joins or is asked.
   const aiHere = faces.filter((f) => f.family === "assistant" || f.family === "model").length;
@@ -496,7 +509,8 @@ export function ChatScreen(p: ChatScreenProps) {
   );
   const body = (
     <View onLayout={(e) => { const w = Math.round(e.nativeEvent.layout.width); setThreadW((o) => (Math.abs(o - w) > 8 ? w : o)); }} style={{ flex: 1, backgroundColor: color["surface-1"], paddingTop: insets.top }}>
-      <ChatHeader title={kind === "agent" && agentNames[0] ? agentNames[0] : head.title} sub={kind === "agent" && agentNames[0] ? head.title : undefined} participants={faces} viewer={viewerId} phone={phone} onBack={p.onBack} onOpen={togglePanel} project={chatProject.current && chatProject.current.slug !== "general" ? chatProject.current : null}
+      <ChatHeader title={agentTitle || head.title} sub={agentTitle ? threadSub(head.title, agentNames[0]) : undefined} participants={faces} viewer={viewerId} phone={phone} onBack={p.onBack} onOpen={togglePanel} project={chatProject.current && chatProject.current.slug !== "general" ? chatProject.current : null}
+        place={<PlacementSwitch placement={placed.placement} onMove={(to) => void placed.move(to)} />}
         menu={[
           { label: "Details", onPress: () => { setPanelTab("details"); setPanel("root"); } },
           { label: "Library", onPress: () => { setPanelTab("library"); setPanel("root"); } },
@@ -510,7 +524,6 @@ export function ChatScreen(p: ChatScreenProps) {
       <FileViewerSheet path={phone ? viewing : null} onClose={() => setViewing(null)} onOpenInFiles={() => { setViewing(null); router.push("/u/files" as never); }} />
       <SelectionAsk onAsk={(t, from) => setHighlights((l) => addHighlight(l, makeHighlight({ from: from || "this chat", text: t, selected: t, kind: "message" })))} />
       {p.belowHeader}
-      {engineerChat ? <View style={{ paddingHorizontal: phone ? 12 : 24, paddingBottom: 6 }}><Text size="caption" tone="label">Everyone who can use the Engineer reads this chat.</Text></View> : null}
       {forkedFrom ? <View style={{ paddingHorizontal: phone ? 12 : 24, paddingBottom: 6 }}><Banner><View style={{ gap: 4, alignItems: "flex-start" }}><Text>{`Forked from ${forkedFrom.title}. Everything up to that point is in the original.`}</Text><Button kind="ghost" size="sm" label="Open the original" onPress={() => openThread(forkedFrom.thread)} /></View></Banner></View> : null}
       {forkedFrom && originRows && originShown ? <OriginBlock rows={originRows} title={forkedFrom.title} phone={phone} onHide={() => setOriginShown(false)} /> : null}
 
@@ -549,8 +562,10 @@ export function ChatScreen(p: ChatScreenProps) {
               {/* The start of the chat: who it is with, once, at the top of the history. */}
               <View style={{ alignItems: "center", gap: 8, paddingTop: 32, paddingBottom: 16 }}>
                 {startLone ? <Face name={startLone.name} family={startLone.family === "assistant" ? "assistant" : startLone.family === "model" ? "model" : "person"} size={40} id={startLone.id} /> : null}
-                <Text medium>{head.title}</Text>
+                <Text medium>{agentTitle || head.title}</Text>
                 <Text size="caption" tone="label">{chatProject.current && chatProject.current.slug !== "general" ? chatProject.current.name : "The start of this chat"}</Text>
+                {/* Who reads a shared agent chat: a calm notice in the opening, in the message column, not a loose line under the header. */}
+                {engineerChat ? <Text size="caption" tone="label" style={{ textAlign: "center", paddingTop: 4 }}>Everyone who can use the Engineer reads this chat.</Text> : null}
               </View>
               {sealedNote && aiHere > 0 ? <Pressable accessibilityRole="button" accessibilityLabel="Dismiss the sealed note" onPress={() => setSealedNote(false)} style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: 40, paddingVertical: 8, paddingHorizontal: 12, marginBottom: 8, borderRadius: 12, backgroundColor: color["surface-3"] }}>
                 <Icon name="shield" />
@@ -583,7 +598,6 @@ export function ChatScreen(p: ChatScreenProps) {
       ) : null}
 
       <StatusLine
-        place={<PlacementChip placement={placed.placement} onMove={(to) => void placed.move(to)} />}
         starting={placed.starting}
         presence={group.presenceLine()}
         state={meta.state}
@@ -624,7 +638,7 @@ export function ChatScreen(p: ChatScreenProps) {
       <ChatExtras thread={p.sessionId} empty={!loading && rows.length === 0} busy={meta.busy} />
       <View style={{ paddingBottom: insets.bottom }}>
         <ChatComposer
-          agentName={kind === "agent" ? agentNames[0] : undefined}
+          agentName={kind === "agent" && agentNames[0] ? agentWords(agentNames[0]) : undefined}
           onRename={async (name) => { const r = await chatTools.rename(here.thread ?? p.sessionId, name); if (r.ok) { showToast("Renamed."); return null; } showToast(r.reason); return r.reason; }}
           key={draftN}
           draftKey={p.sessionId}

@@ -15,7 +15,8 @@ import { refuseKey } from "../../lib/secure-paste.js";
 import { Logs } from "./log.js";
 import { createAdapter, pipe } from "./adapter.js";
 import { serve, serveWS } from "./server.js";
-import { createGroups } from "./group.js";
+import { createGroups, slowStep } from "./group.js";
+import { withinOrThrow } from "../../lib/within.js";
 import { createActivity } from "./activity.js";
 import { createAccess } from "./access.js";
 import { forViewerAsync, hiddenFrame } from "./viewer.js";
@@ -259,6 +260,15 @@ export default {
       await groups.mirror(session, { people: [...kc.chat.people], assistants: [...(kc.chat.assistants || [])] }, meta, `person:${kc.person}`, kc.chain);
     };
 
+    /** A send's gate (the person is in the chat, its people mirrored from the kernel) runs within a budget too and is timed at debug level, so a send never stalls here unseen (group.js sendOnce times the rest). */
+    const GATE_MS = 6_000;
+    const sendGate = async (/** @type {any} */ i, /** @type {any} */ meta) => {
+      const t = Date.now();
+      let ok = false;
+      try { await withinOrThrow(kernelGate(i, meta), GATE_MS, () => slowStep("chat-check")); ok = true; }
+      finally { try { const l = ctx.log && typeof ctx.log.debug === "function" ? ctx.log.debug : ctx.log; l(`stream: send in ${String((i && i.chat) || "").slice(0, 64)}: chat-check ${ok ? "took" : "failed after"} ${Date.now() - t} ms`); } catch { /* no log */ } }
+    };
+
     /** The tools a team member reaches through the Space's remote server (core/work/chat-service.js), by short name: the same code the tool runs, once. @type {Map<string, (i: any, meta: any) => Promise<any>>} */
     const memberRuns = new Map();
     const MEMBER_STREAM = ["send", "catchup", "typing", "react", "pin", "reply-mode", "mark-read", "read", "open"];
@@ -281,7 +291,7 @@ export default {
         if (there) return there.data;
         if (!groups) throw Object.assign(new Error("the stream has no store here: ask the owner to restart Vyre"), { code: "unavailable" });
         if (method === "send") refuseKey(i.text); // appended to the chat first, so refused before it is written
-        await kernelGate(i, meta);
+        if (method === "send") await sendGate(i, meta); else await kernelGate(i, meta);
         return /** @type {any} */ (groups)[method](i, meta);
       };
       memberRuns.set(name.slice("stream.".length), run);

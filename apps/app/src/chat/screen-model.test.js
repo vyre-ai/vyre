@@ -41,7 +41,7 @@ test("the vault's logins for a site: bound to that host or its parent, exact fir
   assert.deepEqual(loginsFor(items, "app.gohighlevel.test"), [{ name: "GHL agency", origin: "https://app.gohighlevel.test", exact: true }, { name: "GHL parent", origin: "https://gohighlevel.test", exact: false }]);
   assert.deepEqual(loginsFor(items, "example.test").map((x) => x.name), ["Other site"]);
   assert.deepEqual(loginsFor([], "x.test"), []);
-  assert.equal(stillWord("mac"), "The picture stays on your Mac.");
+  assert.equal(stillWord("mac"), "The picture stays on your computer.");
 });
 
 test("a run that asks for a code is offered the Vault's seeds, those near what it was doing first, never a seed", async () => {

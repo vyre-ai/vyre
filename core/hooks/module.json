@@ -1,7 +1,7 @@
 {
   "name": "hooks",
   "version": "0.1.0",
-  "description": "Inbound webhooks from the public internet: one route at a time, each checked by the sender's signature, stored and announced to watchers.",
+  "description": "Inbound webhooks from the public internet: a Flow's own webhook address, opened while the Flow is on and checked by its token, and routes opened by hand, checked by the sender's signature; stored and announced.",
   "roles": [
     "box"
   ],
@@ -9,7 +9,8 @@
   "does": {
     "reads": [
       "hooks.list",
-      "hooks.status"
+      "hooks.status",
+      "hooks.flow"
     ],
     "tools": [
       {
@@ -39,6 +40,26 @@
         "name": "hooks.delivery",
         "reach": "anyone",
         "effect": "read"
+      },
+      {
+        "name": "hooks.flow",
+        "reach": "person",
+        "effect": "read"
+      },
+      {
+        "name": "hooks.flow.renew",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "hooks.flow.test",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "hooks.flow.sign",
+        "reach": "person",
+        "effect": "write"
       }
     ]
   },

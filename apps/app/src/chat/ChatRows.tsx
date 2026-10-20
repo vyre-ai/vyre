@@ -172,6 +172,21 @@ export function UserText({ text, pending, tone }: { text: string; pending: boole
   );
 }
 
+/** A message the box did not take: the words stay above, this says why in plain words, and Retry sends the same words again (Delete takes them away). Nothing removes them by itself. */
+function NotSent({ store, k, reason }: { store: ChatStore; k: string; reason: string }) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <View accessibilityLabel={`Not sent. ${reason}`} style={{ gap: 4 }}>
+      <Text size="caption" tone="err" medium>Not sent</Text>
+      <Text size="caption" tone="label" selectable>{reason}</Text>
+      <View style={{ flexDirection: "row", gap: 8 }}>
+        <Button size="sm" kind="secondary" label={busy ? "Sending" : "Retry"} disabled={busy} onPress={() => { setBusy(true); void store.retrySend(k).finally(() => setBusy(false)); }} />
+        <Button size="sm" kind="ghost" label="Delete" disabled={busy} onPress={() => { store.discardSend(k); }} />
+      </View>
+    </View>
+  );
+}
+
 /** An assistant's words as markdown (the design system's one renderer): while it streams in, what has arrived so far is drawn, an unclosed mark or fence kept as it is. */
 function StreamText({ store, k, text, done, ctx }: { store: ChatStore; k: string; text: string; done: boolean; ctx: BlockCtx }) {
   // Before the first word arrives the bubble holds three dots, so it never shows as an empty grey blob (three quiet dots say it is writing).
@@ -440,12 +455,13 @@ function ItemBody({ store, k, ctx }: { store: ChatStore; k: string; ctx: BlockCt
       return (
         <Replyable ctx={ctx} message={k.slice(2)} name={w.name} text={it.text}>
         <Message mine={mine} solo={ctx.solo} continued={continuedOf(store, k, ctx, w.name)} who={w.name} family={w.family} sub={it.via === "assistant" ? "Sent by Vyre agent" : w.sub} meta={metaOf(it, timeLineOf)} dress={dressOf(store, k, it.text, ctx)} wide={wide}
-          bar={it.pending ? null : <MessageBar text={it.text} from={w.name} ctx={ctx} uuid={k.slice(2)} mine={mine} group={groupOf(store, k, ctx, w.name)} />}
-          footer={it.pending ? null : <ReactionsRow store={store} k={k} ctx={ctx} />}>
+          bar={it.pending || it.failed ? null : <MessageBar text={it.text} from={w.name} ctx={ctx} uuid={k.slice(2)} mine={mine} group={groupOf(store, k, ctx, w.name)} />}
+          footer={it.pending || it.failed ? null : <ReactionsRow store={store} k={k} ctx={ctx} />}>
           <QuoteBlock store={store} it={it} ctx={ctx} />
           <UserText text={it.text} pending={!!it.pending} tone={mine ? "inverse" : undefined} />
           {Array.isArray(it.attachments) && it.attachments.length ? <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>{it.attachments.map((a: { id: string; name: string; bytes: number }) => (thumbFor(a.id) ? <Thumb key={a.id} uri={thumbFor(a.id) as string} name={a.name} size={wide ? 120 : 96} /> : <Chip key={a.id} tone="plain" icon="file">{`${a.name} · ${sizeWord(a.bytes)}`}</Chip>))}</View> : null}
           {it.pending ? <Text size="caption" tone="label">Sending</Text> : null}
+          {it.failed ? <NotSent store={store} k={k} reason={String(it.failed)} /> : null}
         </Message>
         </Replyable>
       );

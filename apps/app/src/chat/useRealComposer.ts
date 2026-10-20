@@ -4,7 +4,7 @@ import "../api/store-link";
 import { tool } from "../real/box";
 import { useThread } from "../state/threads";
 import { agentsList } from "../../screens/settings/real";
-import { peopleFor, recordPicks, switchCall } from "./real-composer.js";
+import { memberNames, peopleFor, recordPicks, switchCall } from "./real-composer.js";
 import { useMyModels } from "../models/useMyModels";
 import { effortFor } from "../models/model-choice.js";
 import type { ModelNow, Person, RecordPick } from "./ChatComposer";
@@ -27,17 +27,20 @@ export function useRealComposer(session: string | undefined, here: Person[] | un
   const [actors, setActors] = useState<unknown>(null);
   const [agents, setAgents] = useState<unknown>(null);
   const [mine, setMine] = useState<(ModelNow & { effort?: string | null }) | null>(() => (session ? remembered(session) : null));
+  // the Space's members by name (a username where no other name is known), so the @ list never shows an id
+  const [names, setNames] = useState<Record<string, string>>({});
   useEffect(() => {
     if (!real) return;
     let live = true;
     void tool("records.actors", {}).then((r) => live && setActors(r)).catch(() => {});
     void agentsList().then((r) => live && setAgents(r)).catch(() => {});
+    void tool<{ space?: string }>("records.me", {}).then((me) => (me?.space ? tool("spaces.members.list", { space: me.space }) : null)).then((m) => { if (live && m) setNames(memberNames(m)); }).catch(() => {});
     return () => { live = false; };
   }, [real]);
   useEffect(() => { setMine(session ? remembered(session) : null); }, [session]);
   // what this person's turns run on: their own pick when they made one, else what the chat runs on
   const model: ModelNow = useMemo(() => mine ?? { provider: (thread as { provider?: string | null } | null)?.provider ?? null, account: null, model: thread?.model ?? null }, [mine, thread]);
-  const people: Person[] = useMemo(() => peopleFor({ actors, agents, viewer, here: here ?? [] }), [actors, agents, viewer, here]);
+  const people: Person[] = useMemo(() => peopleFor({ actors, agents, viewer, here: here ?? [], names }), [actors, agents, viewer, here, names]);
   const records: RecordPick[] = useMemo(() => (world ? recordPicks(world as never, (d: unknown, r: unknown) => titleOf(d as never, r as never)) : []), [world]);
   const send = useCallback((pick: ModelPick, slot: string | undefined, effort: string | null) => {
     const c = session ? switchCall(session, pick, slot, effort) : null;
