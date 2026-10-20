@@ -117,7 +117,10 @@ const menuItems = (page, want) => page.evaluate((want) => {
 }, want);
 /** A fixture that names a trigger (press) and an item (expect): pressing the trigger shows the item, whole and on top. @returns {Promise<string[]>} its faults */
 const pressOpen = async (page, scr) => {
-  await page.click(scr.press, { timeout: 10000 });
+  try { await page.click(scr.press, { timeout: 10000 }); } catch {
+    const seen = await page.evaluate(() => `${location.search} | labels: ${[...document.querySelectorAll("[aria-label]")].map((n) => n.getAttribute("aria-label")).slice(0, 12).join(" ; ")} | ${(document.body.innerText || "").replace(/\s+/g, " ").slice(0, 160)}`).catch(() => "page gone");
+    return [`could not press ${scr.press}: ${seen}`];
+  }
   for (let i = 0; i < 20; i++) { const got = await menuItems(page, scr.expect); if (got.length) return got.every((x) => x.seen && x.inside) ? [] : [`"${scr.expect}" is covered or cut off after pressing ${scr.press}`]; await page.waitForTimeout(150); }
   return [`pressing ${scr.press} did not open a menu with "${scr.expect}"`];
 };
