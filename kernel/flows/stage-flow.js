@@ -114,12 +114,13 @@ export function stageFlowProblems(flow) {
     if (s.kind === "stage") {
       if (s.id !== "move" || i !== flow.steps.length - 1) bad(p, "moving the record on is the stage's last step, called move");
       if (s.type !== pb.type || typeof s.to !== "string" || !s.to) bad(`${p}.to`, "the last step moves the record to the next stage");
-      for (const k of Object.keys(s)) if (!["id", "kind", "label", "type", "record", "to"].includes(k)) bad(`${p}.${k}`, `${k} is not part of moving the record on`);
+      for (const k of Object.keys(s)) if (!["id", "kind", "label", "added_by", "type", "record", "to"].includes(k)) bad(`${p}.${k}`, `${k} is not part of moving the record on`);
       return;
     }
     if (s.kind !== "assign") { bad(`${p}.kind`, "a stage is made of to-dos (Assign a task) and the move to the next stage"); return; }
     if (typeof s.id !== "string" || !STEP_ID.test(s.id)) bad(`${p}.id`, "a to-do's step is called task_<n>");
-    for (const k of Object.keys(s)) if (!["id", "kind", "label", "await", "task", ...STEP_PARTS].includes(k)) bad(`${p}.${k}`, `${k} is not part of a stage's to-do`);
+    // added_by: the runner stamps who added a step (kernel/flows/adders.js)
+    for (const k of Object.keys(s)) if (!["id", "kind", "label", "added_by", "await", "task", ...STEP_PARTS].includes(k)) bad(`${p}.${k}`, `${k} is not part of a stage's to-do`);
     if (typeof s.title !== "string" || !s.title.trim() || s.title.length > 200) bad(`${p}.title`, "say what the to-do is");
     if (typeof s.to !== "string" || !WHO.test(s.to)) bad(`${p}.to`, "a to-do goes to person:<id>, teammate:<agent>, role:<name>, group:<role>, lead, owner or creator");
     if (!isObj(s.output) || !OUTPUTS.has(s.output.kind)) bad(`${p}.output`, `an output is one of ${[...OUTPUTS].join(", ")}`);
