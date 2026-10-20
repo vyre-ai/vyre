@@ -1,0 +1,25 @@
+# Temporary: writes the gallery files with scripts/gen-gallery on Linux and uploads them, because a person may not run the generator on a Mac. Removed in the next commit.
+name: tmp-gen-gallery-aw
+on:
+  push:
+    branches: ["work/0.6.4/lead/agent-watchers"]
+    paths: [".github/workflows/tmp-gen-gallery-aw.yml"]
+permissions:
+  contents: read
+jobs:
+  gen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: node scripts/gen-gallery
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gallery
+          path: |
+            apps/app/ui/blocks/fixtures.generated.json
+            docs/design/gallery/catalogue.json
+            docs/design/gallery/index.html
