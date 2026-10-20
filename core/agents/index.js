@@ -34,7 +34,7 @@ import { createMirror } from "./mirror.js";
 import { agentDir } from "../../lib/files/layout.js";
 import { orientation } from "../../lib/orientation.js";
 import { dataBlock } from "../../lib/prompt-data.js";
-import { connectOwn } from "../../lib/own-account.js";
+import { connectOwn, noPerson } from "../../lib/own-account.js";
 import { MIGRATIONS as CONFIG_MIGRATIONS, register as registerConfig } from "./config.js";
 
 export /** What a woken agent is told about closing its task: the real tools and states (core/tasks-tools), so a task is never left open in silence and the next step of a Flow starts when the agent is done. */
@@ -118,6 +118,18 @@ const MIGRATIONS = [
 ];
 /** The most jobs one agent runs at once and starts in an hour (agents.wake_max_concurrent and agents.wake_max_hourly settle it per Space): a runaway Flow cannot start an agent without end. */
 export const WAKE_CAPS = Object.freeze({ concurrent: 5, hourly: 40 });
+/**
+ * Rule 2 (no person means no agent work): a call whose chain is only the home's own services (a module's own call, a timer) names nobody, so it starts no agent and runs no AI turn. The few calls below are
+ * the home's own upkeep, which runs no AI turn for anyone; only they read such a chain as the owner's, and each says why. Anything else with that chain is refused (personOf).
+ */
+export const OWNER_UPKEEP = Object.freeze({
+  "agents.create": "the row's maker when a module makes an agent (onboarding's assistant, a plugin's agent): it writes the agent's row and starts no thread",
+  "agents.update": "the name on the version a module's change writes (onboarding hands the assistant its sign-in): it changes the row and starts no thread",
+  "agents.docs.set": "the name on a new version of an agent's AGENTS.md: it writes a file and starts no thread",
+  "agents.context.link": "who linked a folder to an agent, and whose project reads it is judged by: it records a link and starts no thread",
+  "agents.vault.assign": "who put a Vault item on an agent's list: it records the name and starts no thread",
+  "agents.access.set": "who shared an agent, named on the grant it makes: it changes who may use the agent and starts no thread",
+});
 
 /**
  * The Engineer: a built-in assistant that helps an admin change the shape of their Space. It only PROPOSES. Its model session reaches these tools and no others (the registry holds it to
@@ -536,10 +548,13 @@ export default {
     const CHANGEABLE = ["instructions", "skills", "model", "effort", "tags"];
     const snapOf = a => ({ instructions: a.instructions ?? null, skills: a.skills || [], model: a.model ?? null, effort: a.effort ?? null, tags: a.tags || "" });
     const hashOf = o => createHash("sha256").update(JSON.stringify(o)).digest("hex").slice(0, 24);
-    /** The person a call is for: its chain's first hop when that is a person, else the Space's owner (the CLI and the Deck are the owner's). */
-    // A chain that cannot be read, or one whose first hop is not a person while an agent or a person is on it, is no one's call: refused, never the owner's (whose account and grants it would otherwise spend).
-    // Only a chain of the home's own services (the owner's surfaces with no session, the daemon, a module's own call) is the owner's.
-    const personOf = async meta => {
+    /**
+     * The person a call is for: its chain's first hop, which must be a person. A chain that cannot be read, or one whose first hop is not a person while an agent or a person is on it, is no one's call. A chain made
+     * only of the home's own services (a module's own call, a timer, a surface with no person proved) names nobody either: Rule 2, no person means no agent work, so it is refused and never read as the owner's
+     * (whose account and grants it would otherwise spend). `upkeep` names one of OWNER_UPKEEP, the home's own upkeep that runs no AI turn: only there is such a chain the owner's.
+     * @param {any} meta @param {keyof typeof OWNER_UPKEEP} [upkeep] @returns {Promise<string>}
+     */
+    const personOf = async (meta, upkeep) => {
       if (!K) return "";
       const nobody = () => Object.assign(new Error("Vyre could not tell which person this call is for, so nothing was done. Sign in again, then retry."), { code: "denied" });
       let c; try { c = await K.chain(meta); } catch { throw nobody(); }
@@ -547,7 +562,8 @@ export default {
       const h = hops[0];
       if (h && h.actor && h.actor.kind === "person") return h.actor.id;
       if (hops.some((/** @type {any} */ x) => !x || !x.actor || x.actor.kind !== "service")) throw nobody();
-      return String(K.owner || "");
+      if (upkeep && Object.prototype.hasOwnProperty.call(OWNER_UPKEEP, upkeep)) return String(K.owner || "");
+      throw Object.assign(new Error(noPerson()), { code: "denied" });
     };
     /**
      * Whether a call may see an agent's whole row (its instructions, tools, projects, credentials' mode): a call with no person on its chain (the owner's surfaces, the daemon), the owner, or an admin. Any other
@@ -811,7 +827,7 @@ export default {
         const now = Date.now();
         db.prepare(`INSERT INTO agents_agents (name, kind, projects, auth, instructions, skills, computer, model, effort, created_at, updated_at, uid, owner)
           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(i.name, kind, JSON.stringify(projects), JSON.stringify(i.auth || {}), i.instructions || null,
-          JSON.stringify(i.skills || []), i.computer ? 1 : 0, i.model || null, i.effort || null, now, now, uid, who ?? await personOf(meta));
+          JSON.stringify(i.skills || []), i.computer ? 1 : 0, i.model || null, i.effort || null, now, now, uid, who ?? await personOf(meta, "agents.create"));
         if (i.personal === true && kind !== "assistant") db.prepare("UPDATE agents_agents SET personal = 1 WHERE name = ?").run(i.name);
         // The look is stored whole (its parts filled in from the name when it left them out) so a rename never changes how the agent looks.
         db.prepare("UPDATE agents_agents SET look = ? WHERE name = ?").run(fullLook(i.look, i.name), i.name);
@@ -877,7 +893,7 @@ export default {
           if (!target) throw Object.assign(new Error(`${a.name} has no version ${n} (agents.versions lists its versions)`), { code: "not_found" });
           after = target; note = `rolled back to version ${n}`;
         }
-        const person = await personOf(meta);
+        const person = await personOf(meta, "agents.update");
         writeVersion(a, after, { by: person, approved_by: person, note });
         // a model picked anew names its provider, or none (Claude's): written after the version, which clears a provider left from an earlier pick
         if (i.rollback === undefined && (i.model !== undefined || i.model_provider !== undefined)) db.prepare("UPDATE agents_agents SET model_provider = ? WHERE name = ?").run(i.model_provider ? providerName(i.model_provider) : null, a.name);
@@ -1010,6 +1026,8 @@ export default {
         if (i.project && a.projects !== "*" && !a.projects.includes(i.project)) throw Object.assign(new Error(`${a.name} has no access to ${i.project}: the person must give it that project first`), { code: "denied" });
         // the schedule's maker: the job runs as them and on their own account (the owner's own for the owner); a maker with none is refused, never run on the owner's
         const forPerson = typeof i.person === "string" && i.person ? i.person : undefined;
+        // a schedule with nobody recorded (one made before Vyre kept its maker) runs as no one: Rule 2, never as the owner's (the planner pauses it until a person turns it on as themselves)
+        if (!forPerson && K) throw Object.assign(new Error(noPerson("Turn the schedule on again as yourself, then it runs as you.")), { code: "denied" });
         const own = await accountFor(a, forPerson);
         const t = await launch(a, { prompt: i.prompt, job: true, project: i.project, ...(forPerson ? { forPerson, runAs: forPerson } : {}), ...(own ? { own } : {}) });
         return { agent: a.name, thread: t.id };

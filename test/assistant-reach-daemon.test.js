@@ -51,10 +51,12 @@ test("a bare model session (mcp, mcp:thread:<id>) starts no session, asks no age
 });
 
 test("the assistant starts and drives sessions and asks its agents; threads.launch stays modules-only", { timeout: 120_000 }, async t => {
-  const { work, p1, asAssistant, call } = await rig(t);
+  const { d, work, p1, asAssistant, call } = await rig(t);
   const started = await call("threads.start", { cwd: p1, prompt: "child", surface: "deck" }, "mcp:agent:assistant", asAssistant);
   assert.ok(!started.error && started.data && started.data.id, JSON.stringify(started));
-  assert.ok(!(await call("agents.ask", { agent: "kit", text: "hi", wait: false }, "mcp:agent:assistant", asAssistant)).error, "the assistant asks an agent");
+  // the assistant's session works for its person (vyred vouches both): its ask is that person's call (Rule 2)
+  const forOwner = { ...asAssistant, kernelFacts: { kind: "agent_session", agent: "assistant", session: "s-assistant", thread: asAssistant.thread, vouched: true, person: d.kernel.id.owner } };
+  assert.ok(!(await call("agents.ask", { agent: "kit", text: "hi", wait: false }, "mcp:agent:assistant", forOwner)).error, "the assistant asks an agent");
   for (const [caller, meta] of [["cli", undefined], ["mcp:agent:assistant", asAssistant], ["mcp", { thread: "x" }]]) {
     assert.ok(refused(await call("threads.launch", { cwd: work, prompt: "x" }, caller, meta)), `${caller} threads.launch`);
   }

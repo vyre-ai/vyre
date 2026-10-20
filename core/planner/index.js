@@ -20,6 +20,7 @@ import { cloudGate } from "../../lib/cloud-gate.js";
 import { seesNote, visibilityOf, aboutOf, NOTE_VISIBILITY, atNoteCap } from "../../lib/note-share.js";
 import { isPerson } from "../../lib/caller.js";
 import { personCallOpts } from "../../lib/person-relay.js";
+import { MADE_BEFORE, noPerson } from "../../lib/own-account.js";
 
 /**
  * Test seams, keyed by the VYRE_HOME a registry runs with: a fake clock and timer. Anything left
@@ -95,6 +96,26 @@ export default {
     // scope at all (ambient), same as any session a person starts themselves.
     const AGENT_SOURCE = /^agent:(.+)$/;
 
+    /** Pause a task that has nobody to run as and say why on it (its last result): it waits for a person to turn it on, which makes it theirs. @param {any} item */
+    const hold = item => {
+      st.patch(item.id, { paused: true, last_result: MADE_BEFORE });
+      emit("planner.changed", { item: item.id, kind: item.kind, fields: ["paused"] }, item);
+      ctx.log(`planner: task ${item.id} has no one to run as; it is paused until a person turns it on`);
+    };
+    /**
+     * The upgrade for tasks made before Vyre recorded who a task runs as (no `by`). One the owner made, by what the kernel wrote when its record was made (st.ownerMade), is stamped as the owner's and keeps
+     * running; any other is paused with MADE_BEFORE, never run as the owner. Runs on every start: a stamped task has its person, and a held one is paused, so neither is picked again.
+     */
+    const holdUnstamped = async () => {
+      for (const item of st.all()) {
+        if (item.kind !== "task" || item.by || item.deleted_at != null || (item.paused && item.last_result === MADE_BEFORE)) continue;
+        let mine = false;
+        try { mine = await st.ownerMade(item.id); } catch { mine = false; }
+        if (mine && st.owner()) st.patch(item.id, { by: String(st.owner()) });
+        else hold(item);
+      }
+    };
+    if (K) await holdUnstamped();
     /**
      * Run a task item: rule 1, it runs with its creator's own scope, never more. An existing
      * thread already carries its own scope (threads.post is just a turn in it); a fresh one
@@ -105,6 +126,8 @@ export default {
      */
     const runTask = async item => {
       if (item.paused) return;
+      // Rule 2: a task runs as the person recorded on it. One with nobody (made before Vyre recorded who it runs for, and missed by the upgrade) is held, never run as the owner or the Space's own.
+      if (K && !item.by) { hold(item); return; }
       const text = item.body || item.title;
       const agent = AGENT_SOURCE.exec(item.source || "")?.[1] || null;
       let ok = true, note = "", thread = null;
@@ -466,6 +489,8 @@ export default {
       agentKind(kind, w);
       if (kind === "task" && !(await mayScheduleJobs(w))) throw memberRefusal();
       if (kind === "task") await taskScope({ thread: input.thread || null, project: input.project || null }, w);
+      // Rule 2: a task runs later as the person who scheduled it. A call that names nobody (a module's own, a session with no person proved) schedules none: it would run as no one, or as the owner.
+      if (kind === "task" && K && !callerPerson(w.chain)) throw fail(noPerson("Schedule it from your own signed-in Vyre. Nothing was scheduled."), "denied");
       await mayUseThread(input.thread, w);
       capped(w);
       const s = settings();
@@ -592,6 +617,14 @@ export default {
         const editor = callerPerson(w.chain);
         if (!editor) throw fail("A task's words, thread or project are changed by a signed-in person, who it then runs as. Sign in and change it again; nothing was changed.", "denied");
         if (editor !== (item.by ?? null)) patch.by = editor;
+      }
+      // Turning a task on is the same: whoever turns it on is who it runs as from then on (Rule 2), so a task paused because nobody was recorded on it becomes theirs, on their own account. A call with no person
+      // on it turns nothing on.
+      if (item.kind === "task" && i.paused === false && item.paused) {
+        const turner = callerPerson(w.chain);
+        if (!turner && K) throw fail(noPerson("Turn it on from your own signed-in Vyre. Nothing was changed."), "denied");
+        if (turner && turner !== (item.by ?? null)) patch.by = turner;
+        if (item.last_result === MADE_BEFORE) patch.last_result = null;
       }
       if (item.kind === "note" && (i.visibility !== undefined || i.record !== undefined)) Object.assign(patch, noteShare({ visibility: i.visibility ?? item.visibility, record: i.record !== undefined ? i.record : item.record }));
       if (i.state !== undefined) {
