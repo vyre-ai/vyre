@@ -99,11 +99,11 @@ export function RecordScreen({ id, onClose, onOpen }: { id: string; onClose?: ()
   // One header for the pushed page (ui-system.md section 7): the face or emblem, the title, "Job \u00B7 Juniper Studio".
   return (
     <View className="min-h-0 flex-1">
-      <PageHeader title={title} context={[def.label, space].filter(Boolean).join(" \u00B7 ")} faces={[{ kind: vd.initials ? "person" : "project", id: rec.id, name: title, seed: rec.data?.avatar_seed }]} onBack={back} actions={<View className="flex-row items-center gap-s2"><Menu trigger={<IconButton icon="more" label="More" />} items={[{ label: "Delete", danger: true, onPress: remove }]} /><Button kind="secondary" size="sm" label="Chat about this" onPress={() => router.push(`/u/chats/new?about=${encodeURIComponent(rec.urn)}&name=${encodeURIComponent(title)}` as never)} /></View>} />
-      {rec.type === "contact" || rec.type === "organization" ? <View className="px-s4 pt-s2"><Roles urn={rec.urn} name={title} onOpen={open} /></View> : null}
-      {isShareable(rec.type) ? <View className="px-s4 pt-s2"><ShareControl urn={rec.urn} type={rec.type} record={typeof rec.data?.record === "object" ? rec.data.record?.urn : typeof rec.data?.record === "string" ? rec.data.record : undefined} value={String(rec.data?.visibility ?? "private")} onDone={reload} /></View> : null}
-      <View className="px-s4 pt-s2"><QuickActions email={email || undefined} urn={rec.urn} onLogged={() => setLogged((n) => n + 1)} /></View>
-      <View className="px-s4 pt-s2"><DocumentsBar def={def} rec={rec} related={relatedRecords(world.types, world.byType, def, rec)} email={email} canSend={canSend || allowsMock()} /></View>
+      <PageHeader title={title} context={[def.label, space].filter(Boolean).join(" \u00B7 ")} faces={[{ kind: vd.initials ? "person" : "project", id: rec.id, name: title, seed: rec.data?.avatar_seed }]} onBack={back} actions={<View className="flex-row items-center gap-s2"><Menu trigger={<IconButton icon="more" label="More" />} items={[{ label: "Delete", danger: true, onPress: remove }]} />{typeof rec.data?.drive_path === "string" && rec.data.drive_path.trim() ? <Button kind="secondary" size="sm" icon="folder" label="Open files" onPress={() => router.push(`/u/files?folder=${encodeURIComponent(String(rec.data.drive_path).trim())}` as never)} /> : null}<Button kind="secondary" size="sm" label="Chat about this" onPress={() => router.push(`/u/chats/new?about=${encodeURIComponent(rec.urn)}&name=${encodeURIComponent(title)}` as never)} /></View>} />
+      {rec.type === "contact" || rec.type === "organization" ? <View className="px-s4 pt-s3"><Roles urn={rec.urn} name={title} onOpen={open} /></View> : null}
+      {isShareable(rec.type) ? <View className="px-s4 pt-s3"><ShareControl urn={rec.urn} type={rec.type} record={typeof rec.data?.record === "object" ? rec.data.record?.urn : typeof rec.data?.record === "string" ? rec.data.record : undefined} value={String(rec.data?.visibility ?? "private")} onDone={reload} /></View> : null}
+      <View className="px-s4 pt-s3"><QuickActions email={email || undefined} urn={rec.urn} onLogged={() => setLogged((n) => n + 1)} /></View>
+      <View className="px-s4 pt-s3"><DocumentsBar def={def} rec={rec} related={relatedRecords(world.types, world.byType, def, rec)} email={email} canSend={canSend || allowsMock()} /></View>
       <View className="flex-row flex-wrap items-start gap-x-s8 gap-y-s3 px-s4 pt-s3">
         {(pinned ? pinnedFacts(def, rec, pinned) : factsOf(def, rec)).map(([l, v]) => (
           <View key={l} className="min-w-[96px] gap-s1">
@@ -116,7 +116,7 @@ export function RecordScreen({ id, onClose, onOpen }: { id: string; onClose?: ()
           <HeaderFields fields={def.fields.filter((f: any) => f.kind !== "sealed" && !f.seal).map((f: any) => ({ name: f.name, label: String(f.label ?? f.name) }))} names={pinned ?? factsOf(def, rec).map(([l]) => def.fields.find((f: any) => f.label === l)?.name).filter(Boolean) as string[]} spaceScope={lay.scope === "space"} onNames={(n) => void lay.save("header_fields", { ...(lay.layout.header_fields ?? {}), default: n })} />
         </View>
       </View>
-      <ScrollView contentContainerClassName="gap-s4 px-s4 pb-s12 pt-s2 max-w-page w-full self-center">
+      <ScrollView contentContainerClassName="gap-s5 px-s4 pb-s12 pt-s3 max-w-page w-full self-center">
         <Appear index={1}><RecordPage def={def} rec={rec} world={world} canCustomize={access.admin} canSeal={access.ownServer} canSeeAsAgent={!access.joined} onStage={(st) => { void mv.go(rec, def, st); }} events={events.data ?? []} env={env} onOpen={open} story={<View className="gap-s4"><Connections urn={rec.urn} env={env} onOpen={open} /><RecordHistory urn={rec.urn} refresh={logged} me={(world as { me?: string }).me} /></View>} onNew={(t, via) => router.push(`/u/record/new?type=${t}&via=${encodeURIComponent(via)}&to=${encodeURIComponent(rec.urn)}` as never)} /></Appear>
       </ScrollView>
       {mv.sheet}

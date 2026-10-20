@@ -21,7 +21,7 @@ export function Tabs<T extends string>({ items, value, onChange }: { items: [T, 
   return (
     <P.Root value={value} onValueChange={(v) => onChange(v as T)}>
       <View className="border-b border-edge">
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} className="flex-none grow-0">
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} className="flex-none grow-0" contentContainerStyle={{ paddingRight: 32 }}>
         <P.List style={{ flexDirection: "row", gap: px(map, "--s-1") }}>
           {items.map(([id, l]) => (
             <P.Trigger key={id} value={id} style={{ minHeight: px(map, "--control"), justifyContent: "center", paddingHorizontal: px(map, "--s-3") }}>

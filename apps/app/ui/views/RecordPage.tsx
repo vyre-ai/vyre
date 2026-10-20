@@ -54,6 +54,10 @@ export function RecordPage({ def, rec, world, events, env, onOpen, story, onNew,
   const { phone } = useUiTheme();
   const vd = viewDefOf(def);
   const [who, setWho] = useState<"person" | "assistant">("person");
+  // A narrow page (the side panel, a small window) stacks the label above its value; a wide one gives labels a fixed column so a long label never wraps a word per line.
+  const [pageW, setPageW] = useState(0);
+  const sideBySide = !phone && (pageW === 0 || pageW >= 760);
+  const stack = phone || (pageW > 0 && pageW < 480);
   const [seen, setSeen] = useState<Record<string, any> | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState<any>(undefined);
@@ -105,9 +109,9 @@ export function RecordPage({ def, rec, world, events, env, onOpen, story, onNew,
     if (isRecordIdField(f)) {
       const id = recordIdOf(rec);
       return (
-        <View key={f.name} className={cn("gap-s1 px-s4 py-s3", !phone && "flex-row items-center gap-s3")}>
-          <View className={cn("flex-row flex-wrap items-center gap-s2", !phone && "flex-1")}><Text tone="label">{f.label}</Text></View>
-          <View className={cn("min-w-0 flex-row items-center gap-s2", !phone && "flex-[3]")}>
+        <View key={f.name} className={cn("gap-s1 px-s4 py-s3", !stack && "flex-row items-center gap-s3")}>
+          <View className={cn("flex-row flex-wrap items-center gap-s2", !stack && "w-[168px] flex-none")}><Text tone="label">{f.label}</Text></View>
+          <View className={cn("min-w-0 flex-row flex-wrap items-center gap-s2", !stack && "flex-1")}>
             <Text selectable>{id || "Given when saved"}</Text>
             {id ? <IconButton icon="copy" label={`Copy ${f.label}`} onPress={() => void copyId(id).then(() => showToast(`${f.label} copied.`), () => showToast("Copying did not work here. Select the text and copy it."))} /> : null}
             <Text size="caption" tone="label">{ID_NOTE}</Text>
@@ -138,13 +142,13 @@ export function RecordPage({ def, rec, world, events, env, onOpen, story, onNew,
     return (
       <Pressable key={f.name} disabled={ai || !phone || isEditing} onPress={plainEditable ? () => { setEditing(f.name); setDraft(undefined); } : undefined} onLongPress={items.length ? () => setRowMenu({ f, items }) : undefined}
         onHoverIn={() => setHover(f.name)} onHoverOut={() => setHover((h) => (h === f.name ? null : h))}
-        className={cn("gap-s1 px-s4 py-s3", !phone && "flex-row items-center gap-s3")}>
-        <View className={cn("flex-row flex-wrap items-center gap-s2", !phone && "flex-1")}>
+        className={cn("gap-s1 px-s4 py-s3", !stack && "flex-row items-center gap-s3")}>
+        <View className={cn("flex-row flex-wrap items-center gap-s2", !stack && "w-[168px] flex-none")}>
           <Text tone="label">{f.label}</Text>
           {sealed ? <Chip tone="sealed" icon="vault">Sealed</Chip> : null}
           {states[f.name]?.required && isEmpty(val(rec, f.name)) ? <Chip>Required</Chip> : null}
         </View>
-        <View className={cn("min-w-0", !phone && "flex-[3]")}>
+        <View className={cn("min-w-0", !stack && "flex-1")} {...(Platform.OS === "web" && typeof value === "string" && value.length > 24 ? ({ title: value } as object) : {})}>
           {isEditing ? (
             <View className="gap-s2">
               {editField({ kind: f.kind, definition: f, value, mode: "edit", onChange: setDraft }, env)}
@@ -173,7 +177,7 @@ export function RecordPage({ def, rec, world, events, env, onOpen, story, onNew,
   // A contact's local time, from the Contact's time_zone (lib/time reads it).
   const theirs = def.name === "contact" ? theirTimeOf(Date.now(), rec.data?.time_zone) : null;
   const main = (
-    <View className={cn("min-w-0 gap-s4", !phone && "flex-[2]")}>
+    <View className={cn("min-w-0 gap-s4", sideBySide && "flex-[2]")}>
       {theirs ? <Text size="caption" tone="label">{`It is ${theirs} where they are`}</Text> : null}
       {!ai ? (
         <View className="flex-row items-center justify-between gap-s3 pb-s2">
@@ -231,7 +235,7 @@ export function RecordPage({ def, rec, world, events, env, onOpen, story, onNew,
   );
 
   return (
-    <View className="gap-s4">
+    <View className="gap-s5" onLayout={(e) => { const w = Math.round(e.nativeEvent.layout.width); setPageW((p) => (Math.abs(p - w) > 8 ? w : p)); }}>
       {sf ? <StageSteps strip={phone} stages={stages} current={stages.indexOf(String(val(rec, sf.name) ?? ""))} onSelect={ai ? undefined : (s) => (onStage ? onStage(s) : change(sf, s))} /> : null}
       <View className="flex-row flex-wrap items-center gap-s3">
         {canSeeAsAgent ? <Segmented<"person" | "assistant"> label="Who is looking" value={who} onChange={(v) => { setWho(v); setEditing(null); }} options={[["person", "You"], ["assistant", "Your agent sees"]]} /> : null}
@@ -244,7 +248,7 @@ export function RecordPage({ def, rec, world, events, env, onOpen, story, onNew,
           <Text size="caption" tone="muted">{assistantNote(sealedNow)}</Text>
         </Banner>
       ) : null}
-      <View className={cn("gap-s4", !phone && "flex-row items-start")}>{main}{side}</View>
+      <View className={cn("gap-s5", sideBySide && "flex-row items-start")}>{main}{side}</View>
 
       <Sheet open={!!rowMenu} onClose={() => setRowMenu(null)} title={rowMenu?.f.label}>
         <View>{(rowMenu?.items ?? []).map((it: any) => <Row key={it.label} title={it.label} onPress={() => { setRowMenu(null); it.onPress(); }} />)}</View>

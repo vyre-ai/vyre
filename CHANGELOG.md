@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6.5
 
+- feat(records): the record side panel resizes with a drag handle on its left edge (360 to 60% of the window, kept per type). Labels get a fixed column, or stack above the value when the page is narrow, long values show in full on hover; a narrow panel stacks the related records under the fields. A project's person-of and moved-from bookkeeping fields are hidden, and a project with a Drive folder gets "Open files", which opens Files at that folder (/u/files?folder=). The last tab is no longer clipped by the fade.
+- fix(files): the sidebar tree rows use the same 32 px height and 8 px inset as the places above them, and the search scope, count, search and filter sit in one toolbar row.
 - perf(records): the Twenty store reads every object's columns once for all types that ask together at start (each type read them alone, 3 to 5 s apiece, one after another), keeps that read 20 s and drops it on a define; the health check keeps an ok answer 10 s. A record page that is still loading after 20 s says so with Try again instead of loading rows for ever.
 
 ## 0.6.4

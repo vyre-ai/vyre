@@ -10,7 +10,7 @@ const blank = (/** @type {any} */ v) => v == null || (typeof v === "string" && !
 /** A type's own bookkeeping fields, kept by the service that owns the type: nobody's to read or fill. The task's are the planner's; a project's are the addresses the kernel writes (its short name, Drive folder and memory scope hold ids, the stage track is JSON) (records/core-types.js). */
 const BOOKKEEPING = /** @type {Record<string, Set<string>>} */ ({
   task: new Set(["planner", "wall", "floating", "source"]),
-  project: new Set(["slug", "drive_path", "memory_scope", "template_stage", "template_snapshot", "template_version"]),
+  project: new Set(["slug", "drive_path", "memory_scope", "template_stage", "template_snapshot", "template_version", "personal_of", "moved_to", "moved_from"]),
 });
 
 /**
