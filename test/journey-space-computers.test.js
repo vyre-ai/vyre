@@ -41,7 +41,7 @@ test("the Space's rule for members' own computers: the box answers it, asks for 
   assert.ok(!made.error, JSON.stringify(made.error));
   const read = async () => allowedOf((await as("spaces.members.computers", { space: "northwind" })).data);
   assert.equal(await read(), false, "off until an owner allows it");
-  assert.equal(memberLine("northwind's Cloud", await read()), "northwind's Cloud keeps sessions on its server. An owner can allow your computer.");
+  assert.equal(memberLine("northwind's Cloud", await read()), "northwind's Cloud keeps sessions on its server. Ask your Space's admin to allow this.");
   const asked = await as("spaces.members.computers", { space: "northwind", allow: true });
   assert.equal(asked.error?.code, "presence_required", "changing it is the person's own yes");
   assert.equal(refusal(asked.error.code, asked.error.message), "That needs your approval. Approve on this device, then try again.");

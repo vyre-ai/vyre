@@ -156,6 +156,7 @@ Make an agent: a name, its projects ("*" for all), its credentials (Vault items 
   - `kind` "assistant" or "agent"
   - `look` string: how it is drawn: a shape s0 to s7 and a colour c0 to c7, like s3~c5; empty clears it
   - `model` string
+  - `model_provider` string: the provider the model is on (openrouter for an OpenRouter model); empty is Claude
   - `personal` boolean
   - `projects` any
   - `skills` list of string
@@ -248,6 +249,7 @@ Run one scheduled job as an agent: a side thread with the agent's own credential
 - Input:
   - `agent` string, required
   - `prompt` string, required
+  - `person` string: who made the schedule: the job runs as them, on their own AI account
   - `project` string
 - Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
@@ -390,6 +392,7 @@ Change an agent (name it by name or agent): its projects, credentials, instructi
   - `kind` "assistant" or "agent"
   - `look` string: how it is drawn: a shape s0 to s7 and a colour c0 to c7, like s3~c5; empty clears it
   - `model` string
+  - `model_provider` string: the provider the model is on (openrouter for an OpenRouter model); empty is Claude
   - `name` string
   - `personal` boolean
   - `projects` any
@@ -11418,12 +11421,13 @@ Remove an account. Threads already resumed on it keep running; the next resume o
 
 ### `sessions.accounts.resolve`
 
-Which account a session on this provider uses, for a project/agent/explicit choice, scope-checked either way.
+Which account a session on this provider uses, for a project/agent/explicit choice, scope-checked either way. any: the person's own account on any provider, this one first.
 
 - Input:
   - `provider` string, required
   - `account` string
   - `agent` string
+  - `any` boolean
   - `job` boolean
   - `person` string
   - `project` string

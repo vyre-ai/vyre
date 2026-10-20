@@ -3,7 +3,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { chatKind, panelTabs, threadsTab, tabOf, threadRows, agentHint, groupView, addPeopleLine } from "./threads-model.js";
+import { chatKind, panelTabs, threadsTab, tabOf, threadRows, agentHint, groupView, addPeopleLine, threadSub, titleFrom, untitledTitle } from "./threads-model.js";
 
 const agent = { family: "assistant" }, person = { family: "person" };
 
@@ -68,4 +68,24 @@ test("before people join a thread with an agent, one line says what they and the
 test("a thread row says where it was forked from", () => {
   const r = threadRows({ threads: [{ thread: "f1", title: "Plan (fork)", last_active: 3, state: "idle", forked_from: { thread: "o1", message: "m7" } }, { thread: "o1", title: "Plan", last_active: 2 }] });
   assert.deepEqual(r.map((x) => x.forkedFrom), [{ thread: "o1", message: "m7" }, null]);
+});
+
+test("the header says the agent, then the thread's own title only when it has one: never \"engineer New chat\"", () => {
+  assert.equal(threadSub("New chat", "engineer"), undefined);
+  assert.equal(threadSub("Chat", "engineer"), undefined);
+  assert.equal(threadSub("engineer", "engineer"), undefined);
+  assert.equal(threadSub("", "engineer"), undefined);
+  assert.equal(threadSub("Add a signup form", "engineer"), "Add a signup form");
+});
+
+test("a thread is titled from its first message, short, as chat apps do; a command or an empty message gives none", () => {
+  assert.equal(titleFrom("can you add a signup form to the pricing page and wire it to the CRM please"), "Can you add a signup form");
+  assert.equal(titleFrom("@engineer fix the intake date check\nmore detail here"), "Fix the intake date check");
+  assert.equal(titleFrom("look at https://example.com/x now"), "Look at now");
+  assert.equal(titleFrom("/threads"), "");
+  assert.equal(titleFrom("   "), "");
+  assert.ok(titleFrom("x".repeat(90)).length <= 48);
+  assert.equal(untitledTitle("New chat"), true);
+  assert.equal(untitledTitle("Chat"), true);
+  assert.equal(untitledTitle("Pricing page"), false);
 });

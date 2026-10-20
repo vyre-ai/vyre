@@ -4,7 +4,7 @@
 import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { agentLaunchGuard, checkLaunch, trustedLaunch, askerOver, memberAccount, movesAccount } from "./asker-account.js";
+import { agentLaunchGuard, checkLaunch, trustedLaunch, askerOver, memberAccount, movesAccount, withoutPicked } from "./asker-account.js";
 
 const OWNER = "per_owner", ANA = "per_ana", BEN = "per_ben";
 /** A Switchboard-shaped stand-in: accounts by id with their person (null: the home's own, the owner's), the thread record, and whether the machine holds a login of its own. */
@@ -21,6 +21,8 @@ function sb({ accounts = [], rec = { provider: "claude", account: null }, login 
       const who = q.person ?? null;
       const serves = (/** @type {any} */ a) => (a.person ? a.person === who : who === null || who === OWNER);
       if (q.account) { const a = accounts.find(x => x.id === q.account); if (!a || !serves(a)) throw new Error(`no account ${q.account}`); return a; }
+      // `any` (Accounts.own): the person's own on any provider, the one asked for first; nobody gets nothing
+      if (q.any) return who ? (accounts.find(a => a.provider === q.provider && serves(a)) || accounts.find(a => serves(a)) || null) : null;
       return accounts.find(a => a.provider === q.provider && serves(a)) || null;
     },
   };
@@ -78,7 +80,7 @@ test("an alias of the owner counts as the owner only through the canonical form;
 
 test("an agent's launch for a person who is not the owner is refused with the next step; the owner, no person, no kernel and a named account are unchanged; an unreadable owner fails closed", async () => {
   const i = { agent: "kit" };
-  const refusedAgent = (/** @type {Promise<any>} */ p) => assert.rejects(p, (/** @type {any} */ e) => e.code === "no_account" && /Ask the owner to pick one/.test(e.message) && /Nothing was started/.test(e.message));
+  const refusedAgent = (/** @type {Promise<any>} */ p) => assert.rejects(p, (/** @type {any} */ e) => e.code === "no_account" && /^Connect your own AI account in Settings, AI accounts, to use kit\./.test(e.message) && /Nothing was started/.test(e.message));
   await refusedAgent(agentLaunchGuard(sb(), i, ANA, OWNER));
   await agentLaunchGuard(sb(), i, OWNER, OWNER);
   await agentLaunchGuard(sb(), i, null, OWNER);
@@ -103,9 +105,11 @@ test("an agent's launch for a person who is not the owner is refused with the ne
   // a teammate's launch (team-credential) is judged the same
   await agentLaunchGuard(withDelivery("fd"), { agent: "tm", agent_kind: "teammate", env: { ANTHROPIC_API_KEY: "x" } }, ANA, OWNER);
   await refusedYet(agentLaunchGuard(withDelivery("env"), { agent: "tm", agent_kind: "teammate", env: { ANTHROPIC_API_KEY: "x" } }, ANA, OWNER), /API key or a setup token/);
-  // an admin's turn is the owner's kind of turn
+  // an admin is a person with an account of their own like any member: the owner's picked credential, or nothing picked, never runs their turn (NEGATIVE: the owner's is not used for an admin)
   const adminSb = sb(); adminSb.deps.membershipOf = async (/** @type {string} */ p) => (p === ANA ? { role: "admin" } : { role: "member" });
-  await agentLaunchGuard(adminSb, { ...i, env: { ANTHROPIC_API_KEY: "x" } }, ANA, OWNER);
+  await refusedYet(agentLaunchGuard(adminSb, { ...i, env: { ANTHROPIC_API_KEY: "x" } }, ANA, OWNER), /The owner can run it for you/);
+  await refusedAgent(agentLaunchGuard(adminSb, i, ANA, OWNER));
+  await agentLaunchGuard(adminSb, { ...i, account: "anas" }, ANA, OWNER);   // the admin's own account, named for the launch, runs it
   await refusedYet(agentLaunchGuard(adminSb, { ...i, env: { ANTHROPIC_API_KEY: "x" } }, BEN, OWNER), /The owner can run it for you/);
   await refusedAgent(agentLaunchGuard(sb(), { ...i, env: {} }, ANA, OWNER));   // nothing picked
   await refusedAgent(agentLaunchGuard(sb(), i, ANA, ""));
@@ -127,7 +131,7 @@ test("checkLaunch: who asks is the first person on the chain, else the person th
   // No person on the call is not judged (the narrow gate): the owner's surfaces, a restart re-running a queued request, a duty and a Flow run as they did before the gate.
   assert.equal(await checkLaunch(none, tm, null, OWNER), null, "nobody recorded, a picked credential: not judged");
   assert.equal(await checkLaunch(none, { agent: "tm", agent_kind: "teammate" }, null, OWNER), null, "nobody recorded, nothing picked (ambient): not judged either");
-  await assert.rejects(checkLaunch(none, { agent: "tm", agent_kind: "teammate" }, chain(ANA), OWNER), /has no AI sign-in picked for it/, "a member, nothing picked (ambient)");
+  await assert.rejects(checkLaunch(none, { agent: "tm", agent_kind: "teammate" }, chain(ANA), OWNER), /Connect your own AI account in Settings, AI accounts, to use tm\./, "a member, nothing picked (ambient)");
   // an agentless launch: tool-less passes for anyone; WITH tools it is the machine's own sign-in, the owner's
   assert.equal(await checkLaunch(none, { tools: "none" }, chain(ANA), OWNER), ANA, "tool-less");
   assert.equal(await checkLaunch(none, { lean: true }, chain(ANA), OWNER), ANA, "lean");
@@ -253,4 +257,62 @@ test("a direct-call marker a caller puts in its own env is taken out, so such a 
   assert.equal(noOwnerMarker(none), none, "nothing to take out: unchanged");
   assert.deepEqual(noOwnerMarker({}), {});
   assert.equal(noOwnerMarker(undefined), undefined);
+});
+
+// The owner's rule (20 Oct 2026): a turn runs on the asker's own account on ANY provider they hold one on, and the model picked for the Assistant keeps its own provider.
+test("askerOver: a member with no account on the thread's provider runs the turn on her own account of another provider; NEGATIVE: never the owner's, the home's or another member's", async () => {
+  const world = (/** @type {any[]} */ accounts) => sb({ accounts, rec: { provider: "claude", account: "own" }, login: true });
+  assert.deepEqual(await askerOver(world([{ id: "own", provider: "claude", person: null }, { id: "anacodex", provider: "codex", person: ANA }]), "t", { asker: ANA }), { provider: "codex", account: "anacodex", person: ANA }, "her Codex runs the turn");
+  assert.deepEqual(await askerOver(world([{ id: "own", provider: "claude", person: null }, { id: "anakey", provider: "openrouter", person: ANA }]), "t", { asker: ANA }), { provider: "openrouter", account: "anakey", person: ANA }, "her key runs the turn");
+  // NEGATIVE: the home's account on another provider and another member's are never hers
+  await refused(askerOver(world([{ id: "own", provider: "claude", person: null }, { id: "homecodex", provider: "codex", person: null }]), "t", { asker: ANA }));
+  await refused(askerOver(world([{ id: "own", provider: "claude", person: null }, { id: "bencodex", provider: "codex", person: BEN }]), "t", { asker: ANA }));
+  // a resolver that answers with someone else's account is never taken (fails closed)
+  const lying = world([{ id: "own", provider: "claude", person: null }]);
+  const real = lying.accountFor; lying.accountFor = async (/** @type {any} */ q) => (q.any ? { id: "homecodex", provider: "codex", person: null } : real(q));
+  await refused(askerOver(lying, "t", { asker: ANA }));
+  // the owner is unchanged: the thread's own account (the home's) runs the owner's turn
+  assert.equal(await askerOver(world([{ id: "own", provider: "claude", person: null }, { id: "anacodex", provider: "codex", person: ANA }]), "t", { asker: OWNER }), null);
+});
+
+test("accountProviderFor: an OpenRouter model picked for the Assistant runs on OpenRouter even with Claude connected, on the asker's own OpenRouter account", async () => {
+  const both = sbFor({ accounts: [{ id: "c1", provider: "claude", person: null }, { id: "o1", provider: "openrouter", person: null }] });
+  const picked = { agent: "juno", agent_kind: "assistant", auth: "ambient", model: "x-ai/grok-4", model_provider: "openrouter" };
+  assert.deepEqual(await accountProviderFor(both, picked), { provider: "openrouter", account: "o1" }, "the owner's OpenRouter, Claude connected or not");
+  assert.equal(await accountProviderFor(both, { ...picked, model_provider: undefined }), null, "with no provider stored the model is Claude's, as before");
+  const theirs = sbFor({ accounts: [] });
+  theirs.accountFor = async (/** @type {any} */ q) => { const hit = [{ id: "o1", provider: "openrouter", person: null }, { id: "anaor", provider: "openrouter", person: ANA }].find(a => a.provider === q.provider && (q.person ? a.person === q.person : !a.person)); if (!hit) throw new Error("none"); return hit; };
+  assert.deepEqual(await accountProviderFor(theirs, { ...picked, person: ANA }), { provider: "openrouter", account: "anaor" }, "a member's turn: her own OpenRouter, NEGATIVE: never the owner's");
+  assert.equal(await accountProviderFor(theirs, { ...picked, account: "c1" }), null, "a launch that names its account is not moved");
+});
+
+import { withAccountProvider } from "./asker-account.js";
+test("withAccountProvider: a launch naming an OpenRouter account and no model gets the default model; one with a model keeps it", async () => {
+  const sb0 = sbFor({ accounts: [] });
+  assert.equal((await withAccountProvider(sb0, { provider: "openrouter", account: "anaor" })).model, "anthropic/claude-sonnet-4.5");
+  assert.equal((await withAccountProvider(sb0, { provider: "openrouter", account: "anaor", model: "x/y" })).model, "x/y");
+});
+
+test("trustedLaunch: the own-run marker is set only for the agents and team modules' run on that person's own account, and never comes from input", () => {
+  const own = { agent: "kit", account: "anas", person: ANA, for_person: ANA };
+  for (const c of ["module:agents", "module:team"]) assert.equal(/** @type {any} */ (trustedLaunch(own, { firstParty: true, caller: c })).own_run, true, c);
+  // NEGATIVE: another first-party module's for_person, a pairing of two people, no account, or a caller's own word: no marker
+  assert.equal(/** @type {any} */ (trustedLaunch(own, { firstParty: true, caller: "module:planner" })).own_run, undefined, "another first-party module");
+  assert.equal(/** @type {any} */ (trustedLaunch({ ...own, person: BEN }, { firstParty: true, caller: "module:agents" })).own_run, undefined, "someone else's account");
+  assert.equal(/** @type {any} */ (trustedLaunch({ ...own, account: undefined }, { firstParty: true, caller: "module:agents" })).own_run, undefined, "no account named");
+  assert.equal(/** @type {any} */ (trustedLaunch({ agent: "kit", own_run: true }, { firstParty: true, caller: "module:agents" })).own_run, undefined, "an input's own_run is dropped");
+  assert.equal(/** @type {any} */ (trustedLaunch({ ...own, own_run: true }, { firstParty: false, caller: "mcp" })).own_run, undefined);
+  // run_as: from the team module too (a member's own request acts as her), never from another module
+  assert.equal(/** @type {any} */ (trustedLaunch({ agent: "kit", run_as: ANA }, { firstParty: true, caller: "module:team" })).run_as, ANA);
+  assert.equal(/** @type {any} */ (trustedLaunch({ agent: "kit", run_as: ANA }, { firstParty: true, caller: "module:planner" })).run_as, undefined);
+});
+
+test("withoutPicked: a person's own account run carries none of the agent's picked credentials nor its fallback; any other account keeps them", () => {
+  const o = { agent: "kit", env: { ANTHROPIC_API_KEY: "sk-owner", CLAUDE_CODE_OAUTH_TOKEN: "tok-owner", OPENROUTER_API_KEY: "or-owner", CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR: "4", KEEP: "1" }, fallback: { env: { ANTHROPIC_API_KEY: "sk-fb" } } };
+  const hers = withoutPicked(o, { id: "anas", person: ANA });
+  assert.deepEqual(hers.env, { KEEP: "1" }, "only the variables that hold no key");
+  assert.equal(hers.fallback, undefined, "no fallback onto the owner's key");
+  assert.equal(JSON.stringify(hers).includes("owner"), false, "NEGATIVE: no owner credential anywhere in her launch");
+  assert.equal(withoutPicked(o, { id: "home", person: null }), o, "the home's account: as it was");
+  assert.equal(withoutPicked(o, null), o, "no account: as it was");
 });

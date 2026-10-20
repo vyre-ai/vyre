@@ -5,7 +5,7 @@
 import { openFind } from "../find/FindHost";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useWindowDimensions, View } from "react-native";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { Banner, Button, Card, Divider, EmptyState, ErrorState, Field, IconTile, ListHeader, LoadingState, Row, Segmented, Sheet, Text, listRows, showToast, type FilterChip, FileViewer, useVirtualRows, Icon, IconButton } from "@vyre/ui";
 import { Frame } from "../places/Frame";
 import RealDrive from "./RealDrive";
@@ -15,7 +15,7 @@ import { driveSource, linkedFileSource } from "./file-source";
 import { MenuRow } from "../../ui/blocks/RowMenu";
 import { type Place, rootLabel, abilities, bulkActions, crumbsFor, moveFocus, nextSort, parentPlace, parsePlace, prune, selectAll, selectOnly, selectRange, selectToggle, sortRows, type FileRow, type Selection, type Sort } from "./files-model.ts";
 import { folderNames, linkedNames, loader } from "./files-real";
-import { detailLines, quickLook } from "./files-places.js";
+import { agentPlace, detailLines, quickLook } from "./files-places.js";
 import { SitePage } from "./SitePage";
 import { startThread } from "./new-thread";
 import { ComputerPage } from "./ComputerPage";
@@ -54,6 +54,14 @@ export default function FilesManager() {
 function Manager({ wide }: { wide: boolean }) {
   const router = useRouter();
   const { place, folders, status, tick, go: setPlace, loadRoots, setKids, invalidate } = useFilesNav();
+  // /u/files?agent=engineer (an agent's "Open in Vyre Files"): open that agent's own folder, the same place as Agents > Engineer in the sidebar.
+  const { agent } = useLocalSearchParams<{ agent?: string }>();
+  useEffect(() => {
+    if (!agent) return;
+    let live = true;
+    tool<{ agents?: { name: string; path: string }[] }>("files.places", {}).then((r) => { const at = agentPlace(r?.agents, String(agent)); if (live && at) setPlace(at); }).catch(() => {});
+    return () => { live = false; };
+  }, [agent, setPlace]);
   const [rows, setRows] = useState<FileRow[] | null>(null);
   const [err, setErr] = useState("");
   const [sort, setSort] = useState<Sort>({ key: "name", dir: "asc" });

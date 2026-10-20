@@ -204,7 +204,7 @@ export class FlowRunner {
     /** @type {Run} */
     const run = { id, flow: `gate:${g.type}:${g.stage}`, version: 0, hash: "", space: cat.space, trigger: { kind: "gate", key: g.key, source: `stage:${g.type}.${g.stage}`, input: { record: g.urn, stage: g.stage } }, tainted: false, source_spaces: [cat.space], depth: 0,
       state: "waiting", started_at: now, updated_at: now, steps: {}, waiting: { step: "tasks", kind: "gate" }, approver: g.approver || { kind: "service", id: "stages", space: cat.space },
-      gate: { key: g.key, urn: g.urn, type: g.type, record: g.id, stage: g.stage, next: g.next, owner: g.owner || null, tasks: g.tasks, unmade: g.unmade || [] } };
+      gate: { key: g.key, urn: g.urn, type: g.type, record: g.id, stage: g.stage, next: g.next, owner: g.owner || null, ...(typeof g.by === "string" && g.by ? { by: g.by } : {}), tasks: g.tasks, unmade: g.unmade || [] } };   // by: the person who moved the record in, so a restart moves it on as them
     run.steps.tasks = { status: "waiting", at: now, output: { count: g.tasks.length, required: g.tasks.filter(t => t.required).length } };
     for (const t of g.tasks) run.steps[`task:${t.title}`] = { status: "waiting", at: now, task: t.id, output: { required: t.required } };
     await this.store.putRun(run);
