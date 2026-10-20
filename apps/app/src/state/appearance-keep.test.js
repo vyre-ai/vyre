@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { changedLooks, pack, unpack } from "./appearance-keep.js";
+import { personKey, packPerson, unpackPerson, personFor, changedLooks, pack, unpack } from "./appearance-keep.js";
 
 test("what the person and each space chose comes back the way it went in", () => {
   const raw = pack({ person: { theme: "paper", density: "compact", font: "serif", reducedMotion: true, largerText: true }, looks: { spc_a: { accent: "sky", tint: "rose", density: "comfortable", font: "system", corners: "round" }, mine: { accent: "custom", hex: "#7AA2F7" } } });
@@ -29,4 +29,15 @@ test("only a look the person changed is kept: the default one and the sample spa
   const looks = { mine: { accent: "violet", tint: "accent", density: "default", font: "system", corners: "default" }, juniper: { accent: "amber", density: "compact" }, spc_a: { accent: "sky" } };
   assert.deepEqual(Object.keys(changedLooks(looks)), ["spc_a"]);
   assert.deepEqual(Object.keys(changedLooks({ mine: { accent: "rose", tint: "accent", density: "default", font: "system", corners: "default" } })), ["mine"]);
+});
+
+test("display settings are kept per Space, and a Space with none opens from a one-time copy of the old shared ones", () => {
+  assert.notEqual(personKey("spc_a"), personKey("spc_b"));
+  assert.equal(unpackPerson(packPerson({ density: "compact", font: "serif", junk: 1 })).density, "compact");
+  assert.equal(unpackPerson("{not json"), null);
+  const copied = personFor(null, { density: "compact" });
+  assert.equal(copied.copied, true);
+  assert.equal(copied.person.density, "compact");
+  assert.equal(personFor({ font: "serif" }, { density: "compact" }).person.density, "default", "a Space with its own settings never takes the old ones");
+  assert.deepEqual(personFor(null, {}).person, { density: "default", font: "system", reducedMotion: false, largerText: false });
 });

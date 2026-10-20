@@ -70,6 +70,7 @@ function all(/** @type {string} */ space) {
   // Only the sign-in (username, password, GitHub) and the devices are the same in every Space; everything else is this Space's (owner, 21 Oct 2026).
   return [
     { title: `Your account in ${space}`, rows: [
+      ["Your profile", "The name, look and avatar you show in this Space", "/u/settings/profile", "person"],
       ["AI accounts", "Every AI account your agents use here, from any provider", "/u/settings/ai", "spark"],
       ["Appearance", "Theme, accent colour, density and font", "/u/appearance", "sun"],
       ["Notifications", "Choose what can reach you from this Space, and when", "/u/settings/notifications", "bell"],
@@ -86,7 +87,7 @@ function all(/** @type {string} */ space) {
       ["Agent computer", "What runs on this computer for this Space: history, hooks and shares", "/u/settings/system", "laptop"],
     ] },
     { title: "Everywhere", rows: [
-      ["Sign-in and recovery", "Your username, password, recovery code and GitHub link", "/u/settings/account", "face"],
+      ["Sign-in and recovery", "Your username, password and recovery code, and your GitHub link", "/u/settings/account", "face"],
       ["Devices and computers", "Your phone and computers; approve a new one, remove one you lost", "/u/settings/devices", "devices"],
       ["About", "Version, who made Vyre, and where to star it", "/u/about", "info"],
     ] },

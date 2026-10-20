@@ -1,6 +1,6 @@
 // One list of everything connected: apps connected from a key (HTTP APIs) and MCP servers, side by side with a plain word for how each is doing. Each row opens its own tab for the detail; the
 // person does not have to know which tab holds what to see that it works.
-import { useCallback, useEffect, useState } from "react";
+import { useKept } from "../../src/state/kept";
 import { View } from "react-native";
 import { Button, Card, Divider, EmptyState, ErrorState, LoadingState, Row, Text } from "@vyre/ui";
 import { connections } from "./source-real";
@@ -8,16 +8,18 @@ import { words } from "./model";
 import { unifyConnected, type Connected } from "./any-app";
 
 export default function RealConnected({ open }: { open: (tab: "any" | "mcp" | "add") => void }) {
-  const [list, setList] = useState<Connected[] | null>(null);
-  const [problem, setProblem] = useState("");
-  const load = useCallback(() => {
+  // the names and states of what is connected (never a key) come from this Space's kept copy at once; the fresh answer replaces it
+  const kept = useKept<Connected[]>("connections", async () => {
     // One list failing leaves the other; both failing says why (a refusal is words, not an empty page).
     const failed: unknown[] = [];
     const soft = <T,>(p: Promise<T[]>) => p.catch((e) => { failed.push(e); return [] as T[]; });
-    Promise.all([soft(connections.madeList()), soft(connections.servers())])
-      .then(([made, servers]) => { if (failed.length === 2) throw failed[0]; setList(unifyConnected(made, servers)); setProblem(""); }).catch((e) => setProblem(words(e)));
-  }, []);
-  useEffect(load, [load]);
+    const [made, servers] = await Promise.all([soft(connections.madeList()), soft(connections.servers())]);
+    if (failed.length === 2) throw new Error(words(failed[0]));
+    return unifyConnected(made, servers);
+  }, "Your connections did not load.");
+  const list = kept.data;
+  const problem = kept.err;
+  const load = kept.reload;
   if (problem && !list) return <ErrorState title="Your connections did not load" reason={problem} retry={load} />;
   if (!list) return <LoadingState rows={2} />;
   return (

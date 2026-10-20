@@ -43,7 +43,7 @@ test("settings is your account in the Space, the Space and Everywhere with nothi
   assert.deepEqual(g.map((x) => x.title), ["Your account in Juniper Studio", "Juniper Studio", "Everywhere"]);
   assert.ok(g.every((x) => !("advanced" in x)), "no Advanced group: the owner found half-built pages there (owner, 20 Oct)");
   assert.ok(g.flatMap((x) => x.rows).every((r) => r[2].startsWith("/u/")));
-  assert.deepEqual(g.map((x) => x.rows.length), [4, 8, 3], "a short list an owner reads in one look");
+  assert.deepEqual(g.map((x) => x.rows.length), [5, 8, 3], "a short list an owner reads in one look");
 });
 
 test("Skills and plugins is one row, opening the library with its own Personal and Space switch", () => {

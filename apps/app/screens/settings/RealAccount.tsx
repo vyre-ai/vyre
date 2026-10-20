@@ -5,14 +5,13 @@ import { useCallback, useEffect, useState } from "react";
 import { ServerLine } from "./ServerLine";
 import { HIDDEN, claimBlocked } from "../shell/rc";
 import { View } from "react-native";
-import { Avatar, Banner, Button, Card, Chip, Divider, EmptyState, Field, PasswordField, Row, Segmented, Text, markRef, showToast, ErrorState, LoadingState } from "@vyre/ui";
+import { Avatar, Banner, Button, Card, Chip, Divider, EmptyState, PasswordField, Row, Segmented, Text, markRef, showToast, ErrorState, LoadingState } from "@vyre/ui";
 import { AboutCard } from "./AboutCard";
-import { AssistantLookCard } from "./AssistantLookCard";
 import { Group, Page } from "../places/Frame";
 import { GithubCard } from "./GithubCard";
-import { contacts, codeOf, displayNameOk, devices, entryLine, entryTitle, hasCode, identityLine, READ_ONLY_LINE, removable, sealedFields, approvalsLine, type Entry, type Identity, type TypeDef } from "./account-model";
+import { contacts, codeOf, devices, entryLine, entryTitle, hasCode, READ_ONLY_LINE, removable, sealedFields, approvalsLine, type Entry, type Identity, type TypeDef } from "./account-model";
 import { worksLine, type Agent } from "./agents-model";
-import { agentsList, entries as loadEntries, identity as loadIdentity, canSetName, chatSetupProblem, listingProblem, needsPasswordForCode, removeEntry, retryChatSetup, retryListing, replaceCode, setDisplayName, types as loadTypes } from "./real";
+import { agentsList, entries as loadEntries, identity as loadIdentity, chatSetupProblem, listingProblem, needsPasswordForCode, removeEntry, retryChatSetup, retryListing, replaceCode, types as loadTypes } from "./real";
 import { listingLine } from "./account-read.js";
 import { useUpdate } from "../../src/state/update";
 import { aboutButton, aboutLine, appliedLine, askLine } from "./update-model.js";
@@ -38,8 +37,6 @@ export function RealAccount() {
   const [chatProblem, setChatProblem] = useState("");
   const [listing, setListing] = useState("");
   const [listingBusy, setListingBusy] = useState(false);
-  const [editing, setEditing] = useState(false);
-  const [nameDraft, setNameDraft] = useState("");
   const [autoLock, setAutoLock] = useState("15");
   useEffect(() => { void readLockMinutes().then((m) => setAutoLock(String(m))); }, []);
   const chooseLock = (v: string) => { setAutoLock(v); void writeLockMinutes(v); };
@@ -56,24 +53,9 @@ export function RealAccount() {
       {err ? <Card flush><ErrorState title="Account did not load" reason={err} retry={load} /></Card> : null}
       {chatProblem ? <Banner icon="refresh"><View className="flex-row flex-wrap items-center gap-s3"><View className="min-w-0 flex-1 gap-s1"><Text>Private chats are not finished setting up on this computer.</Text><Text size="caption" tone="label">{chatProblem}</Text></View><Button size="sm" kind="primary" label="Fix it" onPress={() => void retryChatSetup().then((p) => { setChatProblem(p); load(); }).catch((e) => setChatProblem(say(e)))} /></View></Banner> : null}
       {listing ? <Banner icon="refresh"><View className="gap-s2"><Text tone="warn">{listingLine(listing)}</Text><View className="self-start"><Button size="sm" label={listingBusy ? "Trying" : "Retry"} disabled={listingBusy} onPress={() => { setListingBusy(true); void retryListing().then((p) => { setListing(p); if (!p) showToast("Your server is on your Space's address. It goes live within a few minutes."); }).catch((e) => setListing(say(e))).finally(() => setListingBusy(false)); }} /></View></View></Banner> : null}
-      {id?.exists ? (
-        <Card className="gap-s2">
-          <Row lead={<Avatar of={markRef("person", id.label || id.name || "you")} size={40} />} title={id.label || id.name || "You"} sub={identityLine(id)} className="px-0"
-            end={canSetName() && !editing ? <Button kind="ghost" size="sm" icon="edit" label="Change name" onPress={() => { setNameDraft(id.label || ""); setEditing(true); }} /> : undefined} />
-          {editing ? (
-            <View className="gap-s2">
-              <Field label="Your name" value={nameDraft} onChangeText={setNameDraft} help="One line of up to 60 characters. Your username stays the same." />
-              <View className="flex-row gap-s2">
-                <Button kind="primary" size="sm" label="Save" disabled={!displayNameOk(nameDraft)} onPress={() => void setDisplayName(nameDraft.trim()).then(() => { setEditing(false); load(); }).catch((e) => showToast(say(e)))} />
-                <Button kind="ghost" size="sm" label="Cancel" onPress={() => setEditing(false)} />
-              </View>
-            </View>
-          ) : null}
-        </Card>
-      ) : null}
+      {id?.exists ? <Card><Row lead={<Avatar of={markRef("person", id.label || id.name || "you")} size={40} />} title={id.name || "Your username"} sub="Your username and password are the same in every Space." className="px-0" /></Card> : null}
       {id?.readOnly ? <Banner><Text>{READ_ONLY_LINE}</Text></Banner> : null}
       {id && !id.exists ? <Card><EmptyState title={claimBlocked() ? HIDDEN.claimTitle : "No Vyre name on this device yet"} body={claimBlocked() ? HIDDEN.claimBody : "Choose your Vyre name during setup."} /></Card> : null}
-      {id?.exists ? <AssistantLookCard person={id.label || id.name || "You"} /> : null}
       {es ? (
         <>
           <Group title="Ways in" note="Any one signs you in. Any one can add or remove the others.">

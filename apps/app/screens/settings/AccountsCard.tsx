@@ -2,6 +2,7 @@
 // who it is connected as, or that it is not connected, and how to connect: the provider's own sign-in where one exists, an API key where keys are supported. Each connected account sits under its
 // provider with Make default, Remove and, for a key, Replace key. The sign-in is the provider's: Vyre shows its link and code and never sees a password or token. A key goes once to the server's
 // key tool and is not shown again. On a computer that runs Claude on its own login, Claude's sign-in is the setup token the computer keeps (onboard.claude), in the same panel as every other.
+import { useSpaces } from "../shell/state";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Platform, View } from "react-native";
 import { openExternal } from "../../src/shell/open-external";
@@ -22,7 +23,8 @@ const say = (e: unknown, f = "That did not go through.") => ((e as { code?: stri
 const machineSay = (e: unknown) => aiRefusal((e as { code?: string })?.code, (e as Error)?.message || "", surfaceNow());
 
 /** The last list each source answered, kept for this run of the app only (names and states, never a key). */
-const LAST = new Map<AccountsApi, Account[]>();
+/** The last list read, per Space: AI accounts are the Space's, so one Space's list never shows in another. */
+const LAST = new Map<string, Account[]>();
 
 /** What is open under one provider: a sign-in, a key to add, or a key to replace. */
 type Open = { provider: string; mode: "key" } | { provider: string; mode: "replace"; account: Account } | null;
@@ -30,7 +32,9 @@ type Open = { provider: string; mode: "key" } | { provider: string; mode: "repla
 export function AiAccountsList({ source = realAccounts }: { source?: AccountsApi }) {
   const { color } = useUiTheme();
   // the last list read draws at once on a return visit; the read below refreshes it
-  const [rows, setRows] = useState<Account[] | null>(() => LAST.get(source) ?? null);
+  const space = useSpaces((s) => s.space);
+  const lastKey = `${space}`;
+  const [rows, setRows] = useState<Account[] | null>(() => LAST.get(lastKey) ?? null);
   const [err, setErr] = useState("");
   const [problem, setProblem] = useState("");
   const [busy, setBusy] = useState("");
@@ -51,11 +55,11 @@ export function AiAccountsList({ source = realAccounts }: { source?: AccountsApi
   const run = useRef(0);
   const load = useCallback(() => {
     setErr("");
-    source.list().then((r) => { LAST.set(source, r); setRows(r); })
-      .catch((e) => { const had = LAST.get(source); if (had) { setRows(had); setProblem(`This is the last list read. ${say(e, "It could not be refreshed.")}`); } else { setRows([]); setErr(say(e, "Your AI accounts could not be read.")); } });
+    source.list().then((r) => { LAST.set(lastKey, r); setRows(r); })
+      .catch((e) => { const had = LAST.get(lastKey); if (had) { setRows(had); setProblem(`This is the last list read. ${say(e, "It could not be refreshed.")}`); } else { setRows([]); setErr(say(e, "Your AI accounts could not be read.")); } });
     source.assistant().then(setAssistant).catch(() => setAssistant(null));
-  }, [source]);
-  useEffect(() => { load(); return () => { run.current++; }; }, [load]);
+  }, [source, lastKey]);
+  useEffect(() => { setRows(LAST.get(lastKey) ?? null); load(); return () => { run.current++; }; }, [load]);
   useEffect(() => { void showingJoined().then(setMember).catch(() => setMember(false)); }, []);
 
   const clear = () => { setOpen(null); setPw(""); setNeedPw(false); setKey(""); setLabel(""); setBase(""); setCode(""); };

@@ -67,3 +67,30 @@ export function unpack(raw) {
     return { person: cleanPerson(j.person), looks };
   } catch { return { person: {}, looks: {} }; }
 }
+
+/** The key one Space's own display settings (density, font, reduced motion, larger text) are kept under: they are per Space, not for every Space at once. @param {string | null | undefined} space */
+export const personKey = (space) => `${KEY}.person.${space || "home"}`;
+
+/** What a Space starts with when nothing was kept for it and there is nothing to copy. */
+export const PERSON_DEFAULTS = { density: "default", font: "system", reducedMotion: false, largerText: false };
+
+/** The text to keep for one Space's display settings. @param {any} person */
+export const packPerson = (person) => JSON.stringify({ v: 1, person: cleanPerson(person) });
+
+/** One Space's kept display settings, checked again, or null when none were kept for it. @param {string | null | undefined} raw */
+export function unpackPerson(raw) {
+  try {
+    const j = JSON.parse(String(raw ?? ""));
+    return j && j.v === 1 ? cleanPerson(j.person) : null;
+  } catch { return null; }
+}
+
+/**
+ * The display settings a Space opens with: its own kept ones; else a one-time copy of what this device kept before they were per Space (so nobody loses a setting); else the defaults.
+ * `copied` says the copy was used, so the caller keeps it under the Space's own key. @param {Record<string, any> | null} own @param {Record<string, any>} legacy
+ */
+export function personFor(own, legacy) {
+  if (own) return { person: { ...PERSON_DEFAULTS, ...own }, copied: false };
+  if (legacy && Object.keys(legacy).length) return { person: { ...PERSON_DEFAULTS, ...legacy }, copied: true };
+  return { person: { ...PERSON_DEFAULTS }, copied: false };
+}

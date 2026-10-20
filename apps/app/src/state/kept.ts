@@ -8,6 +8,23 @@ import { viewCache } from "./cache";
 import { keptKey, packKept, saidError, unpackKept, within } from "./kept-model.js";
 
 const memory = new Map<string, unknown>();
+const INDEX = "kept.index";
+const keys = new Set<string>();
+
+/** Remember which keys this device wrote, so sign-out can wipe them (the view cache has no list of its own). */
+function noted(key: string) {
+  if (keys.has(key)) return;
+  keys.add(key);
+  void viewCache.set(INDEX, [...keys]);
+}
+
+/** Sign-out: nothing kept stays readable on this device (this visit's copies and the device's). */
+export async function forgetKept(): Promise<void> {
+  const stored = await viewCache.get<string[]>(INDEX).catch(() => undefined);
+  for (const k of new Set([...(Array.isArray(stored) ? stored : []), ...keys])) await viewCache.set(k, null);
+  await viewCache.set(INDEX, []);
+  memory.clear(); keys.clear();
+}
 
 export function useKept<T>(name: string, load: () => Promise<T>, fallback = "That did not load.") {
   const space = useSpaces((s) => s.space);
@@ -42,7 +59,7 @@ export function useKept<T>(name: string, load: () => Promise<T>, fallback = "Tha
     within(loadRef.current()).then((v) => {
       if (!live || keyNow.current !== key) return;
       memory.set(key, v); setData(v); setFresh(true); setErr("");
-      if (!allowsMock()) void viewCache.set(key, packKept(v));
+      if (!allowsMock()) { noted(key); void viewCache.set(key, packKept(v)); }
     }).catch((e) => { if (live && keyNow.current === key && !memory.has(key)) setErr(saidError(e, fallback)); });
     return () => { live = false; };
   }, [key, n, fallback]);

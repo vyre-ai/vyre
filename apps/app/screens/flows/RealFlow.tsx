@@ -75,12 +75,16 @@ export function RealFlow({ id }: { id: string }) {
     let live = true;
     (async () => {
       try {
-        const [graph, m, rs, hl, r] = await within(Promise.all([graphReal(id), getReal(id), runsReal(id), healthReal(id).catch(() => null), rowReal(id).catch(() => null)]));
+        // the approval card is asked as soon as the version is known, beside the other reads, not after them
+        const got = getReal(id);
+        const cardP = got.then((v) => (versionWaits(v) ? cardReal(id, v.version) : null)).catch(() => null);
+        const [graph, m, rs, hl, r] = await within(Promise.all([graphReal(id), got, runsReal(id), healthReal(id).catch(() => null), rowReal(id).catch(() => null)]));
         if (!live) return;
         setHealth(hl);
         setG(graph); setDef(m.flow ?? null); if (r) { setRow(r); setNver({ versions: r.versions, active: r.active ? (m as any).version ?? null : null }); } setMeta({ version: m.version, hash: m.hash, status: m.status, approver: m.approver, by: m.by, title: titleOf(m.flow, id) }); setRuns(rs.filter((x) => !x.parent));
         seen.set(`${showing}.${id}`, { g: graph, def: m.flow ?? null, meta: { version: m.version, hash: m.hash, status: m.status, approver: m.approver, by: m.by, title: titleOf(m.flow, id) }, runs: rs.filter((x) => !x.parent), health: hl, row: r });
-        if (versionWaits(m)) setCard(await cardReal(id, m.version));
+        const c = await cardP;
+        if (c && live) setCard(c);
       } catch (e) { if (live && !seen.has(`${showing}.${id}`)) setErr(saidError(e, "Flows did not answer.")); }
     })();
     return () => { live = false; };
