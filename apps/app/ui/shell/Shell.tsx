@@ -24,6 +24,7 @@ import { isToggleKey, railWidth } from "./rail-state.js";
 import { useRail } from "./useRail";
 import { ResizeHandle, useStoredWidth } from "./ResizeHandle";
 import { ArrowNav } from "./ArrowNav";
+import { closeWho, useWho } from "./who";
 import { SidebarLabel } from "./SidebarLabel";
 import { allItems, currentItem, isTopLevel, phoneSplit, type NavItem as PureItem } from "./nav.js";
 
@@ -116,6 +117,7 @@ function accountItems(p: ShellProps, theme: string): MenuItem[] {
     { id: "profile", label: "Your profile", divider: true, lead: lead("person"), onPress: () => p.onNavigate(ACCOUNT_HREF.profile) },
     { id: "ai", label: "AI accounts", lead: lead("spark"), onPress: () => p.onNavigate(ACCOUNT_HREF.ai) },
     { id: "settings", label: "Settings", lead: lead("settings"), onPress: () => p.onNavigate(ACCOUNT_HREF.settings) },
+    { id: "everywhere", label: "Sign-in and devices", lead: lead("lock"), onPress: () => p.onNavigate(ACCOUNT_HREF.everywhere) },
     { id: "appearance", label: "Appearance", lead: lead(THEME_ICON[(theme as keyof typeof THEME_ICON)] ?? "laptop"), onPress: () => {}, sub: THEME_CHOICES.map(([v, l]) => ({ id: `theme:${v}`, label: l, selected: theme === v, lead: lead(THEME_ICON[v]), onPress: () => { useAppearance.getState().setPerson({ theme: v }); p.onTheme?.(v); } })) },
   );
   if (p.onLock) items.push({ id: "lock", label: "Lock", shortcut: "Cmd L", divider: true, lead: lead("lock"), onPress: p.onLock });
@@ -317,6 +319,42 @@ export function Shell(p: ShellProps) {
     <View className="flex-1 flex-row bg-bg">
       <Rail {...p} />
       <View className="min-w-0 flex-1">{p.children}</View>
+      <SidePane />
+    </View>
+  );
+}
+
+/** The right pane: whoever was opened (a chat's title, a right-click on an avatar or a row), beside the main view. Its width is the person's, kept per computer, with the same handle as the sidebar; Escape and the close button shut it, Cmd Option B toggles it. */
+function SidePane() {
+  const { color } = useUiTheme();
+  const who = useWho((s) => s.who);
+  const Pane = useWho((s) => s.Pane);
+  const toggle = useWho((s) => s.toggle);
+  const w = useStoredWidth("who-pane", RAIL.panelWidth, RAIL.panelMin, RAIL.panelMax);
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof window === "undefined") return;
+    const on = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.altKey && e.code === "KeyB") { e.preventDefault(); toggle(); return; }
+      const t = e.target as HTMLElement | null;
+      if (e.key === "Escape" && useWho.getState().who && !(t && /^(INPUT|TEXTAREA)$/.test(t.tagName)) && !document.querySelector("[role=menu],[role=dialog]")) closeWho();
+    };
+    window.addEventListener("keydown", on);
+    return () => window.removeEventListener("keydown", on);
+  }, [toggle]);
+  if (!who) return null;
+  return (
+    <View role="complementary" accessibilityLabel="Details" style={{ width: w.width, flexShrink: 0, flexGrow: 0, borderLeftWidth: 1, borderColor: color.edge, backgroundColor: color.bg }}>
+      <View style={{ height: RAIL.topH, flexDirection: "row", alignItems: "center", justifyContent: "flex-end", paddingHorizontal: RAIL.gutter }}>
+        <Tip label="Close" hint="Esc">
+          <Pressable accessibilityRole="button" accessibilityLabel="Close details" onPress={closeWho} style={({ hovered, focused }: any) => [{ width: 32, height: 32, borderRadius: RAIL.rowRadius, alignItems: "center", justifyContent: "center", backgroundColor: hovered || focused ? color.hover : "transparent" } as any]}>
+            <Icon name="x" tone="text-2" size={RAIL.iconSize} />
+          </Pressable>
+        </Tip>
+      </View>
+      <View style={{ flex: 1, minHeight: 0 }}>
+        {Pane ? <Pane kind={who.kind} id={who.id} onClose={closeWho} /> : <Text tone="label" style={{ paddingHorizontal: RAIL.gutter, fontSize: RAIL.labelSize }}>Nothing to show here yet.</Text>}
+      </View>
+      <ResizeHandle edge="left" label="Resize the details pane" width={w.width} onChange={w.set} onReset={w.reset} min={RAIL.panelMin} max={RAIL.panelMax} def={RAIL.panelWidth} />
     </View>
   );
 }

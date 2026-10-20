@@ -138,7 +138,8 @@ export function convosFrom(i) {
     else if (same) r.sub = "";
   }
   // One row per agent, from whatever source: the row that opens a chat beats the bare agent row, then the newer one wins.
-  const keyOf = (/** @type {Convo} */ r) => (r.lone === "agent" && (r.kind === "chat" || r.kind === "agent") ? (r.agent || (r.names.length === 1 ? r.names[0] : "")) : "");
+  // (the sidebar lists who: one row per agent and one per person, never one per thread)
+  const keyOf = (/** @type {Convo} */ r) => (r.lone === "agent" && (r.kind === "chat" || r.kind === "agent") ? (r.agent || (r.names.length === 1 ? r.names[0] : "")) : r.lone === "person" && (r.kind === "chat" || r.kind === "person") && r.names.length === 1 ? `person:${r.names[0]}` : "");
   const best = new Map();
   for (const r of out) {
     const k = keyOf(r);

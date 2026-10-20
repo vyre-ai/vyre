@@ -229,3 +229,8 @@ test("the Engineer is one row, even when the box lists several Engineer chats", 
   const rows = convosFrom({ chats: [chat({ id: "e1", title: "a", engineer: true, agents: ["engineer"], last: 1 }), chat({ id: "e2", title: "b", engineer: true, agents: ["engineer"], last: 9 }), chat({ id: "e3", title: "c", engineer: true, agents: [], last: 5 })], agents: [], people: [] });
   assert.deepEqual(rows.filter((r) => r.title === "Engineer").map((r) => r.chat), ["e2"]);
 });
+
+test("the sidebar lists who: two chats with one person are one row", () => {
+  const rows = convosFrom({ chats: [chat({ id: "p1", title: "Lease", people: ["Sam"], last: 1 }), chat({ id: "p2", title: "Intake", people: ["Sam"], last: 9 })], agents: [], people: [person()] });
+  assert.equal(rows.filter((r) => r.names.length === 1 && r.names[0] === "Sam").length, 1);
+});

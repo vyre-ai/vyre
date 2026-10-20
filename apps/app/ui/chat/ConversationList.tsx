@@ -18,6 +18,7 @@ import { useUiTheme } from "../theme";
 import { convoChips, convoSections, CONVO_TYPES, type Convo } from "./convo-model.js";
 import { Chip } from "../components/Chip";
 import { SidebarLabel } from "../shell/SidebarLabel";
+import { openWho, type WhoKind } from "../shell/who";
 
 export type { Convo };
 
@@ -30,6 +31,14 @@ function Face({ c }: { c: Convo }) {
   return <Avatar of={markRef(lone ? "agent" : "project", lone ?? c.title, lone)} size={32} />;
 }
 
+/** Who a row is about, for the side pane: an agent, a person or a group (its chat). Flows and plain chats have none. */
+export function whoOf(c: Convo): { kind: WhoKind; id: string } | null {
+  if (c.kind === "group" && c.chat) return { kind: "group", id: c.chat };
+  if (c.lone === "agent") { const id = c.agent || c.names[0] || ""; return id ? { kind: "agent", id } : null; }
+  if (c.lone === "person") { const id = c.person || c.names[0] || ""; return id ? { kind: "person", id } : null; }
+  return null;
+}
+
 /** A chat row: 56 high, a 32 face, 12 between, the name at 14/20 medium with the time at its right, the preview at 13/18 muted with the dot at its right. The fill is inset 8 from the edges and the content pads 8 more, so the face sits on the 16 gutter. */
 function ConvoRow({ c, selected, when, menu, onOpen }: { c: Convo; selected?: boolean; when: string; menu?: MenuItem[]; onOpen: () => void }) {
   const { color } = useUiTheme();
@@ -39,6 +48,7 @@ function ConvoRow({ c, selected, when, menu, onOpen }: { c: Convo; selected?: bo
     <>
       <Pressable accessibilityRole="button" accessibilityLabel={`${c.title}${c.sub ? `, ${c.sub}` : ""}${c.dot === "ask" ? ", waiting on you" : c.dot === "unread" ? ", unread" : ""}${c.open ? "" : ", you are not in this chat"}`}
         accessibilityState={{ selected: Boolean(selected), disabled: !c.open }} onPress={c.open ? onOpen : undefined} onLongPress={menu && menu.length ? () => setSheet(true) : undefined}
+        {...({ onContextMenu: (e: { preventDefault: () => void }) => { const w = whoOf(c); if (w) { e.preventDefault(); openWho(w.kind, w.id); } } } as object)}
         style={({ hovered, focused }: any) => [{ flexDirection: "row", alignItems: "center", gap: RAIL.iconGap, height: RAIL.chatRowH, marginHorizontal: RAIL.rowInset, paddingHorizontal: RAIL.gutter - RAIL.rowInset, borderRadius: RAIL.rowRadius, opacity: c.open ? 1 : 0.5,
           backgroundColor: selected ? color.selected : hovered || focused ? color.hover : "transparent",
           ...(focused ? { outlineStyle: "solid", outlineWidth: 2, outlineColor: color.primary, outlineOffset: -2 } : {}), ...ease } as any]}>
