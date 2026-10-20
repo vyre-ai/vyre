@@ -26,6 +26,7 @@ import { holds, stagesFor } from "../../lib/expr/conditions.js";
 import { renderBrief, evalChecklist } from "./checklist.js";
 import { slotsOf } from "./assign.js";
 import { requestedFor } from "../../lib/chain-person.js";
+import { stageOf } from "./stage-flow.js";
 
 /** The task id an event is about: the data says it, or the subject's last segment does (the kernel's own task events carry only the subject). @param {any} env */
 export function taskIdOf(env) {
@@ -47,6 +48,8 @@ const FINISHED = new Set(["done", "skipped"]);
  *   gates?: { open: (g: any) => Promise<string>, mark: (id: string, key: string, patch: any, o?: any) => Promise<any>, close: (id: string, o?: any) => Promise<any>, list: () => Promise<any[]> },  the runner's stage gates (s1): each stage entry with tasks is a run there, so it is written down, shown and logged
  *   isAdmin?: (who: any) => Promise<boolean> | boolean,  who may move a record on early besides the stage owner
  *   startFlow?: (flow: string, input: any, key: string) => Promise<any>,  starts an attached Flow as its own approver (the template's Automations)
+ *   flows?: { forStage: (q: { type: string, typeLabel?: string, stage: any, next: string | null, set: number | null, template?: string, version?: number | string }) => Promise<any> },  the stage's
+ *     Flow (kernel/flows/runner.js stageFlow): its to-dos are what the entry makes, and the entry's run is that Flow's. Without it (a test world, a home with no Flow store) the stage as defined runs, as before.
  * }} o
  */
 export function createStages(o) {
@@ -81,6 +84,42 @@ export function createStages(o) {
   const recordData = async (type, id) => { try { const r = await o.kernel.records.get(o.chain(), type, id); return r && r.data; } catch { return undefined; } };
   /** The stages one record follows: its stage set (the first whose `when` holds for its values) or the type's default stages. @param {string} type @param {any} [data] */
   const stagesOfRecord = async (type, data) => { const pinned = snapshotOf(data); if (pinned) return pinned.stages; const c = await o.catalog(); const t = c.types && c.types[type]; if (!t) return []; return t.stage_sets && t.stage_sets.length && data ? stagesFor(t, data).stages : t.stages || []; };
+  /**
+   * The Flow a stage runs as, and the stage as that Flow says (a Playbook stage is a Flow: kernel/flows/stage-flow.js). null when there is no Flow port, or the stage's Flow could not be had (said
+   * as a stage error, and the stage as defined runs); { paused: true } when its Flow is paused.
+   * @param {string} type @param {any} data @param {any} def the stage as defined @param {string} name
+   */
+  async function flowOf(type, data, def, name) {
+    if (!o.flows) return null;
+    return o.flows.forStage(await queryOf(type, data, def, name));
+  }
+  /** What names a stage's Flow: the type (or the Playbook template and version a project is pinned to), the stage as defined, the next stage and the stage set. @param {string} type @param {any} data @param {any} def @param {string} name */
+  async function queryOf(type, data, def, name) {
+    const pinned = snapshotOf(data);
+    const c = await o.catalog(); const t = c.types && c.types[type];
+    const list = await stagesOfRecord(type, data);
+    const at = list.findIndex((/** @type {any} */ x) => x.name === name);
+    const set = !pinned && t && t.stage_sets && t.stage_sets.length && data ? t.stage_sets.findIndex((/** @type {any} */ x) => x.name === stagesFor(t, data).set) : -1;
+    const q = { type, typeLabel: pinned ? /** @type {any} */ (pinned).name : (t && t.label) || type, stage: { ...(def || {}), name }, next: at >= 0 && list[at + 1] ? list[at + 1].name : null, set: set >= 0 ? set : null,
+      ...(pinned ? { template: String(/** @type {any} */ (pinned).template), version: /** @type {any} */ (pinned).version } : {}) };
+    return q;
+  }
+  /** Every stage of the Space's types that has to-dos, as what names its Flow (the upgrade makes each one's Flow up front, so it is in Flows before a record enters it). */
+  async function catalogQueries() {
+    const c = await o.catalog();
+    /** @type {any[]} */ const out = [];
+    for (const [name, t] of Object.entries(c.types || {})) {
+      const lists = [{ set: null, stages: /** @type {any} */ (t).stages || [] }, ...((/** @type {any} */ (t).stage_sets || []).map((/** @type {any} */ x, /** @type {number} */ i) => ({ set: i, stages: x.stages || [] })))];
+      for (const l of lists) l.stages.forEach((/** @type {any} */ st, /** @type {number} */ i) => { if (st && (st.tasks || []).length) out.push({ type: name, typeLabel: /** @type {any} */ (t).label || name, stage: st, next: l.stages[i + 1] ? l.stages[i + 1].name : null, set: l.set }); });
+    }
+    return out;
+  }
+  /** For a stage run opened before stages were Flows (kernel/flows/runner.js adoptGates): what names its stage's Flow, or null when the stage is gone. @param {any} g the run's gate */
+  async function queryForGate(g) {
+    const data = await recordData(g.type, g.record);
+    const def = (await stagesOfRecord(g.type, data)).find((/** @type {any} */ x) => x.name === g.stage);
+    return def && (def.tasks || []).length ? queryOf(g.type, data, def, g.stage) : null;
+  }
 
   /** @param {string} spec @param {string} space */
   async function actorFor(spec, space, ctx) {
@@ -143,12 +182,21 @@ export function createStages(o) {
 
   /** A record entered a stage: make its tasks. `templates` are the ones the gateway handed over (onStageEnter); otherwise the catalog's. `by`: the person whose write moved it there. @param {{ urn: string, type: string, id: string, stage: string, entry: string, templates?: any[], owner?: string, by?: string | null }} e */
   async function enter(e) {
-    const stage = e.templates ? { tasks: e.templates, owner: e.owner } : (await stagesOfRecord(e.type, await recordData(e.type, e.id))).find((/** @type {any} */ s) => s.name === e.stage);
     const key = `${e.urn}|${e.stage}|${e.entry}`;
     if (entries.has(key)) return;
+    const data0 = await recordData(e.type, e.id);
+    const defined = (await stagesOfRecord(e.type, data0)).find((/** @type {any} */ s) => s.name === e.stage);
+    /** @type {any} */ let stage = e.templates ? { ...(defined || {}), tasks: e.templates, owner: e.owner } : defined;
+    // The stage runs as its Flow: the Flow's to-dos (as a person may have changed them in the Flow builder) are what this entry makes, and the run is the Flow's.
+    /** @type {any} */ let sf = null;
+    if (stage && (stage.tasks || []).length) {
+      try { sf = await flowOf(e.type, data0, stage, e.stage); } catch (err) { emit("stage.error", { record: e.urn, stage: e.stage, why: `the stage's Flow could not be had, so the stage runs as defined: ${err instanceof Error ? err.message : String(err)}` }); }
+      if (sf && sf.paused) { entries.set(key, { key, urn: e.urn, type: e.type, id: e.id, stage: e.stage, tasks: [], advanced: false, unmade: [], by: e.by || null }); latest.set(`${e.urn}|${e.stage}`, key); emit("stage.notice", { record: e.urn, stage: e.stage, why: "this stage's Flow is paused, so its to-dos were not made; turn it back on in Flows" }); return; }
+      if (sf && sf.flow) stage = stageOf(sf.flow);
+    }
     const space = (await o.catalog()).space;
     const templates = (stage && stage.tasks) || [];
-    const ent = { key, urn: e.urn, type: e.type, id: e.id, stage: e.stage, tasks: /** @type {any[]} */ ([]), advanced: false, unmade: /** @type {{ title: string, why: string }[]} */ ([]), by: /** @type {string | null} */ (null) };
+    const ent = { key, urn: e.urn, type: e.type, id: e.id, stage: e.stage, tasks: /** @type {any[]} */ ([]), advanced: false, unmade: /** @type {{ title: string, why: string }[]} */ ([]), by: /** @type {string | null} */ (null), ...(sf && sf.id ? { flow: { id: sf.id, version: sf.version, hash: sf.hash } } : {}) };
     // A task with a checker, an approver or a reviewer that could not be made holds the stage: the stage never settles on the tasks that were made while the check that was meant to stand in front of it is missing.
     const held = (/** @type {any} */ t, /** @type {string} */ why) => { if (t.checker || t.approver || t.reviewer) ent.unmade.push({ title: t.title, why }); };
     entries.set(key, ent);
@@ -172,6 +220,8 @@ export function createStages(o) {
       for (const d of t.depends_on || []) { const id = made.get(d); if (id) deps.push(id); else emit("stage.error", { record: e.urn, stage: e.stage, task: t.title, why: `depends on ${d}, which was not made` }); }
       const spec = {
         title: t.title, record: e.urn, stage: e.stage, doer, ...(group ? { doer: undefined, pool: { role: group } } : {}),
+        // one task list: a stage's to-do is a Flow task, from the stage's Flow
+        ...(ent.flow ? { source: "flow_step", flow: ent.flow.id } : {}),
         ...(checkerFor(t.checker, space) ? { checker: checkerFor(t.checker, space) } : {}),
         output: { kind: t.output.kind, ...(t.output.target !== undefined ? { target: t.output.target } : {}) },
         ...(t.how ? { how: t.how } : {}),
@@ -224,7 +274,7 @@ export function createStages(o) {
       const stages = await stagesOfRecord(ent.type, await recordData(ent.type, ent.id));
       const at = stages.findIndex((/** @type {any} */ s) => s.name === ent.stage);
       ent.owner = owner; ent.next = at >= 0 && stages[at + 1] ? stages[at + 1].name : null;
-      ent.run = await o.gates.open({ key: ent.key, urn: ent.urn, type: ent.type, id: ent.id, stage: ent.stage, next: ent.next, owner: owner || undefined, ...(ent.by ? { by: ent.by } : {}), unmade: ent.unmade, tasks: ent.tasks.map((/** @type {any} */ t) => ({ id: t.id, title: t.title, required: t.required, ...(t.since ? { since: t.since } : {}), ...(t.checklist ? { checklist: t.checklist } : {}) })) });
+      ent.run = await o.gates.open({ key: ent.key, urn: ent.urn, type: ent.type, id: ent.id, stage: ent.stage, next: ent.next, owner: owner || undefined, ...(ent.flow ? { flow: ent.flow } : {}), ...(ent.by ? { by: ent.by } : {}), unmade: ent.unmade, tasks: ent.tasks.map((/** @type {any} */ t) => ({ id: t.id, title: t.title, required: t.required, ...(t.since ? { since: t.since } : {}), ...(t.checklist ? { checklist: t.checklist } : {}) })) });
     } catch (err) { emit("stage.error", { record: ent.urn, stage: ent.stage, why: `the gate could not be written: ${err instanceof Error ? err.message : String(err)}` }); }
   }
 
@@ -404,5 +454,5 @@ export function createStages(o) {
     });
   }
 
-  return { resume, tick, advance, onEvent, onStageEnter, stageTasks, idle: () => queue, enter: (/** @type {any} */ e) => serial(() => enter(e)), settle: (/** @type {string} */ k) => serial(() => settle(k)), entries: () => [...entries.values()] };
+  return { resume, tick, advance, onEvent, onStageEnter, stageTasks, queryForGate, catalogQueries, idle: () => queue, enter: (/** @type {any} */ e) => serial(() => enter(e)), settle: (/** @type {string} */ k) => serial(() => settle(k)), entries: () => [...entries.values()] };
 }

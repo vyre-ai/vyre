@@ -474,14 +474,25 @@ export function createFlowsHost(o) {
         return hit ? hit.data.actor.actor : null;
       } catch { return null; }
     };
+    /** Who makes a stage's Flow: the person who installed the Kit that added the type (its installer approved the stages with the Kit), else the Space's owner. @param {any} q */
+    const stageMaker = async (q) => {
+      if (!q.template) { try { const hit = (await kitStore.list()).find((/** @type {any} */ r) => r && r.status === "installed" && Array.isArray(r.added) && r.added.includes(`type:${q.type}`) && r.by && r.by.kind === "person"); if (hit) return { kind: "person", id: String(hit.by.id), space }; } catch { /* the owner below */ } }
+      return { kind: "person", id: ownerOf(), space };
+    };
     const stages = createStages({ kernel: { ask: gw.ask, records: gw.records }, catalog, hook: true, ports: { roles: ports.roles, doer: projectRoleDoer }, clock, emit, gates: flows.runner.gatePort(), isAdmin: proposals && proposals.isAdmin,
       // a template's Automations: an attached Flow starts as the person who approved it, once per entry (the key); a Flow that is not running says so
       startFlow: async (/** @type {string} */ id, /** @type {any} */ input, /** @type {string} */ key) => { const f = await store.active(id); if (!f || !f.approver) throw new Error("it is not running (paused, disabled, or without an approved version)"); return flows.runner.start(id, input, personChain(f.approver.id), key); },
       chain: () => k.chains.appendService(owner(), "flows", true),
       // a stage task that puts an agent to work is assigned by the person who moved the record into the stage, so the agent's job runs as them (core/daemon/agent-wake.js reads assigned_by)
-      chainFor: (/** @type {string} */ p) => k.chains.forModule({ module: "flows", approver: personChain(p) }) });
+      chainFor: (/** @type {string} */ p) => k.chains.forModule({ module: "flows", approver: personChain(p) }),
+      // a Playbook stage runs as its stored Flow (kernel/flows/stage-flow.js), made and turned on as its maker: the person who installed the Kit that holds the type, else the Space's owner
+      flows: { forStage: async (/** @type {any} */ q) => flows.runner.stageFlow({ ...q, approver: await stageMaker(q) }) } });
 
     flows.attachStages(stages);
+    // On start, every stage run opened before stages were Flows is taken over by its stage's Flow (made on the way, as its maker): same run, same tasks, nothing made twice (kernel/flows/runner.js adoptGates).
+    const adoptStages = async () => { try {
+      for (const q of await stages.catalogQueries()) { try { await flows.runner.stageFlow({ ...q, approver: await stageMaker(q) }); } catch (err) { log(`flows ${space}: the Flow for ${q.type} ${q.stage.name} was not made (${/** @type {Error} */ (err).message})`); } }
+      const r = await flows.runner.adoptGates(async (/** @type {any} */ g) => { const q = await stages.queryForGate(g); return q ? { ...q, approver: await stageMaker(q) } : null; }); if (r.adopted || r.left) log(`flows ${space}: ${r.adopted} stage run(s) now belong to their stage's Flow${r.left ? `, ${r.left} left as they were` : ""}`); } catch (err) { log(`flows ${space}: stage runs were not taken over by their Flows (${/** @type {Error} */ (err).message})`); } };
     // A Mac coming back online wakes the runs that wait for a Chrome (kernel/flows/runner.js #awaitDevice): the module event becomes a kernel-shaped event for the runner.
     const offDevice = o.onDevice ? o.onDevice(() => { void flows.onEvent({ id: `device:${clock()}`, type: "link.mac-online", data: {} }).catch((/** @type {any} */ err) => log(`flows ${space}: device wake failed (${err && err.message})`)); }) : null;
     // The timer sleeps until the next wake and is woken by events (core/daemon/wake-timer.js): an idle box makes no records query between them.
@@ -524,7 +535,7 @@ export function createFlowsHost(o) {
       if (typeof o.onThreadEnd === "function") o.onThreadEnd((/** @type {string} */ thread, /** @type {string} */ reason) => { void wakeUp.threadEnded(thread, reason); });
     }
 
-    const recover = async () => { try { await flows.recover(); } catch (err) { log(`flows ${space}: recover failed (${/** @type {Error} */ (err).message})`); } };
+    const recover = async () => { await adoptStages(); try { await flows.recover(); } catch (err) { log(`flows ${space}: recover failed (${/** @type {Error} */ (err).message})`); } };
     // The timer starts after the types are there and the runs are recovered: a tick on a store still starting found no flow-state, and recover no flow-run, every minute of the first quarter hour.
     await whenStoreReady(k.store, async () => { await recover(); void wake.arm(); });
 

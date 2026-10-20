@@ -8,6 +8,7 @@ import crypto from "node:crypto";
 import { parse, ExprError } from "./expr.js";
 import { TRIGGER_ONS, checkTrigger as checkTriggerKind } from "./triggers.js";
 import { canonical as kernelCanonical } from "../core/canonical.js";
+import { isStageFlow, stageFlowProblems } from "./stage-flow.js";
 
 export const FLOW_FORMAT = 1;
 
@@ -384,6 +385,8 @@ export function checkFlow(flow) {
   /** @type {Problem[]} */
   const out = [];
   if (!isObj(flow)) return [{ path: "", message: "a Flow is an object" }];
+  // A Playbook stage is a Flow of its own shape: its trigger is its stage, its steps are to-dos and the move on (kernel/flows/stage-flow.js).
+  if (isStageFlow(flow)) return stageFlowProblems(flow);
   onlyKeys(flow, ["format", "name", "label", "description", "authorship", "caps", "trigger", "triggers", "steps", "on_failure", "returns", "sends", "concurrency", "lock", "stuck_after_ms", "group", "project", "runs_on"], "", out);
   if (flow.format !== FLOW_FORMAT) out.push({ path: "format", message: `format is ${FLOW_FORMAT}` });
   if (typeof flow.name !== "string" || !NAME_RE.test(flow.name)) out.push({ path: "name", message: "a Flow name is lowercase letters, digits and underscores" });

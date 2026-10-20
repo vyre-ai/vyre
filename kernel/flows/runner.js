@@ -31,6 +31,7 @@ import { recordOfTrigger } from "./run-record.js";
 import { createJoins, laneOf } from "./joins.js";
 import { nextFire, dueTimes, holidaysFrom } from "./schedule.js";
 import { taskIdOf } from "./stages.js";
+import { stageFlow as stageFlowOf, isStageFlow } from "./stage-flow.js";
 import { chooseDoer, slotsOf } from "./assign.js";
 import { requestBind, actBind } from "../seal/uses.js";
 import { createPruner, KEEP_DAYS } from "./prune.js";
@@ -106,6 +107,8 @@ export class FlowRunner {
     /** @type {Map<string, number[]>} */ this.rate = new Map();
     /** @type {Map<string, number>} */ this.lastFire = new Map();
     /** @type {{ at: number, flows: any[] } | null} */ this.cache = null;
+    /** @type {Map<string, string>} a stage's key -> the stored Flow that holds it */ this.stageIds = new Map();
+    /** @type {Map<string, Promise<any>>} one making of a stage's Flow at a time */ this.stageLocks = new Map();
     /** @type {Set<Promise<any>>} */ this.inflight = new Set();
     /** Who is executing a slice now: the box, each Flow, each lock key. A run holds a place only while it executes, never while it waits for a person or a timer. */
     this.slots = { box: /** @type {Set<string>} */ (new Set()), byFlow: /** @type {Map<string, Set<string>>} */ (new Map()), locks: /** @type {Map<string, string>} */ (new Map()) };
@@ -190,20 +193,87 @@ export class FlowRunner {
     return row;
   }
 
-  // ------------------------------------------------------------------ stage gates (s1)
-  // A stage with tasks is a gate the record passes through. The stages module makes the tasks and decides when the record moves on; the gate is a run on THIS runner, so it is written down (a restart
-  // loses nothing), it shows on the timeline and in `flows.describe`, a task that is stuck raises attention, and a move made early is on its ledger with who and why. It is synthesized at stage
-  // entry from the stage as the Space defines it: no Flow is stored for it, and its steps are `tasks`, one `task:<title>` for each task, `condition` (the next stage's entry condition) and `move`.
+  // ------------------------------------------------------------------ Playbook stages (stage Flows)
+  // A Playbook stage is a stored Flow (kernel/flows/stage-flow.js): trigger "a record enters this stage", one task step per to-do with its three slots, and a last step that moves the record on.
+  // Its run is opened here at each entry, once (the entry is the run's key), and the stages module makes its tasks and settles it; the run is the Flow's own, so it is in the Flow's runs and
+  // history, on the timeline and in `flows.describe`, a stuck task raises attention, and a move made early is on its ledger with who and why. Its ledger steps are `tasks`, one `task:<title>`
+  // for each to-do, `condition` (the next stage's entry condition) and `move`. A gate opened before stages were Flows (flow `gate:<type>:<stage>`) is taken over by its stage's Flow on start
+  // (adoptGates). The runner never starts a stage Flow from its own trigger matching: the entry is the stages module's, so a record entering a stage starts its Flow once.
 
-  /** Open (or find) the gate for one stage entry. @param {{ key: string, urn: string, type: string, id: string, stage: string, next: string | null, owner?: string, tasks: { id: string, title: string, required: boolean }[], approver?: any }} g */
+  /**
+   * The stage's Flow: found by its key, else made from the stage as it is defined and turned on as `approver` (the Kit's installer, or the Space's owner), whose approval of the Kit or the
+   * Playbook covers it. A stage whose definition changed since its Flow was made (a Kit update, a new Playbook version) gets a new version; a Flow edited in the builder since stands.
+   * A paused or switched-off stage Flow answers { paused: true }: the stage makes no tasks.
+   * @param {{ type: string, typeLabel?: string, stage: any, next?: string | null, set?: number | null, kit?: string, template?: string, version?: number | string, approver: any }} q
+   * @returns {Promise<any>}
+   */
+  async stageFlow(q) {
+    const want = stageFlowOf(q);
+    const key = want.playbook.key;
+    const before = this.stageLocks.get(key) || Promise.resolve();
+    const p = before.catch(() => {}).then(async () => {
+      const id = await this.#stageFlowId(key);
+      const row = id && this.store.flowRow ? await this.store.flowRow(id).catch(() => null) : null;
+      if (id && row && row.status && row.status !== "active") return { id, paused: true };
+      const cur = id ? await this.store.active(id) : null;
+      if (cur && cur.flow && cur.flow.playbook && cur.flow.playbook.from === want.playbook.from) return cur;
+      const d = await this.define(id || null, want, q.approver);
+      if (!d.ok) throw Object.assign(new Error(`the stage's Flow did not compile: ${d.errors[0] && d.errors[0].message}`), { code: "invalid" });
+      await this.approve(d.id, d.version, q.approver, d.hash);
+      this.stageIds.set(key, d.id);
+      this.cache = null;
+      return this.store.active(d.id);
+    });
+    this.stageLocks.set(key, p);
+    try { return await p; } finally { if (this.stageLocks.get(key) === p) this.stageLocks.delete(key); }
+  }
+
+  /** The stored Flow that holds a stage, by its key, or null. Remembered: a Flow's id never changes. @param {string} key */
+  async #stageFlowId(key) {
+    if (this.stageIds.has(key)) return this.stageIds.get(key);
+    for (const v of await this.store.allVersions()) if (v.flow && v.flow.playbook && typeof v.flow.playbook.key === "string" && !this.stageIds.has(v.flow.playbook.key)) this.stageIds.set(v.flow.playbook.key, v.id);
+    return this.stageIds.get(key) || null;
+  }
+
+  /**
+   * On start: every open stage run from before stages were Flows (flow `gate:<type>:<stage>`) is taken over by its stage's Flow, which is made if it is not there yet. The run keeps its id, its
+   * tasks and its ledger, so nothing is made twice and nothing is lost; only which Flow it belongs to changes. Safe to repeat: a run already on a stored Flow is left alone.
+   * @param {(g: any) => Promise<any> | any} defOf the stage definition and its maker for an open gate: { type, typeLabel?, stage, next, set?, template?, version?, kit?, approver } or null
+   * @returns {Promise<{ adopted: number, left: number }>}
+   */
+  async adoptGates(defOf) {
+    let adopted = 0, left = 0;
+    for (const r of await this.gates()) {
+      if (!String(r.flow).startsWith("gate:")) continue;
+      const q = await Promise.resolve(defOf(r.gate)).catch(() => null);
+      const sf = q ? await this.stageFlow(q).catch(() => null) : null;
+      if (!sf || sf.paused || !sf.id) { left++; continue; }
+      await this.#locked(r.id, async () => {
+        const run = await this.store.getRun(r.id);
+        if (!run || !run.gate || !String(run.flow).startsWith("gate:")) return;
+        run.flow = sf.id; run.version = sf.version; run.hash = sf.hash;
+        run.trigger = { ...run.trigger, kind: "stage", source: `record:${run.gate.type} enters ${run.gate.stage}` };
+        run.updated_at = this.now();
+        await this.store.putRun(run);
+        adopted++;
+      });
+    }
+    return { adopted, left };
+  }
+
+  /**
+   * Open (or find) the run for one stage entry: a run of the stage's Flow (`g.flow`, { id, version, hash }), or, with no stored Flow (a home that does not keep them), the old synthesized gate.
+   * @param {{ key: string, urn: string, type: string, id: string, stage: string, next: string | null, owner?: string, tasks: { id: string, title: string, required: boolean }[], approver?: any, flow?: { id: string, version: number, hash: string } }} g
+   */
   async gateOpen(g) {
     const cat = /** @type {any} */ (await this.catalogFn());
     const id = runIdFor(`gate:${g.key}`, "gate");
     const had = await this.store.getRun(id);
     if (had) return had.id;
     const now = this.now();
+    const sf = g.flow && typeof g.flow.id === "string" ? g.flow : null;
     /** @type {Run} */
-    const run = { id, flow: `gate:${g.type}:${g.stage}`, version: 0, hash: "", space: cat.space, trigger: { kind: "gate", key: g.key, source: `stage:${g.type}.${g.stage}`, input: { record: g.urn, stage: g.stage } }, tainted: false, source_spaces: [cat.space], depth: 0,
+    const run = { id, flow: sf ? sf.id : `gate:${g.type}:${g.stage}`, version: sf ? sf.version : 0, hash: sf ? sf.hash : "", space: cat.space, trigger: sf ? { kind: "stage", key: g.key, source: `record:${g.type} enters ${g.stage}`, input: { record: g.urn, stage: g.stage } } : { kind: "gate", key: g.key, source: `stage:${g.type}.${g.stage}`, input: { record: g.urn, stage: g.stage } }, tainted: false, source_spaces: [cat.space], depth: 0, record: g.urn,
       state: "waiting", started_at: now, updated_at: now, steps: {}, waiting: { step: "tasks", kind: "gate" }, approver: g.approver || { kind: "service", id: "stages", space: cat.space },
       gate: { key: g.key, urn: g.urn, type: g.type, record: g.id, stage: g.stage, next: g.next, owner: g.owner || null, ...(typeof g.by === "string" && g.by ? { by: g.by } : {}), tasks: g.tasks, unmade: g.unmade || [] } };   // by: the person who moved the record in, so a restart moves it on as them
     run.steps.tasks = { status: "waiting", at: now, output: { count: g.tasks.length, required: g.tasks.filter(t => t.required).length } };
@@ -276,9 +346,10 @@ export class FlowRunner {
       if (!r.attention || r.state === "done" || r.state === "cancelled") continue;
       // a lane or sub-flow whose parent already reports the failure is one row, the parent's: Retry on it sends the failed lanes round again
       if (r.parent) { const p = await this.store.getRun(r.parent.run); if (p && p.state === "failed" && p.error && /^(branch|subflow)_failed$/.test(p.error.code)) continue; }
-      let label = r.gate ? `Stage gate: ${r.gate.type} ${r.gate.stage}` : r.flow;
+      const oldGate = Boolean(r.gate) && String(r.flow).startsWith("gate:");   // a stage run from before stages were Flows; a stage Flow's run reads by its Flow's name
+      let label = oldGate && r.gate ? `Stage gate: ${r.gate.type} ${r.gate.stage}` : r.flow;
       let stepLabel = r.attention.step || "";
-      if (!r.gate) {
+      if (!oldGate) {
         const key = `${r.flow}@${r.version}`;
         if (!versions.has(key)) versions.set(key, await this.store.getVersion(r.flow, r.version).catch(() => null));
         const v = versions.get(key);
@@ -297,7 +368,8 @@ export class FlowRunner {
 
   async #activeFlows() {
     if (this.cache && this.now() - this.cache.at < 30_000) return this.cache.flows;
-    const flows = expandTriggers(await this.store.activeFlows());   // a Flow with several triggers is armed once per trigger
+    // a Playbook stage's Flow is started by the stages module at the entry, once, never here as well
+    const flows = expandTriggers((await this.store.activeFlows()).filter((/** @type {any} */ v) => !isStageFlow(v.flow)));   // a Flow with several triggers is armed once per trigger
     this.cache = { at: this.now(), flows };
     return flows;
   }
@@ -306,7 +378,7 @@ export class FlowRunner {
   async #triggerFlows() {
     const active = await this.#activeFlows();
     if (!this.store.pausedFlows) return active;
-    const paused = expandTriggers(await this.store.pausedFlows().catch(() => []));
+    const paused = expandTriggers((await this.store.pausedFlows().catch(() => [])).filter((/** @type {any} */ v) => !isStageFlow(v.flow)));
     return paused.length ? [...active, ...paused] : active;
   }
 
@@ -738,6 +810,7 @@ export class FlowRunner {
   async start(id, input, callerChain, key) {
     const f = await this.store.active(id);
     if (!f) throw Object.assign(new Error("that Flow is not running (it is paused, disabled or has no approved version)"), { code: "not_active" });
+    if (isStageFlow(f.flow)) throw Object.assign(new Error(`this is a Playbook stage: it runs when a ${f.flow.playbook.type} enters ${f.flow.playbook.stage}, so move a record there instead`), { code: "bad_state" });
     const d = await this.k.authorize({ chain: callerChain, action: "flows.run", resource: `vyre://${f.space}/flow/${id}` });
     if (d.effect !== "allow") throw Object.assign(new Error("you may not run that Flow"), { code: d.reason === "no_grant" ? "not_found" : d.reason });
     // A model-started run (the chain has an assistant in it) carries model-supplied input: it runs tainted (external), so it can never drive a grant or an admin act, and its record says so.
