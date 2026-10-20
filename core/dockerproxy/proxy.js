@@ -218,7 +218,7 @@ export function createProxy({ socket = "/var/run/docker.sock", policy, config, b
   /** Refuse a request whose bearer does not match; with no token yet, say so (503), so vyred can tell "not ready" from "wrong". */
   const mustAuthorize = header => {
     if (authorized(header)) return;
-    if (!current()) refuse("no bearer yet: vyred has not set agents' computers up on this server", 503);
+    if (!current()) refuse("no bearer yet: the box has not set agents' computers up on this server", 503);
     refuse("missing or wrong bearer", 401);
   };
   const prefix = config.labelPrefix;

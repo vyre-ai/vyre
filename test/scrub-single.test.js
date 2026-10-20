@@ -12,6 +12,7 @@ const ALLOWED = new Map([
   ["core/computers/image/", "computerd is copied alone into the computers image and cannot import lib/"],
   ["core/vault/cli-io.js", "a streaming scrubber for a child's output across chunk boundaries; it takes its marker from lib/scrub.js"],
   ["apps/app/screens/connections/model.ts", "runs in the phone app, which has no Buffer; one key, exact match"],
+  ["apps/app/screens/settings/accounts-source.ts", "runs in the phone app, which has no Buffer; the one key just typed, exact match, in a refusal"],
 ]);
 const PATTERNS = [
   /%20\/g,\s*["'`]\+["'`]/,

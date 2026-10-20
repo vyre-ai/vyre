@@ -673,6 +673,18 @@
    "class": "refused",
    "why": "refused in the body for a plain session: watchers.create runs for an agent only when your own words asked for it; tell th"
   },
+  "watchers.own.delete": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: an agent deletes its own Routine or Watcher only for the agent whose thread asks, on its own watcher; a bare model session names no agent and is refused (mustOwn, core/watchers/agent-tools.test.js)"
+  },
+  "watchers.own.resume": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: an agent resumes its own Routine or Watcher only for the agent whose thread asks, on its own watcher; a bare model session names no agent and is refused (mustOwn, core/watchers/agent-tools.test.js)"
+  },
+  "watchers.own.run": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: an agent runs its own Routine or Watcher only for the agent whose thread asks, on its own watcher; a bare model session names no agent and is refused (mustOwn, core/watchers/agent-tools.test.js)"
+  },
   "watchers.pause": {
    "class": "own",
    "why": "stopping a watcher; says who stopped it"
@@ -681,9 +693,21 @@
    "class": "refused",
    "why": "refused in the body for a plain session: watchers.preset runs for an agent only when your own words asked for it; tell th"
   },
+  "watchers.revise": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: only the agent that owns a Watcher still waiting for its first test may change it; a bare model session names no agent and is refused (mustOwn)"
+  },
+  "watchers.routine.create": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: a Routine is set up only by an agent after the person's own words asked for it (reach asked); a bare model session names no agent and is refused (mustAgent)"
+  },
   "watchers.test": {
    "class": "own",
    "why": "a dry run that files nothing"
+  },
+  "watchers.write": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: a Watcher is set up only by an agent after the person's own words asked for it (reach asked); a bare model session names no agent and is refused (mustAgent)"
   },
   "work.call": {
    "class": "own",
@@ -700,6 +724,10 @@
   "work.template.define": {
    "class": "own",
    "why": "writes a draft template as the person the call carries; going live is the owner's yes"
+  },
+  "work.template.stage-flow": {
+   "class": "own",
+   "why": "opens a stage Flow as the person the call carries; only the Playbook's owner or an admin may, and a record entering the stage is what makes its to-dos"
   },
   "work.template.from-project": {
    "class": "own",

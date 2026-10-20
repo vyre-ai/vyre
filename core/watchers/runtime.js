@@ -459,7 +459,7 @@ export class Runtime {
 
   /** The retired webhook door: nothing runs, the caller is told where webhooks went. */
   async hook() {
-    throw Object.assign(new Error("watcher webhooks are retired: a webhook starts a Flow (Flows, the trigger A webhook is called)"), { code: "denied" });
+    throw Object.assign(new Error("watcher webhooks are retired: make a Flow with the trigger "A webhook is called"; hooks.flow shows the address to give the sender"), { code: "denied" });
   }
 
   // ------------------------------------------------------------------ scheduling

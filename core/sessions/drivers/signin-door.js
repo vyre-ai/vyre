@@ -200,7 +200,7 @@ export function signinDoorDrivers(io = {}) {
     const send = (/** @type {any} */ m) => { try { child.stdin.write(JSON.stringify({ jsonrpc: "2.0", ...m }) + "\n"); } catch { /* gone: its exit answers */ } };
     const request = (/** @type {string} */ method, /** @type {any} */ params, ms = 0) => new Promise((resolve, reject) => {
       const id = next++; const w = { resolve, reject, timer: /** @type {any} */ (null) };
-      if (ms) w.timer = setTimeout(() => { waits.delete(id); reject(Object.assign(new Error("no answer"), { code: "timeout" })); }, ms);
+      if (ms) w.timer = setTimeout(() => { waits.delete(id); reject(Object.assign(new Error("the AI program did not answer in time: try again, or sign in again in Settings, AI accounts"), { code: "timeout" })); }, ms);
       waits.set(id, w); send({ id, method, params });
     });
     const onLine = (/** @type {string} */ line, /** @type {any} */ c) => {
