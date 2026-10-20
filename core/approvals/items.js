@@ -94,6 +94,9 @@ export const fromVault = (/** @type {any} */ p) => {
       answer: { tool: "vault.mcp.reveal.allow", input: { id: x.id }, fill: [] },
       answers: [{ label: "Allow once", tool: "vault.mcp.reveal.allow", input: { id: x.id }, fill: [] }, { label: "Decline", tool: "vault.mcp.reveal.clear", input: { id: x.id }, fill: [] }] })),
     ...list(p && p.accepts).map(x => row(x.id, `Accept a pass from ${clean(x.owner, 60)}`, x.items ? names(x.items) : "", x.at)),
+    // an agent asked to send an item's secret to a host not on its Used with yet: Allow puts the host on the list, Decline sends nothing
+    ...list(p && p.useHosts).map(x => ({ ...row(x.id, `Use "${clean(x.item, 60)}" with ${clean(x.host, 80)}?`, askedBy(x.by), x.at),
+      answers: [{ label: "Allow", tool: "vault.approve", input: { id: x.id }, fill: [] }, { label: "Decline", tool: "vault.use.set", input: { name: String(x.item), decline: x.id }, fill: [] }] })),
   ];
 };
 
@@ -243,7 +246,7 @@ export const OWNERS = [
   { name: "models", tool: "models.evals", map: d => fromEvals(d && Array.isArray(d.evals) ? d.evals : []), watch: [
     ["models.*", (t, p) => (t === "models.evals-changed" && p && p.model ? [`models:${p.model}`, p.state === "approved" ? "approved" : p.state === "declined" ? "declined" : p.state || "settled"] : null)]] },
   { name: "vault", tool: "vault.pending", map: fromVault, watch: [
-    ["vault.granted", null], ["vault.revoked", null], ["vault.reveal-asked", null], ["vault.revealed-to-pass", null], ["vault.agent-granted", null], ["vault.agent-revoked", null], ["grant.*", null], ["pass.*", null], ["person.*", null]] },
+    ["vault.granted", null], ["vault.revoked", null], ["vault.reveal-asked", null], ["vault.revealed-to-pass", null], ["vault.agent-granted", null], ["vault.agent-revoked", null], ["vault.use-asked", null], ["vault.use-allowed", null], ["grant.*", null], ["pass.*", null], ["person.*", null]] },
 ];
 
 /**

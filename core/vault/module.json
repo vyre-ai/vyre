@@ -212,6 +212,9 @@
       { "name": "vault.said.list", "reach": "modules" },
       { "name": "vault.said.revoke", "reach": "modules" },
       { "name": "vault.request", "effect": "write", "reach": "anyone" },
+      { "name": "vault.use.find", "effect": "read", "reach": "anyone" },
+      { "name": "vault.use.env", "effect": "write", "reach": "anyone" },
+      { "name": "vault.use.set", "effect": "write", "reach": "person" },
       { "name": "vault.api.send", "asks": true, "outward": true, "reach": "modules" },
       { "name": "vault.fetch.public", "reach": "modules" },
       { "name": "vault.credential.tokens", "reach": "modules" },
@@ -303,7 +306,9 @@
       "vault.connection-added",
       "vault.connection-removed",
       "vault.connection-changed",
-      "vault.used"
+      "vault.used",
+      "vault.use-asked",
+      "vault.use-allowed"
     ]
   },
   "shows": {

@@ -9,10 +9,11 @@ import { Footnote, Sec } from "../places/Frame";
 import { canonical, clashes, fieldLabel, placeholder, secretHint, toDotenv, type DField } from "./env-model.js";
 import { FieldsEditor } from "./FieldsEditor";
 import { ItemSharing } from "./ItemSharing";
+import { ScriptsSetting } from "./ScriptsSetting";
 import { MoveItem } from "./MoveItem";
 import { levelWord } from "./share-model.js";
 import type { VItem } from "./redesign.js";
-import type { Scope, VaultData } from "./redesign-data";
+import type { Rules, Scope, VaultData } from "./redesign-data";
 import type { Need } from "./add-model.js";
 import type { Event } from "./sample-redesign";
 
@@ -30,13 +31,15 @@ const shownField = (item: VItem, name: string) => fieldLabel(item.kind, name);
 export function VaultItem({ item, scope, data, owner, needs, events, onChanged, onDelete }: {
   item: VItem; scope: Scope; data: VaultData; owner: boolean; needs: Need[]; events: Event[]; onChanged: () => void; onDelete: () => void;
 }) {
-  const fields = item.fields ?? [];
-  const [plainValues, setPlainValues] = useState<Record<string, string> | null>(null);
+  const [rules, setRules] = useState<Rules | null>(null);
+  // which fields are plain is the item's rule (vault.use.find); the list's guess stands until it is read
+  const fields = (item.fields ?? []).map((f) => (rules ? { ...f, plain: Object.prototype.hasOwnProperty.call(rules.plain, f.name) } : f));
   const [editing, setEditing] = useState<DField[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [testTo, setTestTo] = useState<string | null>(null);
-  useEffect(() => { setPlainValues(null); setEditing(null); setErr(""); setTestTo(null); }, [item.id]);
+  const loadRules = () => { setRules(null); data.rules?.(item).then(setRules).catch(() => setRules(null)); };
+  useEffect(() => { setEditing(null); setErr(""); setTestTo(null); loadRules(); }, [item.id]);
 
   // What this person may do with it: the owner and a member's own items everything; an item shared with a member, what the share allows.
   const can = item.can ?? ["use", "reveal", "edit"];
@@ -45,11 +48,6 @@ export function VaultItem({ item, scope, data, owner, needs, events, onChanged, 
   const clash = clashes(fields.map((f) => f.name));
 
   const readAll = async () => { const out: Record<string, string> = {}; for (const f of fields) out[f.name] = await data.read(scope, item, f.name); return out; };
-  const showPlain = () => {
-    setBusy(true); setErr("");
-    (async () => { const out: Record<string, string> = {}; for (const f of fields.filter((x) => x.plain)) out[f.name] = await data.read(scope, item, f.name); return out; })()
-      .then(setPlainValues).catch((e) => setErr(presenceWords(e, "The values did not load."))).finally(() => setBusy(false));
-  };
   const copyEnv = () => {
     setBusy(true); setErr("");
     readAll().then(async (v) => {
@@ -74,7 +72,7 @@ export function VaultItem({ item, scope, data, owner, needs, events, onChanged, 
     const out: Record<string, string> = {};
     on.forEach((f, i) => { out[names[i]] = f.value; });
     setBusy(true); setErr("");
-    data.update(scope, item, out, on.flatMap((f, i) => (f.secret ? [] : [names[i]]))).then(() => { setEditing(null); showToast(`${item.name} saved.`); onChanged(); })
+    data.update(scope, item, out, on.flatMap((f, i) => (f.secret ? [] : [names[i]]))).then(() => { setEditing(null); showToast(`${item.name} saved.`); loadRules(); onChanged(); })
       .catch((e) => setErr(presenceWords(e, "That did not save."))).finally(() => setBusy(false));
   };
   const runTest = () => {
@@ -88,7 +86,7 @@ export function VaultItem({ item, scope, data, owner, needs, events, onChanged, 
     <View key={f.name} className="gap-s1 border-b border-edge p-s3">
       <Text mono strong>{shownField(item, f.name)}</Text>
       {!mayRead ? <Text size="caption" tone="label">{f.plain ? "Plain" : "Secret"}. You can use it, without seeing it.</Text>
-        : f.plain ? (plainValues ? <Text mono selectable>{plainValues[f.name] ?? ""}</Text> : <Text size="caption" tone="label">Plain. Shown in full with Show values.</Text>)
+        : f.plain ? (typeof rules?.plain[f.name] === "string" ? <Text mono selectable>{rules.plain[f.name]}</Text> : <SecretField key={`${item.id}.${f.name}.p`} label={shownField(item, f.name)} read={() => data.read(scope, item, f.name)} />)
         : <SecretField key={`${item.id}.${f.name}`} label={shownField(item, f.name)} read={() => data.read(scope, item, f.name)} hint={secretHint} />}
     </View>
   );
@@ -107,7 +105,6 @@ export function VaultItem({ item, scope, data, owner, needs, events, onChanged, 
         <Sec title="Fields">
           <Card flush>{fields.length ? fields.map(fieldRow) : <View className="p-s3"><Text tone="muted">No fields are listed for this item.</Text></View>}</Card>
           <View className="flex-row flex-wrap gap-s2 pt-s2">
-            {mayRead && fields.some((f) => f.plain) && !plainValues ? <Button kind="secondary" size="sm" icon="eye" label="Show values" disabled={busy} onPress={showPlain} /> : null}
             {mayRead && fields.length ? <Button kind="secondary" size="sm" icon="copy" label="Copy as .env" disabled={busy} onPress={copyEnv} /> : null}
             {mayEdit && !memberShared ? <Button kind="secondary" size="sm" icon="edit" label={clash.length ? "Rename one" : "Edit"} disabled={busy} onPress={startEdit} /> : null}
             {need?.test && data.test ? <Button kind="secondary" size="sm" icon="check" label="Test it" disabled={busy} onPress={runTest} /> : null}
@@ -120,6 +117,8 @@ export function VaultItem({ item, scope, data, owner, needs, events, onChanged, 
           <Text tone="label">{`An agent or Flow that can use this writes a placeholder, like ${first ? placeholder(item.id, first.name) : "{{vault:Item.FIELD}}"}. Vyre fills in the value when it sends, so the model never sees a secret. It can read the plain fields.`}</Text>
           {fields.length ? <Card flush>{fields.map((f) => <Row key={f.name} dense title={<Text mono selectable>{placeholder(item.id, f.name)}</Text>} sub={f.plain ? "Plain" : "Secret"} />)}</Card> : null}
         </Sec>
+
+        {owner && data.scripts && item.kind !== "api-credential" ? <Sec title="Scripts"><ScriptsSetting api={data.scripts} item={item} /></Sec> : null}
 
         <Sec title="Who can use it">
           {owner && data.sharing ? <ItemSharing api={data.sharing} item={item} />

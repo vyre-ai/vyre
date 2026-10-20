@@ -82,7 +82,8 @@ test("a catalog app saves as its kind with the provider noted; an added field is
   assert.equal(c.tool, "vault.put");
   assert.equal(c.input.name, "Twilio-main");
   assert.deepEqual(c.input.fields, { value: "a".repeat(32), TWILIO_REGION: "us1" });
-  assert.deepEqual(c.input.details, { provider: "twilio", plain: ["TWILIO_REGION"] });
+  assert.deepEqual(c.input.details, { provider: "twilio" });
+  assert.deepEqual(c.plain, ["TWILIO_REGION"], "plain fields are saved as the item's rule, not in its details");
   d.fields[0].value = "nope";
   const bad = /** @type {any} */ (saveCall(tw, d));
   assert.match(bad.error, /auth token does not look right for Twilio/);

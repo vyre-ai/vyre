@@ -107,7 +107,7 @@ const labelOf = (typed) => slugOf(typed).toLowerCase().replace(/[^a-z0-9-]/g, "-
  * vault.put with its kind and the provider as a detail. A Space template or a blank item: an env-set (env-model.js itemCall). Values exactly as given; an optional field left
  * empty is left out.
  * @param {Template | null} t @param {Draft} d @param {{ member?: boolean }} [o]
- * @returns {{ tool: string, input: Record<string, unknown> } | { error: string }}
+ * @returns {{ tool: string, input: Record<string, unknown>, plain?: string[] } | { error: string }}
  */
 export function saveCall(t, d, { member = false } = {}) {
   if (!t || t.source === "space") return itemCall(d, { member });
@@ -136,7 +136,7 @@ export function saveCall(t, d, { member = false } = {}) {
     fields[key] = f.value;
   }
   const plain = filled.filter((f) => !f.secret).map((f) => (own.has(f.key) ? f.key : canonical(f.key)));
-  return member ? { tool: "vault.me.put", input: { name, kind: p.kinds[0], fields } } : { tool: "vault.put", input: { name, kind: p.kinds[0], fields, details: { provider: p.name, plain } } };
+  return member ? { tool: "vault.me.put", input: { name, kind: p.kinds[0], fields } } : { tool: "vault.put", input: { name, kind: p.kinds[0], fields, details: { provider: p.name } }, plain };
 }
 
 /** A login: its web address, username, password and an optional one-time code secret. @returns {Draft} */

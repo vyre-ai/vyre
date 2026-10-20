@@ -100,9 +100,10 @@ export function fieldProblems(fields, { needValue = true } = {}) {
 
 /**
  * The save for one item of fields: vault.put as an env-set (the owner's vault: Mine, or Shared then moved to its folder by the caller), or vault.me.put in a member's own vault.
- * Names in their one form, values exactly as given, the plain ones named in details.plain. Null with a reason when it cannot be saved yet.
+ * Names in their one form, values exactly as given. `plain` names the plain fields, which the caller saves as the item's rule (vault.use.set, core/vault/use.js: the one store of
+ * which fields are plain). A reason instead when it cannot be saved yet.
  * @param {{ name: string, fields: DField[] }} d @param {{ member?: boolean }} [o]
- * @returns {{ tool: string, input: Record<string, unknown> } | { error: string }}
+ * @returns {{ tool: string, input: Record<string, unknown>, plain: string[] } | { error: string }}
  */
 export function itemCall(d, { member = false } = {}) {
   const name = slugOf(d.name);
@@ -114,9 +115,7 @@ export function itemCall(d, { member = false } = {}) {
   /** @type {Record<string, string>} */ const fields = {};
   for (const f of on) fields[canonical(f.key)] = f.value;
   const plain = on.filter((f) => !f.secret).map((f) => canonical(f.key));
-  return member
-    ? { tool: "vault.me.put", input: { name, kind: "env-set", fields } }
-    : { tool: "vault.put", input: { name, kind: "env-set", fields, details: { plain } } };
+  return member ? { tool: "vault.me.put", input: { name, kind: "env-set", fields }, plain: [] } : { tool: "vault.put", input: { name, kind: "env-set", fields }, plain };
 }
 
 /**
@@ -158,7 +157,7 @@ export const placeholder = (item, field) => `{{vault:${item}.${canonical(field)}
  * makes it canonical (lib/env-name.js), which only drops a separator left at the end.
  * @param {string} typed
  */
-export const liveName = (typed) => String(typed).replace(/([a-z0-9])([A-Z])/g, "$1_$2").toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_+/, "").slice(0, 64);
+export const liveName = (typed) => String(typed).toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_+/, "").slice(0, 64);
 
 /** The words a field is shown by: its one form, except a login's and a note's own fields, which keep plain words. @param {string | undefined} kind @param {string} name */
 export function fieldLabel(kind, name) {

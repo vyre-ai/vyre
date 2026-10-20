@@ -2,7 +2,8 @@
 import { callT } from "../../src/real/call-tool";
 import { computerOf, type ComputerView } from "@vyre/ui";
 
-const said = (e: { message: string; code: string }) => e.message || (/unknown_tool|no_such_tool|not_found/.test(e.code) ? "This server does not have agent computers yet. Update it." : "That did not go through.");
+// The box's words, as a sentence (a capital first); a box without the tools gets the plain line.
+const said = (e: { message: string; code: string }) => (e.message ? e.message.charAt(0).toUpperCase() + e.message.slice(1) : /unknown_tool|no_such_tool|not_found/.test(e.code) ? "This server does not have agent computers yet. Update it." : "That did not go through.");
 
 export const agentComputer = {
   async status(agent: string): Promise<{ view: ComputerView } | { problem: string }> {
@@ -10,7 +11,7 @@ export const agentComputer = {
     return r.error ? { problem: said(r.error) } : { view: computerOf(r.data) };
   },
   async wake(agent: string): Promise<string | null> { const r = await callT("computers.agent.wake", { agent }); return r.error ? said(r.error) : null; },
-  /** Empty this agent's home (its Chrome logins, files and terminal state): the right to edit the agent. */
+  /** Empty this agent's home (its browser logins, files and terminal state): the right to edit the agent. */
   async reset(agent: string): Promise<string | null> { const r = await callT("computers.agent.reset", { agent }); return r.error ? said(r.error) : null; },
   async sleep(agent: string): Promise<string | null> { const r = await callT("computers.agent.sleep", { agent }); return r.error ? said(r.error) : null; },
 };

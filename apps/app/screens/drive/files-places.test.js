@@ -2,17 +2,19 @@
 import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { detailLines, placeGroups, quickLook, recentOf } from "./files-places.js";
+import { agentPlace, detailLines, placeGroups, quickLook, recentOf } from "./files-places.js";
 
-test("the left column: three places, the projects the person can see, then Sites with New site always last", () => {
-  const g = placeGroups({ projects: [{ name: "Spring launch", path: "Projects/p1/files" }], agents: [{ name: "ads", path: "agents/agt_a" }, { name: "x", path: "" }], sites: [{ id: "s1", name: "juniper.studio", live: true }, { id: "s2", name: "Spring landing" }] });
+test("the left column: three places, the projects the person can see, then (with Labs on) Sites with New site always last", () => {
+  const g = placeGroups({ labs: true, projects: [{ name: "Spring launch", path: "Projects/p1/files" }], agents: [{ name: "ads", path: "agents/agt_a" }, { name: "x", path: "" }], sites: [{ id: "s1", name: "juniper.studio", live: true }, { id: "s2", name: "Spring landing" }] });
   assert.deepEqual(g.map((x) => x.heading), [null, "Projects", "Agents", "Sites"]);
-  assert.deepEqual([g[1].places[0], g[2].places.map((p) => p.label)], [{ id: "project:Projects/p1/files", label: "Spring launch", kind: "project", path: "Projects/p1/files" }, ["ads"]], "an agent with no folder is not a place");
+  assert.deepEqual([g[1].places[0], g[2].places.map((p) => p.label)], [{ id: "project:Projects/p1/files", label: "Spring launch", kind: "project", path: "Projects/p1/files" }, ["Ads"]], "an agent with no folder is not a place, and an agent is named as a person reads it");
   assert.deepEqual(g[0].places.map((p) => p.label), ["All files", "Recent", "Your shared links"]);
   assert.deepEqual(g[3].places.map((p) => [p.label, p.live ?? false, p.draft ?? false]), [["juniper.studio", true, false], ["Spring landing", false, true], ["New site", false, false]]);
-  const none = placeGroups();
+  const none = placeGroups({ labs: true });
   assert.deepEqual(none.map((x) => x.heading), [null, "Sites"], "no Projects heading over nothing");
   assert.deepEqual(none[1].places.map((p) => p.kind), ["newsite"]);
+  // Sites is half built in Files (its own page is Sites): with Labs off there is no Sites group and no New site between Agents and Folders.
+  assert.deepEqual(placeGroups({ agents: [{ name: "engineer", path: "agents/engineer" }], sites: [{ id: "s1", name: "juniper.studio", live: true }] }).map((x) => x.heading), [null, "Agents"]);
 });
 
 test("Recent is files only, newest first, and capped", () => {
@@ -42,4 +44,14 @@ test("Quick Look: Space opens the selected file and closes it, folders never ope
   s = quickLook(s, { type: "open", key: "c" }, shown, null); assert.equal(s.open, "c", "a double click");
   assert.equal(quickLook(s, { type: "close" }, shown, "c").open, null);
   assert.equal(quickLook({ open: "gone" }, { type: "step", by: 1 }, shown, null).open, null, "the open file left the list");
+});
+
+test("a link to an agent's files opens that agent's own folder, by id or by its shown name; an agent with no folder leaves Files where it was", () => {
+  const agents = [{ name: "engineer", path: "agents/engineer" }, { name: "qi", path: "agents/qi" }, { name: "nofolder", path: "" }];
+  assert.equal(agentPlace(agents, "engineer"), "space:agents/engineer");
+  assert.equal(agentPlace(agents, "Engineer"), "space:agents/engineer");
+  assert.equal(agentPlace(agents, "Qi"), "space:agents/qi");
+  assert.equal(agentPlace(agents, "nofolder"), null);
+  assert.equal(agentPlace(agents, ""), null);
+  assert.equal(agentPlace(undefined, "engineer"), null);
 });

@@ -9,11 +9,11 @@ import { usePhone } from "../places/Page";
 import { DropZone } from "./DropZone";
 import { FieldsEditor } from "./FieldsEditor";
 import { blankDraft, draftOf, kindCall, loginDraft, newField, noteDraft, saveCall, searchTemplates, suggestionDraft, suggestionNote, templates, type Need, type Saved, type Template } from "./add-model.js";
-import { liveName, moveField, pasteDrafts, secretHint, setField, valueWarning, withoutEnds, itemCall, type Draft } from "./env-model.js";
+import { slugOf, liveName, moveField, pasteDrafts, secretHint, setField, valueWarning, withoutEnds, itemCall, type Draft } from "./env-model.js";
 import type { Suggestion } from "./redesign-data";
 import { openExternal } from "../../src/shell/open-external";
 
-export type Call = { tool: string; input: Record<string, unknown> };
+export type Call = { tool: string; input: Record<string, unknown>; /** The fields to save as plain (vault.use.set). */ plain?: string[] };
 type Scope = "mine" | "shared";
 type Step = { kind: "start" } | { kind: "paste" } | { kind: "pick" } | { kind: "form"; how: "blank" | "template" | "login" | "note"; template: Template | null; note?: string };
 
@@ -97,7 +97,8 @@ export function AddBody({ open, scope, member, busy, problem, onClose, onSave, n
   const preview = (d: Draft) => (
     <Card key={d.id}>
       <View className="gap-s3">
-        <Field label="Item name" value={d.name} onChangeText={(name) => setDrafts((xs) => xs.map((x) => (x.id === d.id ? { ...x, name } : x)))} />
+        <Field label="Item name" value={d.name} onChangeText={(name) => setDrafts((xs) => xs.map((x) => (x.id === d.id ? { ...x, name } : x)))}
+          help={slugOf(d.name) && slugOf(d.name) !== d.name.trim() ? `Kept as ${slugOf(d.name)}. Placeholders take either spelling.` : undefined} />
         {d.fields.map((f) => {
           const warn = valueWarning(f.value);
           return (
@@ -184,7 +185,8 @@ export function AddBody({ open, scope, member, busy, problem, onClose, onSave, n
       {back}
       {tpl ? <Row dense lead={<IconTile name={ICON[tpl.source]} />} title={tpl.label} sub={tpl.line} /> : null}
       {step0.note ? <Text tone="label">{step0.note}</Text> : null}
-      {tpl?.source === "need" && !tpl.need?.multiple ? null : <Field label={tpl?.need?.multiple ? "Account name" : "Item name"} value={draft.name} onChangeText={(name) => setDraft((d) => ({ ...d, name }))} placeholder={step0.how === "login" ? "Airline account" : "GHL Sales"} autoFocus={!phone} />}
+      {tpl?.source === "need" && !tpl.need?.multiple ? null : <Field label={tpl?.need?.multiple ? "Account name" : "Item name"} value={draft.name} onChangeText={(name) => setDraft((d) => ({ ...d, name }))} placeholder={step0.how === "login" ? "Airline account" : "GHL Sales"} autoFocus={!phone}
+        help={slugOf(draft.name) && slugOf(draft.name) !== draft.name.trim() ? `Kept as ${slugOf(draft.name)}. Placeholders take either spelling.` : undefined} />}
       <FieldsEditor fields={draft.fields} multiline={step0.how === "note"} onChange={(id, change) => setDraft((d) => ({ ...d, fields: d.fields.map((f) => (f.id === id ? { ...f, ...change } : f)) }))}
         canAdd={step0.how === "blank" || Boolean(tpl?.extra)} canRemove={step0.how === "blank"} onAdd={() => setDraft((d) => ({ ...d, fields: [...d.fields, newField()] }))} />
       {tpl?.help ? <View className="self-start"><Button kind="ghost" size="sm" icon="external" label="Where do I find these?" onPress={() => void openExternal(tpl.help!)} /></View> : null}

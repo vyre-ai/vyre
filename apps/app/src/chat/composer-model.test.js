@@ -43,8 +43,8 @@ test("send is never disabled by a busy turn: it queues", () => {
 });
 
 test("runs-on labels", () => {
-  assert.equal(runsOnLabel("mac"), "Runs on My Computer");
-  assert.equal(runsOnLabel("server"), "Runs on Space's Cloud");
+  assert.equal(runsOnLabel("mac"), "Runs on this computer");
+  assert.equal(runsOnLabel("server"), "Runs on the server");
 });
 
 import { mentionedAssistants, sendTargets } from "./composer-model.js";

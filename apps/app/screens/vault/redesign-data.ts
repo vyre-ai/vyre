@@ -17,7 +17,9 @@ import { shownName } from "./env-model.js";
 export type Scope = "mine" | "shared";
 export type Loaded = { items: VItem[]; locked: boolean; /** Mine only: the member has not made a vault yet. */ noAccount?: boolean; /** Who is looking: the owner, or a member. */ owner?: boolean };
 /** What the Add sheet saves: the tool to call and its input, built by add-model.js and env-model.js. */
-export type AddCall = { tool: string; input: Record<string, unknown> };
+export type AddCall = { tool: string; input: Record<string, unknown>; plain?: string[] };
+/** An item's rules (core/vault/use.js, vault.use.find): which fields are plain, their values in full, and whether an agent's script may have it. */
+export type Rules = { plain: Record<string, string | null>; scripts: boolean };
 export type Suggestion = { app: string; fields: { name: string; secret: boolean; help?: string }[]; source: "space" | "ai" | "none"; why?: "no_account" | "no_answer" };
 
 export interface VaultData {
@@ -32,6 +34,10 @@ export interface VaultData {
   lock(): Promise<void>;
   /** Save a new item; in Shared, the owner's new item then goes into the folder picked. */
   add(scope: Scope, call: AddCall, folder?: string | null): Promise<void>;
+  /** An item's rules: its plain fields and their values, and Allowed in scripts (vault.use.find, the owner's items). */
+  rules?(item: VItem): Promise<Rules>;
+  /** Whether an agent's script may have the item (Allowed in scripts: vault.use.find reads it, vault.use.set changes it). */
+  scripts?: { load(item: VItem): Promise<boolean>; set(item: VItem, on: boolean): Promise<void> };
   /** Save an item's fields again (Edit): every field, names in their one form, values as given. */
   update(scope: Scope, item: VItem, fields: Record<string, string>, plain: string[]): Promise<void>;
   remove(scope: Scope, item: VItem): Promise<void>;
@@ -63,13 +69,15 @@ export function sampleData(): VaultData {
     real: false,
     load: async (scope) => ({ items: items.filter((v) => (scope === "mine") === (v.sp === "mine")), locked: false, owner: true }),
     read: async (_s, v, field) => v.values?.[field] ?? "",
+    rules: async (v) => ({ plain: Object.fromEntries((v.fields ?? []).filter((f) => f.plain).map((f) => [f.name, v.values?.[f.name] ?? ""])), scripts: false }),
+    scripts: { load: async () => false, set: async () => {} },
     unlock: async () => {}, create: async () => {}, lock: async () => {},
     add: async (scope, call, folder) => {
-      const i = call.input as { name?: string; kind?: string; fields?: Record<string, string>; details?: { plain?: string[]; provider?: string }; module?: string; need?: string };
+      const i = call.input as { name?: string; kind?: string; fields?: Record<string, string>; details?: { provider?: string }; module?: string; need?: string };
       const name = String(i.name ?? `${i.module}-${i.need}`);
       const f = folders.find((x) => x.id === folder) ?? null;
       items.push({ id: name, sp: scope === "mine" ? "mine" : "shared", folder: scope === "shared" ? f ?? folders[0] : null, kind: i.kind, group: groupOf(i.kind ?? "env-set", name, i.details?.provider), name: shownName(name),
-        detail: Object.keys(i.fields ?? {}).join(", "), secret: "", fields: Object.keys(i.fields ?? {}).map((n) => ({ name: n, plain: (i.details?.plain ?? []).includes(n) })), values: { ...(i.fields ?? {}) }, usedBy: [], shared: [], lastUsedDays: null });
+        detail: Object.keys(i.fields ?? {}).join(", "), secret: "", fields: Object.keys(i.fields ?? {}).map((n) => ({ name: n, plain: (call.plain ?? []).includes(n) })), values: { ...(i.fields ?? {}) }, usedBy: [], shared: [], lastUsedDays: null });
     },
     update: async (_s, v, fields, plain) => { const x = items.find((y) => y.id === v.id); if (x) { x.values = { ...fields }; x.fields = Object.keys(fields).map((n) => ({ name: n, plain: plain.includes(n) })); x.detail = Object.keys(fields).join(", "); } },
     remove: async (_s, v) => { const i = items.findIndex((x) => x.id === v.id); if (i >= 0) items.splice(i, 1); },
@@ -115,7 +123,8 @@ export function realData(call: Call): VaultData {
     return Object.fromEntries(r.vaults.filter((v) => !v.personal).map((v) => [v.id, v.name]));
   };
   const ownerItem = (r: OwnerRow, sp: Scope, names: Record<string, string>): VItem => {
-    const plain = r.details?.plain ?? (r.kind === "login" ? ["username"] : []);
+    // which fields are plain is the item's rule (vault.use.find); until it is read, a login's username is the one shown as plain
+    const plain = r.kind === "login" ? ["username"] : [];
     const slash = r.name.indexOf("/");
     return {
       id: r.name, sp, kind: r.kind, group: groupOf(r.kind, r.name, r.details?.provider), provider: r.details?.provider, sharedWithMe: slash > 0, name: shownName(slash > 0 ? r.name.slice(slash + 1) : r.name),
@@ -128,6 +137,12 @@ export function realData(call: Call): VaultData {
     };
   };
   const deviceKeys = deviceKeyStore({ get: kvGet, set: kvSet });
+  async function rulesOf(item: VItem): Promise<Rules> {
+    if (!(await isOwner())) return { plain: {}, scripts: false };
+    const r = await ask<{ items?: { name: string; scripts?: boolean; fields?: { name: string; plain?: string | null; secret?: boolean }[] }[] }>("vault.use.find", { q: item.id, limit: 50 });
+    const it = (r.items ?? []).find((x) => x.name === item.id);
+    return { plain: Object.fromEntries((it?.fields ?? []).filter((x) => !x.secret).map((x) => [x.name, x.plain ?? null])), scripts: Boolean(it?.scripts) };
+  }
   return {
     real: true,
     async load(scope) {
@@ -136,16 +151,20 @@ export function realData(call: Call): VaultData {
         for (const i of r.items ?? []) rows[i.name] = i;
         const split = splitOwner(r.items ?? []);
         const names = scope === "shared" ? await folderNames() : {};
-        return { items: (scope === "mine" ? split.mine : split.shared).map((x) => ownerItem(x, scope, names)), locked: Boolean(r.locked), owner: true };
+        // the plain fields of the items in view, from their rules (vault.use.find, at most 50 a call): names only here; values come with an item's page
+        const shown = (scope === "mine" ? split.mine : split.shared).map((x) => ownerItem(x, scope, names));
+        const f = await ask<{ items?: { name: string; fields?: { name: string; plain?: string | null; secret?: boolean }[] }[] }>("vault.use.find", { limit: 50 }).catch(() => ({ items: [] as { name: string; fields?: { name: string; plain?: string | null; secret?: boolean }[] }[] }));
+        for (const it of f.items ?? []) { const v = shown.find((x) => x.id === it.name); if (v) v.fields = (v.fields ?? []).map((fl) => ({ ...fl, plain: Boolean(it.fields?.some((x) => x.name === fl.name && !x.secret)) })); }
+        return { items: shown, locked: Boolean(r.locked), owner: true };
       }
       if (scope === "shared") {
         const [r, vs] = await Promise.all([
-          ask<{ items: { name: string; kind: string; can: string[]; description?: string; fields?: string[]; plain?: string[] }[] }>("vault.me.shared.list"),
+          ask<{ items: { name: string; kind: string; can: string[]; description?: string; fields?: string[] }[] }>("vault.me.shared.list"),
           ask<{ vaults: { id: string; name: string; items: { name: string }[] }[] }>("vault.me.vaults").catch(() => ({ vaults: [] as { id: string; name: string; items: { name: string }[] }[] })),
         ]);
         const inFolder = (n: string) => vs.vaults.find((v) => v.items.some((i) => i.name === n)) ?? null;
         return { owner: false, locked: false, items: r.items.map((i) => { const f = inFolder(i.name); return { id: i.name, sp: "shared", kind: i.kind, can: i.can, group: groupOf(i.kind, i.name), name: shownName(i.name), detail: (i.fields ?? []).join(", ") || i.description || i.kind,
-          fields: (i.fields ?? []).map((n) => ({ name: n, plain: (i.plain ?? []).includes(n) })), folder: f ? { id: f.id, name: f.name } : null, secret: "", daysLeft: null, lastUsedDays: undefined, usedBy: [], shared: [] }; }) };
+          fields: (i.fields ?? []).map((n) => ({ name: n, plain: false })), folder: f ? { id: f.id, name: f.name } : null, secret: "", daysLeft: null, lastUsedDays: undefined, usedBy: [], shared: [] }; }) };
       }
       if (!(await hasMine(ask))) return { items: [], locked: false, noAccount: true, owner: false };
       try {
@@ -172,11 +191,19 @@ export function realData(call: Call): VaultData {
       await ask(req.tool, req.input);
       const name = typeof req.input.name === "string" ? req.input.name : "";
       if (scope === "shared" && folder && name && req.tool === "vault.put") await ask("vault.named.move", { item: name, vault: folder });
+      // the plain fields are the item's rule (core/vault/use.js): showing a field to agents is a loosening, so the server asks for the person's yes
+      if (req.plain?.length && name && (await isOwner())) await ask("vault.use.set", { name, plain: req.plain });
+    },
+    rules: rulesOf,
+    scripts: {
+      async load(item) { return (await rulesOf(item)).scripts; },
+      async set(item, on) { await ask("vault.use.set", { name: item.id, scripts: on }); },
     },
     async update(scope, item, fields, plain) {
       if (await isOwner()) {
         const r = rows[item.id];
-        await ask("vault.put", { name: item.id, kind: r?.kind ?? item.kind ?? "env-set", fields, details: { plain }, ...(r?.url ? { url: r.url } : {}), ...(r?.hosts?.length ? { hosts: r.hosts } : {}) });
+        await ask("vault.put", { name: item.id, kind: r?.kind ?? item.kind ?? "env-set", fields, ...(r?.url ? { url: r.url } : {}), ...(r?.hosts?.length ? { hosts: r.hosts } : {}) });
+        await ask("vault.use.set", { name: item.id, plain });
         return;
       }
       if (scope === "shared") { for (const [field, v] of Object.entries(fields)) await ask("vault.me.shared.update", { item: item.id, fields: { [field]: v } }); return; }

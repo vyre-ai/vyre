@@ -168,6 +168,8 @@ export class ApiRequests {
     /** One refresh in flight per oauth credential. @type {Map<string, Promise<string>>} */
     this.refreshing = new Map();
     this.stopped = false;
+    /** core/vault/use.js sets these: a request with no credential, and its Gate release. @type {((input: any, meta: any) => Promise<any>) | null} */ this.placeholders = null;
+    /** @type {((c: any, held: any, it: any, caller: string) => Promise<any>) | null} */ this.placeholderSend = null;
     /** @type {Set<any>} */
     this.timers = new Set();
     this.sleep = deps.sleep || (ms => new Promise(r => { const t = setTimeout(r, ms); if (typeof t.unref === "function") t.unref(); }));
@@ -631,6 +633,8 @@ export class ApiRequests {
   async request(input, meta) {
     const caller = String(meta.caller);
     const name = String(input.credential || "");
+    // No credential: the request names Vault items by placeholder ({{vault:Item.FIELD}}), filled in and judged by core/vault/use.js. Never for a member's shared call, which names its credential.
+    if (!name && input.operation === undefined && this.placeholders && meta.authorize === undefined && meta.byPerson !== true) return this.placeholders(input, meta);
     // A Connection's operation: { credential, operation, input } is built into the same method, url, query, headers and body a caller could have written, and then judged by everything below as such.
     if (input.operation !== undefined) input = await this.fromOperation(input, name);
     else if (typeof input.url !== "string" || typeof input.method !== "string") throw bad("a request names its method and url, or an operation of a Connection");
@@ -796,6 +800,8 @@ export class ApiRequests {
     let sealOk = false;
     try { sealOk = isStr(c.seal) && same(c.seal, this.seal(c)); } catch { /* locked: not sent */ }
     if (!sealOk) throw bad("this card was not made by the vault, or its words were changed, so it is not sent", "denied");
+    // A placeholder request (core/vault/use.js): rebuilt and re-judged there, from this same sealed card.
+    if (c.credential.startsWith("vault-placeholders:")) { if (!this.placeholderSend) throw bad("placeholder requests are not wired in this Vyre", "failed"); return this.placeholderSend(c, held, it, caller); }
     if (isObj(held.file)) {
       const files = this.deps.filesFor ? this.deps.filesFor({ session: String(held.file.session ?? "") }) : this.deps.files;
       if (!files) throw bad("the Drive is not wired, so a held file request cannot be sent", "failed");
@@ -871,9 +877,9 @@ export function register({ vault, tool, internal, call, said, deps = {}, log }) 
   registerService({ api, vault, internal, forwardFile, forwardHeaders, obj, str });
 
   tool("vault.request", ["cli", "local", "deck", "capsule", "mcp", "module"],
-    "HTTP call to a vendor API using a vault api-credential; Vyre adds the key. Reads run at once; sends, payments, deletes wait at the Gate.",
-    obj({ credential: { type: "string", description: "name of an api-credential in the vault" }, method: { type: "string", enum: METHODS }, url: str, headers: { type: "object" }, query: { type: "object" },
-      body: { anyOf: [str, { type: "object" }, { type: "array" }] }, watcher: str, operation: str, input: { type: "object" } }, ["credential"]),
+    "HTTP call with a vault api-credential, or with {{vault:Item.FIELD}} placeholders Vyre fills in. Reads run at once; sends, payments, deletes wait at the Gate.",
+    obj({ credential: { type: "string", description: "an api-credential's name; leave it out to use {{vault:Item.FIELD}} placeholders" }, method: { type: "string", enum: METHODS }, url: str, headers: { type: "object" }, query: { type: "object" },
+      body: { anyOf: [str, { type: "object" }, { type: "array" }] }, watcher: str, operation: str, input: { type: "object" } }),
     (input, meta) => api.request(input, meta));
 
   // A member uses what the Space owner shared with her. The kernel is asked, for HER chain, on the item's address (one grant model): Fill in covers reads, and an outward act still waits at the Gate for a
@@ -899,7 +905,7 @@ export function register({ vault, tool, internal, call, said, deps = {}, log }) 
   tool("vault.me.shared.list", SHARED_SURFACES, "The items the owner shared with you that you can use: name, kind, description, hosts, field names and what you may do (use, reveal, edit), never a value.", obj({}), async (_input, meta) => {
     const { may } = await asMember(meta);
     const out = [];
-    for (const it of /** @type {any} */ (vault).list().items) { const can = await canOf(may, it); if (can.length) out.push({ name: it.name, kind: it.kind, can, ...(it.description ? { description: it.description } : {}), ...(it.hosts && it.hosts.length ? { hosts: it.hosts } : {}), fields: it.fields || [], ...(it.details && Array.isArray(it.details.plain) ? { plain: it.details.plain } : {}) }); }
+    for (const it of /** @type {any} */ (vault).list().items) { const can = await canOf(may, it); if (can.length) out.push({ name: it.name, kind: it.kind, can, ...(it.description ? { description: it.description } : {}), ...(it.hosts && it.hosts.length ? { hosts: it.hosts } : {}), fields: it.fields || [] }); }
     return { items: out };
   });
   // The vaults shared with a member, with the credentials in each that she can use. A vault is the kernel's record; she holds one by a grant on it (a whole vault shared once) and sees what her chain may read.

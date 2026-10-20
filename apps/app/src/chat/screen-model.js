@@ -44,7 +44,7 @@ export function loginsFor(items, site) {
 }
 
 /** What the picture area says when there is no still: by why the box gave none. @param {string | undefined} why */
-export const stillWord = (why) => (why === "mac" ? "The picture stays on your Mac." : why === "none" ? "No picture yet." : "Waiting for a picture.");
+export const stillWord = (why) => (why === "mac" ? "The picture stays on your computer." : why === "none" ? "No picture yet." : "Waiting for a picture.");
 
 /** Does a stuck run's question ask for a one-time code? @param {string} ask */
 export const asksForCode = (ask) => /\b(code|otp|2fa|two[- ]factor|authenticator|verification)\b/i.test(String(ask || ""));
