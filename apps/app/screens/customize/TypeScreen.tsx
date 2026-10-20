@@ -12,6 +12,7 @@ import { PipelinesEditor } from "./PipelinesEditor";
 import { InlineTitle } from "./InlineTitle";
 import { moveField, parseRule, putField, regroup } from "../../ui/setup/typeedit.js";
 import { fieldTokens, tokenList } from "../../ui/setup/fieldtokens.js";
+import { useRecordsAccess } from "../records/records-access";
 import { ID_NOTE, isRecordIdField } from "../../ui/records/record-id.js";
 
 // The roles a field can be hidden from (kernel/contracts/fields.d.ts hidden_from). The owner always sees every field.
@@ -30,6 +31,8 @@ async function copyText(text: string) {
 export function TypeFields({ type }: { type: string }) {
   const { phone } = useUiTheme();
   const { defs, load, save, busy } = useKernelTypes();
+  // only an owner or an admin changes a type (records.define): anyone else reads its fields
+  const { admin } = useRecordsAccess();
   useEffect(() => { if (!defs.length) void load(); }, []);
   const def = defs.find((d) => d.name === type);
   const [edit, setEdit] = useState<null | { orig?: any; draft: Draft; rules: Rules; tried: boolean }>(null);
@@ -77,19 +80,20 @@ export function TypeFields({ type }: { type: string }) {
   const stages = (def.stages ?? []).map((s) => s.name);
   const list = (
     <View className="min-w-0 flex-1 gap-s3">
-      <InlineTitle label="Name" value={def.label} busy={working} onCommit={(next) => { save({ ...def, label: next } as Def); showToast(`Renamed to ${next}.`); }} />
+      {admin ? <InlineTitle label="Name" value={def.label} busy={working} onCommit={(next) => { save({ ...def, label: next } as Def); showToast(`Renamed to ${next}.`); }} /> : <Text strong>{def.label}</Text>}
+      {admin ? null : <Text size="caption" tone="label">Only an owner or an admin changes this type's fields.</Text>}
       <SectionLabel first={false}>Fields</SectionLabel>
       <View className="flex-row"><Button kind="ghost" size="sm" icon="copy" label="Copy all as a list" onPress={() => copy(tokenList(def as any, defs as any), "The list")} /></View>
       <GroupedList groups={groups} items={rows} itemNoun="fields"
-        onChange={({ groups: g, items }) => save({ ...def, groups: g.length ? g : undefined, fields: regroup(def.fields, items) } as Def)}
+        onChange={admin ? ({ groups: g, items }) => save({ ...def, groups: g.length ? g : undefined, fields: regroup(def.fields, items) } as Def) : undefined}
         renderItems={(items, group) => (
           <View className="gap-s2">
-            <FieldRows fields={items} types={types} tokens={tokens} onCopy={copy} selected={edit?.orig?.name} locked={(f) => (isRecordIdField(f) ? ID_NOTE : undefined)} onOpen={(n) => { const f = def.fields.find((x) => x.name === n); if (!isRecordIdField(f)) open(f); }} onMove={moveOne} />
-            <View className="flex-row"><Button kind="ghost" size="sm" icon="plus" label="Add a field" onPress={() => open(undefined, group)} /></View>
+            <FieldRows fields={items} types={types} tokens={tokens} onCopy={copy} selected={edit?.orig?.name} locked={(f) => (isRecordIdField(f) ? ID_NOTE : undefined)} onOpen={(n) => { const f = def.fields.find((x) => x.name === n); if (admin && !isRecordIdField(f)) open(f); }} onMove={admin ? moveOne : undefined} />
+            {admin ? <View className="flex-row"><Button kind="ghost" size="sm" icon="plus" label="Add a field" onPress={() => open(undefined, group)} /></View> : null}
           </View>
         )} />
-      {!groups.length ? <Text size="caption" tone="label">Add a group to split these fields into sections such as Client details.</Text> : null}
-      {stages.length ? <PipelinesEditor def={def} reload={() => void load()} /> : null}
+      {!groups.length && admin ? <Text size="caption" tone="label">Add a group to split these fields into sections such as Contact details.</Text> : null}
+      {stages.length && admin ? <PipelinesEditor def={def} reload={() => void load()} /> : null}
     </View>
   );
   return (
@@ -112,12 +116,12 @@ export function TypeScreen() {
   useEffect(() => { if (!defs.length) void load(); }, []);
   const def = defs.find((d) => d.name === type);
   const [tab, setTab] = useState("fields");
-  if (!def && loading) return <Page title="Objects" back="/u/settings/customize"><LoadingState rows={3} /></Page>;
-  if (!def) return <Page title="Objects" back="/u/settings/customize"><Card><EmptyState title="That type is not here" action={{ label: "Back to Customize", onPress: () => router.push("/u/settings/customize" as never) }} /></Card></Page>;
+  if (!def && loading) return <Page title="Types" back="/u/settings/customize"><LoadingState rows={3} /></Page>;
+  if (!def) return <Page title="Types" back="/u/settings/customize"><Card><EmptyState title="That type is not here" action={{ label: "Back to Types", onPress: () => router.push("/u/settings/customize" as never) }} /></Card></Page>;
   const plural = (def.plural as string) ?? `${def.label}s`;
   return (
     <Page title={def.label ? plural : "Type"} back="/u/settings/customize">
-      <Pressable accessibilityRole="link" accessibilityLabel="Back to Objects" onPress={() => router.push("/u/settings/customize" as never)} className="self-start"><Text size="caption" tone="label">Objects /</Text></Pressable>
+      <Pressable accessibilityRole="link" accessibilityLabel="Back to Types" onPress={() => router.push("/u/settings/customize" as never)} className="self-start"><Text size="caption" tone="label">Types /</Text></Pressable>
       <Tabs value={tab} onChange={setTab} items={[["fields", "Fields"], ["access", "Access"], ["history", "History"]]} />
       {tab === "access" ? <TypeAccess type={def.name} label={plural} /> : tab === "history" ? <TypeHistory type={def.name} /> : <TypeFields type={def.name} />}
     </Page>

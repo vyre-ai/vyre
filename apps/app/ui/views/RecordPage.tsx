@@ -31,8 +31,9 @@ import { useShowEmpty } from "../../src/state/record-prefs";
 import { ASSISTANT_MARK } from "../../src/store-core/kernel-view.js";
 import { actorWords, ago, assistantNote, canSealField, eventWhat, fieldStates, filesOf, isSealedField, newFieldSpec, relatedRecords, sealSpec, stageField, timelineLine, titleOf, val, viewDefOf } from "./logic.js";
 import type { RecordsWorld } from "./shared";
+import { plainError } from "../../src/real/error-note.js";
 
-const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
+const errText = (e: unknown) => plainError(e, "That did not save.");
 
 /** Copy a record's ID: the browser's clipboard on the web, the phone's otherwise. */
 async function copyId(text: string) {
@@ -46,7 +47,9 @@ async function copyId(text: string) {
  * linked records and files. Every value goes through the field renderers, so a field added to the type shows here with no new code. Writes go to the Store
  * and the page redraws from it; a sealed value goes through putSealed and reveals through reveal, which the box holds for the owner's yes on their phone.
  */
-export function RecordPage({ def, rec, world, events, env, onOpen, story, onNew, onStage }: { def: any; rec: any; world: RecordsWorld; events: any[]; env: FieldEnv; onOpen: (urn: string) => void; story?: React.ReactNode; /** Given, each type that links here gets "Add a <type>" under its list: the type, and the field of it that links to this record. */ onNew?: (type: string, via: string) => void; /** Given, a tap on the stage strip goes through it (the move rule: a stage that needs fields asks for them) instead of writing the stage field directly. */ onStage?: (stage: string) => void }) {
+export function RecordPage({ def, rec, world, events, env, onOpen, story, onNew, onStage, canCustomize = true, canSeal = true, canSeeAsAgent = true }: { def: any; rec: any; world: RecordsWorld; events: any[]; env: FieldEnv; onOpen: (urn: string) => void; story?: React.ReactNode; /** Given, each type that links here gets "Add a <type>" under its list: the type, and the field of it that links to this record. */ onNew?: (type: string, via: string) => void; /** Given, a tap on the stage strip goes through it (the move rule: a stage that needs fields asks for them) instead of writing the stage field directly. */ onStage?: (stage: string) => void;
+  /** An owner or an admin: Add a field shows (the server refuses anyone else). */ canCustomize?: boolean; /** An owner or an admin on their own server: "Seal this field" shows. */ canSeal?: boolean;
+  /** "Your agent sees" shows (not in a team joined as a member: that look stays on the owner's own server). */ canSeeAsAgent?: boolean }) {
   const store = useStore();
   const { phone } = useUiTheme();
   const vd = viewDefOf(def);
@@ -121,7 +124,7 @@ export function RecordPage({ def, rec, world, events, env, onOpen, story, onNew,
     const shown = renderField({ kind: f.kind, definition: f, value, mode: "view", read_only: true, reveal: ai ? undefined : revealFor(f) }, env);
     const items = locked ? [] : [
       { label: "Edit", onPress: () => { setEditing(f.name); setDraft(undefined); } },
-      ...(canSealField(f) ? [{ label: `Seal this field for all ${vd.plural.toLowerCase()}`, onPress: () => setConfirm({ f }) }] : []),
+      ...(sealed || !canSeal || !canSealField(f) ? [] : [{ label: `Seal this field for all ${vd.plural.toLowerCase()}`, onPress: () => setConfirm({ f }) }]),
     ];
     // Desktop: the menu shows on hover (or while the row is being edited). Phone: tap the row to edit, long-press for the menu.
     // a locked field has nothing to offer: its menu keeps its place, unseen and not pressable, so the rows line up
@@ -231,9 +234,9 @@ export function RecordPage({ def, rec, world, events, env, onOpen, story, onNew,
     <View className="gap-s4">
       {sf ? <StageSteps strip={phone} stages={stages} current={stages.indexOf(String(val(rec, sf.name) ?? ""))} onSelect={ai ? undefined : (s) => (onStage ? onStage(s) : change(sf, s))} /> : null}
       <View className="flex-row flex-wrap items-center gap-s3">
-        <Segmented<"person" | "assistant"> label="Who is looking" value={who} onChange={(v) => { setWho(v); setEditing(null); }} options={[["person", "You"], ["assistant", "Your agent sees"]]} />
+        {canSeeAsAgent ? <Segmented<"person" | "assistant"> label="Who is looking" value={who} onChange={(v) => { setWho(v); setEditing(null); }} options={[["person", "You"], ["assistant", "Your agent sees"]]} /> : null}
         <View className="flex-1" />
-        {ai ? null : phone ? <IconButton icon="plus" label="Add a field" kind="secondary" onPress={() => setAdding(true)} /> : <Button size="sm" icon="plus" label="Add a field" onPress={() => setAdding(true)} />}
+        {ai || !canCustomize ? null : phone ? <IconButton icon="plus" label="Add a field" kind="secondary" onPress={() => setAdding(true)} /> : <Button size="sm" icon="plus" label="Add a field" onPress={() => setAdding(true)} />}
       </View>
       {ai ? (
         <Banner tone="warn">

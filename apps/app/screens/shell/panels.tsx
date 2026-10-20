@@ -103,10 +103,10 @@ export function usePanel(onNavigate: (href: string) => void): { panel: PanelDef 
     panel: {
       id, title: meta.title, icon: meta.icon, search: meta.search, ...(meta.search ? { onSearch: () => openFind(SEARCH_SCOPE[id] ?? "all") } : {}), ...(id === "chats" ? { plus: <ChatsPlusButton /> } : {}), empty: meta.empty, onBack: goBack, currentHref: path,
       items: id === "settings" ? SETTINGS(labs) : id === "build" ? BUILD : id === "records" ? [] : loaded[id] ?? [],
-      before: id === "chats" ? <ChatsSidebar /> : id === "drive" ? <FilesTreePanel /> : id === "vault" ? <VaultPanel /> : id === "records" ? <><SidebarRow label="Contacts" icon="contacts" on={path === "/u/records/contact"} onPress={() => onNavigate("/u/records/contact")} />
+      before: id === "chats" ? <ChatsSidebar /> : id === "drive" ? <FilesTreePanel /> : id === "vault" ? <VaultPanel /> : id === "records" ? <><SidebarRow label="People" icon="contacts" on={path === "/u/records/contact"} onPress={() => onNavigate("/u/records/contact")} />
         <PinnedViews entries={all} onOpen={onNavigate}
           onMove={(i, before) => void edit(reorderPinned(all, i, before))} onRename={(i, label) => void edit(renameView(all, i, label))} onUnpin={(i) => void edit(unpinList(all, i))} /></> : undefined,
-      after: id === "records" ? <><SidebarRow label="All objects" icon="records" tone="label" onPress={() => onNavigate("/u/settings/customize")} /><SidebarRow label="New view" icon="plus" tone="label" onPress={() => useNewView.getState().set(true)} /></> : undefined,
+      after: id === "records" ? <><SidebarRow label="All types" icon="records" tone="label" onPress={() => onNavigate("/u/settings/customize")} /><SidebarRow label="New view" icon="plus" tone="label" onPress={() => useNewView.getState().set(true)} /></> : undefined,
     },
   };
 }

@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { usePathname, useRouter } from "expo-router";
 import { useRecordsWorld } from "@vyre/ui";
 import { NewViewSheet } from "./NewViewSheet";
-import { useSidebar } from "../shell/sidebar";
+import { useRecordsAccess } from "./records-access";
 import { useSpaces } from "../shell/state";
 
 /** Whether the New view sheet is open: the sidebar's "New view" row opens it from any records page. */
@@ -15,7 +15,7 @@ export function NewViewHost() {
   const path = usePathname();
   const { data: world } = useRecordsWorld();
   const space = useSpaces((s) => s.space);
-  const canShare = useSidebar((s) => s.canSetDefault);
+  const canShare = useRecordsAccess().admin;
   if (!open || !world) return null;
   const here = /^\/u\/records\/([^/?]+)/.exec(path)?.[1];
   const type = here && world.types.some((t: { name: string }) => t.name === here) ? here : world.types[0]?.name ?? "";

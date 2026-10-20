@@ -4,6 +4,7 @@ import { Banner, Button, Field, Sheet, Text, showToast } from "@vyre/ui";
 import { recordsApi } from "./records-api";
 import { editInput, isMine, noteOf } from "./note-model.js";
 import { ShareControl } from "./ShareControl";
+import { plainError } from "../../src/real/error-note.js";
 
 /** One note, opened from the Notes tab (planner.get). Your own can be edited and shared in place (planner.update); one shared with you is read-only, and says so. */
 export function NoteSheet({ id, me, onClose, onChanged }: { id: string | null; me?: string; onClose: () => void; onChanged: () => void }) {
@@ -19,7 +20,7 @@ export function NoteSheet({ id, me, onClose, onChanged }: { id: string | null; m
     void recordsApi.noteGet(id).then((r) => {
       if (!live) return;
       const n = r.error ? null : noteOf(r.data);
-      if (!n) { setProblem(r.error?.message || "That note is not here, or it is not yours to read."); return; }
+      if (!n) { setProblem(plainError(r.error, "That note is not here, or it is not yours to read.")); return; }
       setNote(n); setTitle(n.title); setBody(n.body);
     });
     return () => { live = false; };
@@ -32,7 +33,7 @@ export function NoteSheet({ id, me, onClose, onChanged }: { id: string | null; m
     setBusy(true);
     const r = await recordsApi.noteUpdate(input);
     setBusy(false);
-    if (r.error) { setProblem(r.error.message || "That did not save."); return; }
+    if (r.error) { setProblem(plainError(r.error, "That did not save.")); return; }
     showToast("Saved.");
     onChanged(); onClose();
   };

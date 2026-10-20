@@ -4,6 +4,7 @@ import { Button, Card, Field, Row, Select, Sheet, Text, showToast } from "@vyre/
 import type { FieldEnv } from "../../ui/fields/types";
 import { callT } from "../../src/real/call-tool";
 import { groupConnections } from "./connections-model.js";
+import { plainError } from "../../src/real/error-note.js";
 
 type Rel = { id: string; direction: "from" | "to"; other: string; kind: string; since: string | null; until: string | null; note: string };
 
@@ -44,7 +45,7 @@ function AddConnection({ open, onClose, urn, env, onDone }: { open: boolean; onC
     setBusy(true);
     const r = await callT("records.relationship.add", { from: urn, to: other, kind, ...(since.trim() ? { since: since.trim() } : {}), ...(note.trim() ? { note: note.trim() } : {}) });
     setBusy(false);
-    if (r.error) { showToast(r.error.message || "That did not save."); return; }
+    if (r.error) { showToast(plainError(r.error, "That did not save.")); return; }
     setOther(""); setSince(""); setNote("");
     showToast("Connected. It shows on both records.");
     onDone();

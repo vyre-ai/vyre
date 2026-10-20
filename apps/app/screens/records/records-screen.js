@@ -25,3 +25,12 @@ const LISTING_ONLY = ["system", "version", "space", "id", "created_at", "updated
 export function defineInputOf(def) {
   return Object.fromEntries(Object.entries(def || {}).filter(([k, v]) => !LISTING_ONLY.includes(k) && v !== undefined));
 }
+
+/** The types Records opens with, in this order (the product map: People, Companies, Tasks, Notes); the rest follow as the Space lists them. */
+const FIRST = ["contact", "organization", "task", "note"];
+
+/** The tabs in order: the four Records opens with first, then every other type as given. Nothing is added or dropped. @template {{ name: string }} T @param {T[]} types @returns {T[]} */
+export function tabOrder(types) {
+  const list = Array.isArray(types) ? types : [];
+  return [...FIRST.flatMap((n) => list.filter((t) => t && t.name === n)), ...list.filter((t) => !(t && FIRST.includes(t.name)))];
+}

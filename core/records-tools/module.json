@@ -19,6 +19,8 @@
       { "name": "records.reference", "effect": "read", "reach": "person" },
       { "name": "records.create", "effect": "write", "reach": "person" },
       { "name": "records.update", "effect": "write", "reach": "person" },
+      { "name": "records.remove", "effect": "write", "reach": "person" },
+      { "name": "records.restore", "effect": "write", "reach": "person" },
       { "name": "records.move", "effect": "write", "reach": "person" },
       { "name": "records.history", "effect": "read", "reach": "person" },
       { "name": "records.history.undo", "effect": "write", "reach": "person" },

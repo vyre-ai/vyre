@@ -49,3 +49,22 @@ export function chipsByHolder(kinds, byRole) {
   for (const h of Object.keys(out)) out[h].sort((a, b) => Number(a.ended) - Number(b.ended));
   return out;
 }
+
+/**
+ * The roles "+ Role" offers a record: the Space's role kinds (records.roles.summary with no urn) that a record of this type can hold (`holder`, the type the role links to; a box that does not say is taken at
+ * its word), that it does not hold now, and each label once: when two kinds read the same (a Kit's own Lead beside the Space's), the Space's own role (role-*) is the one offered.
+ * @param {{ role: string, label: string, holder?: string | null }[]} kinds @param {Set<string> | string[]} held the roles it holds now @param {string} holderType "contact" or "organization"
+ */
+export function freeRoles(kinds, held, holderType) {
+  const have = new Set(held);
+  const fits = (Array.isArray(kinds) ? kinds : []).filter((k) => k && !have.has(k.role) && (!k.holder || k.holder === holderType));
+  const byLabel = new Map();
+  for (const k of fits) {
+    const key = String(k.label || k.role).toLowerCase();
+    const was = byLabel.get(key);
+    if (!was || (!String(was.role).startsWith("role-") && String(k.role).startsWith("role-"))) byLabel.set(key, k);
+  }
+  // a label the record already holds under another kind is not offered again
+  const heldLabels = new Set((Array.isArray(kinds) ? kinds : []).filter((k) => k && have.has(k.role)).map((k) => String(k.label || k.role).toLowerCase()));
+  return [...byLabel.values()].filter((k) => !heldLabels.has(String(k.label || k.role).toLowerCase()));
+}

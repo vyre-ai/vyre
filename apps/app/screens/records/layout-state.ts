@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { showToast } from "@vyre/ui";
 import { callT } from "../../src/real/call-tool";
 import { hasMine, ownLayout } from "../../ui/views/layout.js";
+import { plainError } from "../../src/real/error-note.js";
 
 export type LayoutScope = "mine" | "space";
 
@@ -17,14 +18,14 @@ export function useTypeLayout(type: string | undefined) {
   const save = useCallback(async (key: string, value: unknown): Promise<boolean> => {
     if (!type) return false;
     const r = await callT("records.layout.set", { type, scope, layout: ownLayout(state.layout, state.source, scope, key, value) });
-    if (r.error) { showToast(r.error.message || "That did not save."); return false; }
+    if (r.error) { showToast(plainError(r.error, "That did not save.")); return false; }
     load();
     return true;
   }, [type, scope, state, load]);
   const reset = useCallback(async () => {
     if (!type) return;
     const r = await callT("records.layout.set", { type, scope: "mine", layout: {} });
-    if (r.error) { showToast(r.error.message || "That did not reset."); return; }
+    if (r.error) { showToast(plainError(r.error, "That did not reset.")); return; }
     showToast("Back to the Space layout.");
     load();
   }, [type, load]);

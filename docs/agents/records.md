@@ -27,7 +27,7 @@ Use `records.list` (a type, a filter, a limit, a cursor), `records.get`, `record
 Field kinds: `text`, `rich_text`, `number`, `money`, `boolean`, `date`, `datetime`, `choice`, `multi_choice`, `rating`, `url`, `link`, `actor`, `file`, `address`, `phones`, `emails`, `urls`, `stage`, `sealed`.
 
 Kits that ship, and the record types each adds:
-- `base`: contact, lead, appointment, client, subscriber, project.
+- `base`: contact, appointment, subscriber, project.
 - `estate-planning`: contact, matter.
 - `law-firm`: lead, appointment, client, project.
 

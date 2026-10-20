@@ -55,6 +55,7 @@
           "label": "Reminder",
           "icon": "IconBell",
           "protected": true,
+          "hidden_in_records": true,
           "views": [
             {
               "name": "reminders_calendar",

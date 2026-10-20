@@ -134,7 +134,7 @@ export const ORGANIZATION = {
 /** How two records relate: any record to any other (a person to a person, a person to a company, a deal to a project). `from_record` and `to_record` hold record addresses (not `from` and `to`: reserved words in a database); `kind` reads from `from` to `to` ("from is a Parent of to"). The kinds are the choice's options: the Space edits that list. */
 export const RELATIONSHIP_KINDS = ["Spouse", "Parent", "Child", "Sibling", "Partner", "Colleague", "Employee", "Employer", "Referrer", "Referral", "Other"];
 export const RELATIONSHIP = {
-  name: "relationship", label: "Relationship", icon: "IconLink",
+  hidden_in_records: true, name: "relationship", label: "Relationship", icon: "IconLink",
   fields: [
     text("from_record", "From", { required: true }),
     text("to_record", "To", { required: true }),
@@ -172,7 +172,7 @@ export const COMMUNICATION_KINDS = ["email", "meeting", "call", "text", "letter"
  * belong to (many to many, "Communications" on the Contact). What it concerns: `record`.
  */
 export const COMMUNICATION = {
-  name: "communication", label: "Communication", icon: "IconMessage",
+  hidden_in_records: true, name: "communication", label: "Communication", icon: "IconMessage",
   fields: [
     choice("kind", "Kind", COMMUNICATION_KINDS, { required: true }),
     choice("direction", "Direction", ["inbound", "outbound", "internal"]),

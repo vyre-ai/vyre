@@ -14,6 +14,8 @@ export type Handlers = {
   filter?: (block: string, q: string, pill: string) => void;
   /** A named place a block leaves for its host to fill: the records list leaves its view switcher in the controls row ("lead"), and a grouped list leaves a place after each group's card ("after:<group>"). */
   slot?: (block: string, name: "lead" | "header-end" | `after:${string}`) => React.ReactNode;
+  /** What the host does with the rows ticked in a table ("Set a field for 3", "Delete 3"): its buttons, shown beside the count; `clear` unticks them. A table with no handler draws no ticks. */
+  picked?: (block: string, rows: any[], clear: () => void) => React.ReactNode;
   /** A link cell was pressed: open the thing it points at. */
   openLink?: (urn: string) => void;
   submit?: (block: string, form: string, values: Record<string, string>) => void;

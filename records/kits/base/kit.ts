@@ -1,5 +1,6 @@
-// The base Kit: the objects any business starts from. One Contact per person; what a person is to the business (a Lead, a Client, a Subscriber) is a role type
-// linked to that Contact, so a person who was a Lead and became a Client is still one record with two roles. Appointments and Projects link to the same Contact.
+// The base Kit: the record types any business starts from. One Contact per person; what a person is to the business is a role type linked to that Contact, so a person who was a
+// Lead and became a Client is still one record with two roles. Lead and Client are the Space's own roles (role-lead and role-client, records/core-types.js), so this Kit adds only
+// Subscriber; a Space made before 0.6.4 had a second Lead and Client from here, which core/daemon/flows-host.js takes away when they hold no records. Appointments and Projects link to the same Contact.
 // The Project is the core Project (one project type for the whole Space); this Kit adds an owner, a due date and stages on top of it.
 //
 // Nothing here is for one trade: a Kit for a trade adds its own fields and its own stages (stage sets that change by a field) on top of these.
@@ -16,20 +17,6 @@ export const Contact = defineType({
   },
 });
 
-export const Lead = defineType({
-  name: "lead",
-  label: "Lead",
-  icon: "IconUserPlus",
-  role: { link: "contact", ended: ["Converted", "Lost"] },
-  fields: {
-    contact: defineField.link({ to: "contact", label: "Contact", required: true, inverse: { name: "leads", label: "Leads" } }),
-    source: defineField.choice(["Website", "Referral", "Ad", "Event", "Phone", "Other"], { label: "Source" }),
-    summary: defineField.rich_text({ label: "What they need" }),
-    lost_reason: defineField.text({ label: "Why we lost them", visible_if: 'stage == "Lost"', required_if: 'stage == "Lost"' }),
-    stage: defineStage(["New", "Contacted", "Meeting booked", "Qualified", "Converted", "Lost"]),
-  },
-});
-
 export const Appointment = defineType({
   name: "appointment",
   label: "Appointment",
@@ -43,18 +30,6 @@ export const Appointment = defineType({
     where: defineField.text({ label: "Where or link" }),
     outcome: defineField.text({ label: "Outcome", visible_if: 'stage == "Completed" or stage == "No show"' }),
     stage: defineStage(["Scheduled", "Completed", "No show", "Cancelled"], { label: "Status" }),
-  },
-});
-
-export const Client = defineType({
-  name: "client",
-  label: "Client",
-  icon: "IconUserCheck",
-  role: { link: "contact", ended: ["Closed"] },
-  fields: {
-    contact: defineField.link({ to: "contact", label: "Contact", required: true, inverse: { name: "clients", label: "Clients" } }),
-    since: defineField.date({ label: "Client since" }),
-    stage: defineStage(["Onboarding", "Active", "Closed"]),
   },
 });
 
@@ -86,15 +61,13 @@ export const Project = defineType({
   },
 });
 
-export const LeadsBoard = defineView({ name: "leads_board", type: "board", of: "lead", label: "Leads by stage", groupBy: "stage", columns: ["contact", "source"] });
 export const AppointmentsCalendar = defineView({ name: "appointments_calendar", type: "calendar", of: "appointment", label: "Appointments", dateField: "starts", filter: 'stage != "Cancelled"' });
-export const ClientsList = defineView({ name: "clients_list", type: "list", of: "client", label: "Clients", columns: ["contact", "stage", "since"], sort: { field: "since", dir: "desc" } });
 export const ProjectsBoard = defineView({ name: "projects_board", type: "board", of: "project", label: "Projects by stage", groupBy: "stage", columns: ["name", "client", "owner", "due"] });
 
 export default defineKit({
   id: "base",
   version: 1,
   label: "Base",
-  description: "The objects any business starts from: Contact, Lead, Appointment, Client, Subscriber and Project. One Contact per person, with Lead, Client and Subscriber as roles linked to it, and a Project with stages.",
-  includes: [Contact, Lead, Appointment, Client, Subscriber, Project, LeadsBoard, AppointmentsCalendar, ClientsList, ProjectsBoard],
+  description: "The record types any business starts from: Contact, Appointment, Subscriber and Project. One Contact per person, with Subscriber as a role linked to it beside the Space's own roles (Lead, Client and the rest), and a Project with stages.",
+  includes: [Contact, Appointment, Subscriber, Project, AppointmentsCalendar, ProjectsBoard],
 });

@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { BUILD_SECTIONS, BUILD_PREFIXES, sectionOf, stepSection } from "./sections.js";
 
 test("five sections, Playbooks through Kits", () => {
-  assert.deepEqual(BUILD_SECTIONS.map((s) => s[1]), ["Playbooks", "Skills and plugins", "Objects", "Documents", "Kits"]);
+  assert.deepEqual(BUILD_SECTIONS.map((s) => s[1]), ["Playbooks", "Skills and plugins", "Types", "Documents", "Kits"]);
 });
 
 test("a path is in a section by its own route or inside it, the old routes included", () => {

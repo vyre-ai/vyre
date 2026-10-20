@@ -42,9 +42,9 @@ const PROJECTS: PanelDef = {
 const RECORDS: PanelDef = {
   id: "records", title: "Records", icon: "records", onBack: () => {}, currentHref: "/u/records/contact", items: [],
   before: <>
-    <SidebarRow label="Contacts" icon="contacts" on /><SidebarRow label="Leads" icon="list" /><SidebarRow label="Sales pipeline" icon="board" /><SidebarRow label="Appointments" icon="cal" />
+    <SidebarRow label="People" icon="contacts" on /><SidebarRow label="Leads" icon="list" /><SidebarRow label="Sales pipeline" icon="board" /><SidebarRow label="Appointments" icon="cal" />
   </>,
-  after: <><SidebarRow label="All objects" icon="records" tone="label" /><SidebarRow label="New view" icon="plus" tone="label" /></>,
+  after: <><SidebarRow label="All types" icon="records" tone="label" /><SidebarRow label="New view" icon="plus" tone="label" /></>,
 };
 
 /** The real Shell around a sample page, in the state asked for: main, folded, or a place's panel. folded-account and folded-space are the folded rail for the picture tests that press its face or its Space. */
