@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { byTag, withNames, chatsFrom, noSuchTool, UNSUPPORTED, chatState, chatSub, chatsOrdered, chatIdOf, chatsView, sampleChats } from "./chats-model.js";
+import { byTag, withNames, chatsFrom, noSuchTool, UNSUPPORTED, chatState, chatSub, chatsOrdered, chatIdOf, chatsView, sampleChats, titleOf } from "./chats-model.js";
 
 test("work.chat.list rows become one row type; the id comes from the record address; a row with no open flag is not openable", () => {
   const rows = chatsFrom({ rows: [
@@ -169,4 +169,11 @@ test("pressing Chat opens a new thread with the Assistant, and stays on the list
   assert.equal(chatsLanding({ from: "none" }), "list");
   assert.equal(chatsLanding({ from: "unsupported" }), "list");
   assert.equal(chatsLanding({ from: "chats", list: "1" }), "list");
+});
+
+test("a chat nobody named is called by what was said in it, never by one generic title repeated", () => {
+  assert.equal(titleOf("New site", "Build me a page for the bakery"), "Build me a page for the bakery");
+  assert.equal(titleOf("", ""), "New chat");
+  assert.equal(titleOf("Lease reply", "Draft ready"), "Lease reply");
+  assert.ok(titleOf("New chat", "x".repeat(80)).length <= 48);
 });

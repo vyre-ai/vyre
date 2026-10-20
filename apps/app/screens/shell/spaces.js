@@ -1,6 +1,6 @@
 // @ts-check
 // Which space is showing, and the look each space gives (ui-primitives.md section 2): pure, so Node tests it.
-// "all" is not a space with a look of its own: it shows Mine's, as the prototype does.
+// Before the first Space list lands there is no Space id: it shows Mine's.
 
 /** @typedef {{ logo?: string, accent: string, hex?: string, tint: string, thex?: string, density: string, font: string, corners: string }} SpaceLook */
 
@@ -12,7 +12,7 @@ export const DEFAULT_LOOKS = {
 
 /** The space whose look applies when `id` is showing. */
 export function lookOwner(/** @type {string} */ id) {
-  return id === "all" ? "mine" : id;
+  return id || "mine";
 }
 
 /**

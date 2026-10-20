@@ -4312,18 +4312,33 @@
    "screens": {
     "full": {
      "component": "shell-folded-account",
-     "press": "[aria-label^='Alex Morgan:']",
+     "press": "[aria-label^='Juniper Studio:']",
      "expect": "Your profile"
     }
    }
   },
   "shell-folded-space": {
-   "title": "Folded rail, Space switcher open",
+   "title": "Folded rail, Space menu open",
    "screens": {
     "full": {
      "component": "shell-folded-space",
-     "press": "[aria-label^='Space: Juniper Studio']",
+     "press": "[aria-label^='Juniper Studio:']",
      "expect": "Northwind Studio"
+    }
+   }
+  },
+  "shell-menu": {
+   "title": "Sidebar, Space menu open",
+   "screens": {
+    "full": {
+     "component": "shell-menu",
+     "press": "[aria-label^='Juniper Studio:']",
+     "expect": "Add a Space"
+    },
+    "compact": {
+     "component": "shell-menu",
+     "press": "[aria-label^='Juniper Studio: switch']",
+     "expect": "Add a Space"
     }
    }
   },

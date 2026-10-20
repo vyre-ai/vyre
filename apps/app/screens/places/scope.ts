@@ -7,7 +7,7 @@ export type Scope = "all" | SpaceId;
 
 export const SPACES: Record<SpaceId, { name: string }> = { mine: { name: "Mine" }, juniper: { name: "Juniper Studio" } };
 
-export const useScope = create<{ scope: Scope; setScope: (s: Scope) => void }>((set) => ({ scope: "all", setScope: (scope) => set({ scope }) }));
+export const useScope = create<{ scope: Scope; setScope: (s: Scope) => void }>((set) => ({ scope: "mine", setScope: (scope) => set({ scope }) }));
 
 /** True when a thing in space `sp` is visible under `scope`. */
 export const inScope = (scope: Scope, sp: SpaceId): boolean => scope === "all" || sp === scope;

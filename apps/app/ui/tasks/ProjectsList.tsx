@@ -1,3 +1,4 @@
+import { useNowScope } from "./scope";
 import { useEffect, useRef, useState } from "react";
 import { Pressable, TextInput, View } from "react-native";
 import { newMenuItems, templateNoun } from "./template-stage.js";
@@ -84,7 +85,7 @@ export function ProjectsList({ world, items, onOpen, onNew, tagOf, choices, onCh
   /** Row menu actions on a project's record. */ onRename?: (row: any) => void; onArchive?: (row: any) => void;
 }) {
   const { phone, color } = useUiTheme();
-  const [space, setSpace] = useState("all");
+  const { scope: space } = useNowScope(world);
   const [type, setType] = useState("all");
   const [tag, setTag] = useState("");
   const [q, setQ] = useState("");
@@ -183,7 +184,6 @@ export function ProjectsList({ world, items, onOpen, onNew, tagOf, choices, onCh
         {phone ? null : <NewMenu items={items} onNew={onNew} choices={choices} onChoose={onChoose} />}
       </View>
       {phone ? <TextInput value={q} onChangeText={setQ} placeholder="Search projects" placeholderTextColor={color.label} accessibilityLabel="Search projects" style={{ minHeight: 44, borderWidth: 1, borderColor: color.edge, borderRadius: 12, paddingHorizontal: 12, color: color.text, fontSize: 16, outlineStyle: "none" } as any} /> : null}
-      {world.spaces.length > 1 ? <Segmented fill={phone} label="Space" value={space} onChange={setSpace} options={[["all", "All spaces"], ...world.spaces.map((s: any) => [s.id, s.name] as [string, string])]} /> : null}
       <View className="flex-row flex-wrap gap-s2">
         {type !== "all" ? <Chip icon="x" onPress={() => setType("all")}>{`Type: ${viewDefOf(work.find((t) => t.name === type) ?? work[0]).plural}`}</Chip> : null}
         {tag ? <Chip icon="x" onPress={() => setTag("")}>{`Tagged #${tag}`}</Chip> : null}

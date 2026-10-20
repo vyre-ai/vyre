@@ -4,12 +4,12 @@ import { useSpaces } from "./state";
 import { create } from "zustand";
 import { allowsMock } from "@vyre/ui";
 import { loadShell } from "./data";
-import { ALL, type ShellData } from "./real-model";
+import type { ShellData } from "./real-model";
 
 type S = { data: ShellData; loaded: boolean; error: string; set: (d: ShellData) => void; fail: (m: string) => void };
 
 export const useShell = create<S>((set) => ({
-  data: allowsMock() ? loadShell() : { me: { name: "You", sub: "", vyreName: "" }, spaces: [ALL] },
+  data: allowsMock() ? loadShell() : { me: { name: "You", sub: "", vyreName: "" }, spaces: [] },
   loaded: allowsMock(),
   error: "",
   set: (data) => set({ data, loaded: true, error: "" }),
