@@ -77,7 +77,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_ALLOW_REAL_TRANSCRIPTS` | `1`: a home other than `~/.vyre` reads the transcripts in `~/.claude` too. Never under tests. | `core/config/dialogs.js` |
 | `VYRE_ANDROID_CERT_SHA256` | Not described yet. | `core/daemon/app.js` |
 | `VYRE_API_BASE_URL` | Not described yet. | `core/sessions/drivers/openrouter.js` |
-| `VYRE_API_MODEL` | Not described yet. | `core/sessions/drivers/openrouter.js` |
+| `VYRE_API_MODEL` | Not described yet. | `core/sessions/drivers/opencode.js`, `core/sessions/drivers/openrouter.js` |
 | `VYRE_APPLE_TEAM_ID` | Not described yet. | `core/daemon/app.js` |
 | `VYRE_APP_URL` | Not described yet. | `harness/mcp/design.js` |
 | `VYRE_BACKUP_SKIP_PROJECTS` | Not described yet. | `core/cli/commands/up.js` |
@@ -130,6 +130,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_NPM_BIN` | The `npm` that `vyre update` installs a release with. Tests point it at a fake. | `core/cli/commands/update.js` |
 | `VYRE_OLD_PROJECTS_DIR` | Not described yet. | `core/config/index.js` |
 | `VYRE_ONBOARD_HOST` | The address onboarding listens on. Default `127.0.0.1`. | `core/onboard/loopback.js` |
+| `VYRE_OPENCODE_GO` | Not described yet. | `core/sessions/drivers/opencode.js` |
 | `VYRE_OPENROUTER_API` | Not described yet. | `core/models/index.js` |
 | `VYRE_OPENROUTER_URL` | Not described yet. | `core/daemon/flow-model.js`, `core/sessions/index.js` |
 | `VYRE_OPEN_BIN` | The command that opens links. Tests point it at a fake. | `core/cli/commands/up.js`, `core/cli/kit.js` |
@@ -215,7 +216,7 @@ vyred sets these for the threads and helpers it starts, and the Harness reads th
 | `VYRE_MCP_ID` | Not described yet. | `harness/mcp/server.js` |
 | `VYRE_MCP_KEY` | Not described yet. | `harness/mcp/server.js` |
 | `VYRE_NO_DIALOGS` | `1`: never raise anything on screen (Touch ID, a keychain prompt, a browser tab). | `core/config/dialogs.js`, `core/files/drive.js`, `local/screen-mac/screen.js` |
-| `VYRE_OWNER_ACCOUNT` | Not described yet. | `core/sessions/drivers/openrouter.js` |
+| `VYRE_OWNER_ACCOUNT` | Not described yet. | `core/sessions/drivers/opencode.js`, `core/sessions/drivers/openrouter.js` |
 | `VYRE_PROJECT` | The project a thread belongs to, for its brief. | `harness/hooks/hook.js` |
 | `VYRE_PROJECTS` | The projects an agent's thread is limited to, comma separated, or `*` for all of them. | `core/switchboard/index.js`, `harness/hooks/hook.js`, `harness/mcp/memory-tools.js`, `harness/mcp/server.js` |
 | `VYRE_PROVIDER` | Not described yet. | `harness/mcp/server.js` |
