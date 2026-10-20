@@ -137,7 +137,7 @@ export function createTemplates({ kernel, hub, flows, log = () => {} }) {
   /** Start a project from a live version (or the named one): the project, its teammates, its pinned stages and its first stage's tasks. The caller's own chain makes the project. */
   /** @param {any} chain @param {any} i @param {{ read?: any, markerBy?: any }} [o] `markerBy`: the chain that writes the new project's Drive folder marker (a member's role holds no Drive action); `read`: the chain the template record is read under (a member's start reads it as the work module: the `project-template` record type is closed to members; everything the project is made with stays under her own chain) */
   async function start(chain, i, o = {}) {
-    personOf(chain);
+    const starter = personOf(chain);   // the person starting it: they moved the project into its first stage, so its agent tasks are theirs (kernel/flows/stages.js)
     const rec = await pick(o.read || chain, i.template, i.version);
     if (i.version === undefined && rec.data.state !== "live") throw fail("bad_state", "that version is not live");
     const body = bodyOf(rec);
@@ -157,7 +157,7 @@ export function createTemplates({ kernel, hub, flows, log = () => {} }) {
     for (const r of body.roles || []) if (r.agent) { try { await h.teamMember({ action: "add", project: proj.data.slug, agent: r.agent, role: r.role }); team.push({ role: r.role, agent: r.agent, ...(r.lead ? { lead: true } : {}) }); } catch (e) { log(`templates: ${r.agent} could not join ${proj.data.slug}: ${/** @type {Error} */ (e).message}`); } }
     const f = flows();
     /** @type {{ made: number, skipped: { task: string, why: string }[] } | undefined} */ let entered;
-    if (f && f.stages) entered = await f.stages.enter({ urn: proj.urn, type: "project", id: proj.id, stage: first, entry: `start:${proj.id}` });
+    if (f && f.stages) entered = await f.stages.enter({ urn: proj.urn, type: "project", id: proj.id, stage: first, entry: `start:${proj.id}`, by: String(starter.id) });
     // `tasks_made` is how many of the first stage's tasks exist, and `tasks_skipped` says which could not be made and why (an assistant not in this space yet), so a person is never told their tasks are in Now when they are not
     return { project: proj.urn, slug: proj.data.slug, template: rec.data.template, version: rec.data.version, stage: first, teammates: team, ...(lead ? { lead: lead.agent } : {}), tasks_made: entered ? entered.made : 0,
       ...(entered && entered.skipped.length ? { tasks_skipped: entered.skipped } : {}) };

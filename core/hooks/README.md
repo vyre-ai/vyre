@@ -12,7 +12,16 @@ method or shape is the same 404 and reaches nothing. The signature is checked he
 outside (or `wink.publish` says it is); until then a route is stored and verified, and reachable from the server itself only. `vyre hooks status` says which, and prints the address to
 give the sender.
 
-## Turn it on
+## A Flow's own address
+
+A Flow whose trigger is "A webhook is called", "A form is submitted" or "A person signs up" (a web trigger with `address: true`) needs none of the steps below. When an owner or an admin turns the Flow on,
+the hooks module opens one route for it, bound to it by its id: `https://<server address>/hooks/<flow-name>-<token>`. The token is 32 random bytes the Vault makes and keeps as `hooks-<route>`; a delivery
+carries it in the address, or posts to `/hooks/<flow-name>` with `Authorization: Bearer <token>`. It is compared in constant time and never logged. Their yes when they turn the Flow on covers opening the
+route and turning the listener on. Turning the Flow off closes it, and turning it on again opens the same address. `hooks.flow` gives the address to the person (never to an agent), `hooks.flow.renew` makes
+a new token so the old address stops working, `hooks.flow.test` sends a test through the listener that starts nothing, and `hooks.flow.sign` adds a signature check (hmac-sha256, github, stripe) for a
+sender that signs. A form post (form-encoded) reaches the Flow as its fields, JSON as it is; either is untrusted outside data.
+
+## Turn it on (a route opened by hand)
 
 Off by default (`hooks.enabled` in `config.json`). Off means there is no listener at all.
 

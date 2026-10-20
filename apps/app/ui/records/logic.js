@@ -6,17 +6,33 @@ import { fmtDate } from "../fields/logic.js";
 
 const blank = (/** @type {any} */ v) => v == null || (typeof v === "string" && !v.trim()) || (Array.isArray(v) && !v.length);
 
-/** The fields a create form asks for: hidden ones left out, required ones first, the rest in the type's order. @param {F[]} fields */
+/** A type's own bookkeeping fields, kept by the service that owns the type: nobody's to read or fill. The task's are the planner's (records/core-types.js). */
+const BOOKKEEPING = /** @type {Record<string, Set<string>>} */ ({ task: new Set(["planner", "wall", "floating", "source"]) });
+
+/**
+ * A field that is the system's own, not a person's: removed from view (hidden), the fast-field bag (`extra`, JSON text), hidden from every role down to the owner (hidden_from, as the task's planner bookkeeping is), or a type's own bookkeeping. A field hidden from some roles only is
+ * still a field for the rest. The record page
+ * shows none of them and the create form asks for none. @param {any} f @param {string} [type]
+ */
+export const isInternalField = (f, type) => f.hidden === true || (f.name === "extra" && f.kind === "text") || (Array.isArray(f.hidden_from) && f.hidden_from.includes("owner")) || !!(type && BOOKKEEPING[type]?.has(f.name));
+
+/** A field only the system writes: owned by the kernel (a task's status), computed, or read-only (an ID). The record page shows it and never offers to change it; the create form never asks for it. @param {any} f */
+export const isLockedField = (f) => !!(f.owned_by || f.computed || f.read_only);
+
+/** The fields of a type a person reads and fills: every field but the internal ones. The record page and the create form both start from this. @param {{ name: string, fields: any[] }} def */
+export const personFields = (def) => (def.fields || []).filter((f) => !isInternalField(f, def.name));
+
+/** The fields a create form asks for: internal and locked ones left out, required ones first, the rest in the type's order. @param {F[]} fields */
 export function formOrder(fields) {
-  const shown = fields.filter((f) => !f.hidden && f.kind !== "stage" && !(/** @type {any} */ (f)).computed && !(/** @type {any} */ (f)).owned_by && !(/** @type {any} */ (f)).read_only);
+  const shown = fields.filter((f) => !isInternalField(f) && !isLockedField(f) && f.kind !== "stage");
   return [...shown.filter((f) => f.required), ...shown.filter((f) => !f.required)];
 }
 
-/** What stops a save, by field name. A sealed value has its own step, so it is not judged here. @param {F[]} fields @param {Record<string, any>} values */
+/** What stops a save, by field name: only the fields the form asks for (formOrder), so a field the kernel fills (a task's status) never blocks it. A sealed value has its own step, so it is not judged here. @param {F[]} fields @param {Record<string, any>} values */
 export function formErrors(fields, values) {
   /** @type {Record<string, string>} */ const out = {};
-  for (const f of fields) {
-    if (f.hidden || f.kind === "sealed") continue;
+  for (const f of formOrder(fields)) {
+    if (f.kind === "sealed") continue;
     const v = values[f.name];
     if (f.required && blank(v)) out[f.name] = `${f.label} is required.`;
     else if (f.kind === "choice" && f.options?.length && !blank(v) && !f.options.includes(v)) out[f.name] = `${f.label} must be one of the options.`;
@@ -83,6 +99,22 @@ export function createPayload(fields, values) {
     if (f.kind === "sealed" || /** @type {any} */ (f).seal) sealed[f.name] = v; else plain[f.name] = v;
   }
   return { plain, sealed };
+}
+
+/**
+ * A new task as tasks.request takes it: the person who makes it does it, it is about the record it was started from, and the task's own words (title, note, due, part of, project) are the task's; every other value
+ * is a custom field of the Task record. The kernel writes the status. @param {Record<string, any>} plain createPayload's plain values @param {{ doer: string, about?: string }} o
+ */
+export function taskRequestOf(plain, o) {
+  const { title, note, due, parent, project, ...rest } = plain;
+  const urnOf = (/** @type {any} */ v) => (v && typeof v === "object" ? v.urn : typeof v === "string" ? v : undefined);
+  const ms = typeof due === "number" ? due : due ? Date.parse(String(due)) : NaN;
+  const parentUrn = urnOf(parent), projectUrn = urnOf(project);
+  return {
+    title: String(title ?? "").trim(), doer: o.doer, output: { kind: "note" }, source: "manual",
+    ...(o.about ? { record: o.about } : {}), ...(Number.isFinite(ms) ? { due: ms } : {}), ...(note ? { note: String(note) } : {}),
+    ...(parentUrn ? { parent: String(parentUrn).split("/").pop() } : {}), ...(projectUrn ? { project: projectUrn } : {}), ...(Object.keys(rest).length ? { fields: rest } : {}),
+  };
 }
 
 /** The related records of a page by type, in the order each type first appears. @param {{ urn: string, title: string, type: string }[]} related @param {Record<string, { label: string, plural: string }>} types */

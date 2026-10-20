@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { View } from "react-native";
 import { usePathname, useRouter } from "expo-router";
 import { create } from "zustand";
-import { allowsMock, ConversationList, ConversationTypes, IconButton, NewPopover, convosShown, showToast } from "@vyre/ui";
+import { allowsMock, ConversationList, ConversationTypes, IconButton, NewPopover, convosShown, newMenuAgents, showToast } from "@vyre/ui";
 import type { Convo } from "@vyre/ui";
 import { useChatMenu } from "./useChatMenu";
 import { useChatPrefs } from "../../src/state/chat-prefs";
@@ -36,9 +36,12 @@ export const openNewAgent = (router: { push: (to: never) => void }) => {
 /** The compose button: opens and closes the New menu (also Cmd N). */
 const toggleCompose = () => { const st = useChatsFilter.getState(); st.set({ compose: !st.compose }); };
 
+/** The + that opens the New menu: a press on it toggles the menu, so the menu does not count it as a press outside. */
+const plusAnchor: { current: unknown } = { current: null };
+
 /** The section's + : the New menu, a compact popover (To:, agents, people, New group, New agent, New Flow). */
 export function ChatsPlusButton() {
-  return <IconButton icon="plus" label="New" kind="ghost" onPress={toggleCompose} />;
+  return <View ref={(n) => { plusAnchor.current = n; }}><IconButton icon="plus" label="New" kind="ghost" onPress={toggleCompose} /></View>;
 }
 
 /** The top of a phone's Chats page: the name and the compose button. There is no search here: the one search is the main one. */
@@ -97,7 +100,8 @@ export function ChatsSidebar() {
     return () => document.removeEventListener("keydown", onKey);
   }, []);
   const byId = new Map(convos.map((c) => [c.id, c]));
-  const agentRows = convos.filter((c) => c.lone === "agent").map((c) => ({ id: c.id, name: c.title }));
+  // every agent you can start a thread with, by its display name: your assistant first (its own chat), then the Space's agents
+  const agentRows = newMenuAgents(convos);
   const personRows = convos.filter((c) => c.lone === "person").map((c) => ({ id: c.id, name: c.title }));
   const pickNew = (r: { kind: string; id: string; label: string }) => {
     if (r.kind === "group") router.push("/u/chats/new?group=1" as never);
@@ -105,7 +109,10 @@ export function ChatsSidebar() {
     else if (r.kind === "flow") router.push("/u/flows" as never);
     else if (r.kind === "person") { const c = byId.get(r.id); if (c) open(c); }
     else if (r.kind === "agent") {
-      void agentThreads.start(r.label).then((x) => {
+      const c = byId.get(r.id);
+      // your assistant has one chat: picking it opens that chat. Any other agent starts a new thread, by its id (the label is its display name).
+      if (c && (c.id === "assistant:new" || (c.section === "pinned" && c.chat))) { open(c); return; }
+      void agentThreads.start(c?.agent || c?.names[0] || r.label).then((x) => {
         if ("problem" in x) showToast(x.problem);
         else if (allowsMock()) showToast("A new thread opens as its own chat in a real Space.");
         else { void refresh(); router.push({ pathname: "/u/chats/[id]", params: { id: x.thread } }); }
@@ -115,11 +122,15 @@ export function ChatsSidebar() {
   return (
     // one View, so the closed sheets are not seven children of a parent that spaces its children
     <View>
-      <NewPopover open={f.compose} onClose={() => f.set({ compose: false })} agents={agentRows} people={personRows} onPick={pickNew} />
       {sheets}
       <ConversationTypes type={f.type} onType={(type: string) => f.set({ type })} />
+      {/* The New menu opens under the type chips, over the list, so the filters stay in sight. */}
+      <View style={{ zIndex: 30 }}><NewPopover open={f.compose} onClose={() => f.set({ compose: false })} agents={agentRows} people={personRows} onPick={pickNew} anchor={plusAnchor} /></View>
       <NewAgentFlow open={f.newAgent} onClose={() => f.set({ newAgent: false })} />
-      {!found.length ? <Text tone="label" style={{ paddingHorizontal: 16, paddingTop: 8 }}>{f.q.trim() || f.type !== "all" || f.project !== "all" || f.tag ? "Nothing matches." : "No chats yet. Tap + to start one."}</Text> : null}
+      {/* Quiet, never a skeleton: the last list with a line when the box did not refresh it, a line when nothing came, and nothing at all while the first read is inside its budget. */}
+      {chats.note ? <Text size="caption" tone="label" style={{ paddingHorizontal: 16, paddingTop: 4 }}>This is the last list. It did not refresh.</Text> : null}
+      {!found.length && chats.from === "failed" ? <Text tone="label" style={{ paddingHorizontal: 16, paddingTop: 8 }} accessibilityRole="button" onPress={chats.retry}>Your chats did not load. Tap to try again.</Text>
+        : !found.length && chats.from !== "none" ? <Text tone="label" style={{ paddingHorizontal: 16, paddingTop: 8 }}>{f.q.trim() || f.type !== "all" || f.project !== "all" || f.tag ? "Nothing matches." : "No chats yet. Tap + to start one."}</Text> : null}
       <ConversationList items={found} onOpen={open} whenOf={(c) => (c.last ? ageOf(c.last, now) : "")} menuOf={(c) => (c.chat && c.kind !== "flow" ? menu(c.chat) : [])} currentChat={openChatOf(path)} />
     </View>
   );

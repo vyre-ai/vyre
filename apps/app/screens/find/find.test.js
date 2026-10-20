@@ -118,8 +118,8 @@ test("files: results with where they are, a note for a machine that did not answ
   const d = { results: [{ name: "plan.md", path: "/Users/x/work/site/docs/plan.md", kind: "text", source: "box" }, { path: "/Users/x/a/b/c/d/e.txt", name: "e.txt", source: "mac" }, { name: "nopath" }], sources: [{ source: "box", ok: true }, { source: "mac", ok: false, error: "asleep" }] };
   const f = fileHits(d);
   assert.deepEqual(f.rows.map((r) => [r.title, r.sub, r.right]), [["plan.md", "…/site/docs", "box"], ["e.txt", "…/c/d", "mac"]]);
-  assert.deepEqual(f.notes, ["The Mac did not answer: asleep"]);
-  assert.deepEqual(fileHits({ results: [], sources: [] }).notes, ["Files on your Mac are not searched from here."]);
+  assert.deepEqual(f.notes, ["Your computer did not answer: asleep"]);
+  assert.deepEqual(fileHits({ results: [], sources: [] }).notes, ["Files on your computer are not searched from here."]);
   assert.deepEqual(sections(b, "plan", "all", {}).map((x) => x.key), []);
   assert.deepEqual(sections(b, "plan", "files", { files: d }).map((x) => x.key), ["files"]);
   assert.deepEqual(sections(b, "zzz", "files", { files: { results: [], sources: [] } }).map((x) => x.key), []);

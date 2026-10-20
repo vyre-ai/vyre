@@ -3,7 +3,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { columnCall, madeName } from "./add-column.js";
+import { columnCall, madeName, promoteCall } from "./add-column.js";
 
 test("a plain kind is a fast field, a link is a link with its twin", () => {
   assert.deepEqual(columnCall("deal", { label: " Budget ", kind: "number" }), { tool: "records.field.add", input: { type: "deal", label: "Budget", kind: "number" } });
@@ -22,4 +22,12 @@ test("the made field's name is found in either answer shape", () => {
   assert.equal(madeName({ field: { name: "budget" } }), "budget");
   assert.equal(madeName({ name: "partner" }), "partner");
   assert.equal(madeName(undefined), undefined);
+});
+
+test("a fast field is made real in the background after it is added; a link needs nothing more", () => {
+  const add = /** @type {any} */ (columnCall("deal", { label: "Budget", kind: "number" }));
+  assert.deepEqual(promoteCall("deal", add, { field: { name: "budget", state: "bag" } }), { tool: "records.field.promote", input: { type: "deal", name: "budget" } });
+  assert.equal(promoteCall("deal", /** @type {any} */ (columnCall("deal", { label: "Partner", kind: "link", to: "organization" })), { field: { name: "partner" } }), null);
+  assert.equal(promoteCall("deal", add, {}), null, "no field named, nothing to promote");
+  assert.equal(promoteCall("deal", add, { field: { name: "budget", state: "real" } }), null);
 });

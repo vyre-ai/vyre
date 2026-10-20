@@ -8,7 +8,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Platform, Pressable, TextInput, View, type NativeSyntheticEvent, type TextInputSelectionChangeEventData } from "react-native";
-import { AiMark, AnsweringControl, Button, Chip, ChipToken, Icon, PickerList, Row, Sheet, Text, Tip, optionId, useUiTheme, type IconName, type PickerItem } from "@vyre/ui";
+import { AiMark, AnsweringControl, Button, Chip, ChipToken, Icon, PickerList, Row, Sheet, Text, Tip, optionId, usePopoverDismiss, useUiTheme, type IconName, type PickerItem } from "@vyre/ui";
 import { answeringSummary, composerShortcut, deleteTokenBack, filterItems, moveActive, pickerKey, removeToken, toggleAnswering, tokensIn } from "@vyre/ui/lib/picker-model.js";
 import { crumbsOf, nestHint, nestKey, nestRows, nestStep, type NestRow } from "@vyre/ui/lib/nest-model.js";
 import { useMentionNodes } from "./useMentionNodes";
@@ -125,6 +125,9 @@ export function ChatComposer(p: ComposerProps) {
   // The menus the person opens (+ and Answering); the / @ # lists open from the words at the caret.
   const [pop, setPop] = useState<Pop>(null);
   const [menuQ, setMenuQ] = useState("");
+  // A press outside the composer closes an open + or Answering menu (the shared popover rule); Esc stays the composer's own, which steps back a level first.
+  const rootRef = useRef<View>(null);
+  usePopoverDismiss(!!pop, [rootRef], () => { setPop(null); setMenuQ(""); }, { esc: false });
   const [active, setActive] = useState(0);
   const [dismissed, setDismissed] = useState<number | null>(null);
   const [slotSel, setSlotSel] = useState<string | undefined>(undefined);
@@ -200,8 +203,8 @@ export function ChatComposer(p: ComposerProps) {
         { key: "hash", group: "Insert", label: "Tag a record", leading: <Icon name="hash" size={18} />, hint: "#", run: () => { setPop(null); setMenuQ(""); insert("#"); } },
       ];
       if (p.runsOn) {
-        rows.push({ key: "mac", group: "Runs on", label: "My Computer", leading: <Icon name="laptop" size={18} />, checked: p.runsOn === "mac", run: () => { if (p.runsOn !== "mac") p.onRunsOn?.(); closePop(); } });
-        rows.push({ key: "server", group: "Runs on", label: "Space's Cloud", leading: <Icon name="box" size={18} />, checked: p.runsOn === "server", run: () => { if (p.runsOn !== "server") p.onRunsOn?.(); closePop(); } });
+        rows.push({ key: "mac", group: "Runs on", label: "This computer", leading: <Icon name="laptop" size={18} />, checked: p.runsOn === "mac", run: () => { if (p.runsOn !== "mac") p.onRunsOn?.(); closePop(); } });
+        rows.push({ key: "server", group: "Runs on", label: "Server", leading: <Icon name="box" size={18} />, checked: p.runsOn === "server", run: () => { if (p.runsOn !== "server") p.onRunsOn?.(); closePop(); } });
       }
       if (working) {
         rows.push({ key: "steer", group: "While it works", label: "Send now, steering the reply", leading: <Icon name="bolt" size={18} />, checked: mode === "steer", hint: "Enter", run: () => { setMode("steer"); closePop(); } });
@@ -422,7 +425,7 @@ export function ChatComposer(p: ComposerProps) {
   const stateChips = (
     <>
       {working && mode === "queue" ? <ChipToken icon="clock" label="Queued for the end of the turn" onRemove={() => setMode("steer")} removeLabel="Send now instead" /> : null}
-      {p.runsOn && p.runsOn !== (p.runsOnDefault ?? "server") ? <ChipToken icon={p.runsOn === "mac" ? "laptop" : "box"} label={p.runsOn === "mac" ? "Runs on My Computer" : "Runs on Space's Cloud"} onPress={p.onRunsOn} /> : null}
+      {p.runsOn && p.runsOn !== (p.runsOnDefault ?? "server") ? <ChipToken icon={p.runsOn === "mac" ? "laptop" : "box"} label={p.runsOn === "mac" ? "Runs on this computer" : "Runs on the server"} onPress={p.onRunsOn} /> : null}
     </>
   );
   const hasState = (working && mode === "queue") || (!!p.runsOn && p.runsOn !== (p.runsOnDefault ?? "server"));
@@ -431,14 +434,14 @@ export function ChatComposer(p: ComposerProps) {
   const nested = !pop && !!nestRoot;
   const crumbs = nested && nestPath.length ? [trig?.kind === "person" ? "Mention" : "Tag", ...crumbsOf(nestRoot, nestPath)] : undefined;
   const nestFooter = nested ? nestHint(nestPath.length, nestList[active]) : null;
-  const footerBase = pop === "files" ? "Right opens Vyre Files. Drop or paste works too" : pop === "vyrefiles" ? "Type to search. Left goes back" : pop === "plus" ? "Type to filter. Up and Down, Enter, Esc" : pop === "answering" ? (pm ? "AI answers only when you @mention it. Change it in chat settings." : "Applies to the next message. Right opens a model") : pop === "model" ? "Left goes back" : nestFooter ?? (trig?.kind === "command" ? "@ who · # what · Up and Down, Enter, Esc" : "@ people and AIs · # records · / commands · Esc");
+  const footerBase = pop === "files" ? "Right opens Vyre Files. Drop or paste works too" : pop === "vyrefiles" ? "Type to search. Left goes back" : pop === "plus" ? "Type to filter. Up and Down, Enter, Esc" : pop === "answering" ? (pm ? "AI answers only when you @mention it. Change it in chat settings." : "Applies to the next message. Right opens a model") : pop === "model" ? "Left goes back" : nestFooter ?? (trig?.kind === "command" ? (p.agentName ? agentHint(p.agentName, false) : "@ who · # what · Up and Down, Enter, Esc") : "@ people and AIs · # records · / commands · Esc");
   // In a chat with several people, what the picker puts in front of the chat's agent is read by all of them: say so where the pick is made.
   const footer = p.groupChat && !pop && (trig?.kind === "record" || nested) ? `Everyone in this chat sees what you pick. ${footerBase}` : footerBase;
   const header = pop === "files" || pop === "vyrefiles" ? "Files" : pop === "answering" ? "Answering" : pop === "model" ? "Model" : trig?.kind === "command" ? "Commands" : trig?.kind === "person" ? "Mention" : trig?.kind === "record" ? "Tag" : undefined;
   const aiMenu = pm || slots.length > 1 || !!p.models?.length;
 
   return (
-    <View onLayout={(e) => { const w = Math.round(e.nativeEvent.layout.width); setBoxW((o) => (Math.abs(o - w) > 4 ? w : o)); }} style={{ width: "100%", maxWidth: 760, alignSelf: "center", paddingHorizontal: p.phone ? 8 : 16, paddingBottom: 16, paddingTop: 6 }}>
+    <View ref={rootRef} onLayout={(e) => { const w = Math.round(e.nativeEvent.layout.width); setBoxW((o) => (Math.abs(o - w) > 4 ? w : o)); }} style={{ width: "100%", maxWidth: 760, alignSelf: "center", paddingHorizontal: p.phone ? 8 : 16, paddingBottom: 16, paddingTop: 6 }}>
       {p.editing ? (
         <View accessibilityLabel="Editing a message" style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: big ? T : 36, paddingHorizontal: 12, marginBottom: 6, borderRadius: 12, borderWidth: 1, borderColor: color["edge-strong"], backgroundColor: color["accent-wash"] }}>
           <Icon name="refresh" />
@@ -474,7 +477,8 @@ export function ChatComposer(p: ComposerProps) {
           {sendBtn}
         </View>
       </View>
-      {p.agentName ? <Text size="caption" tone="label" style={{ textAlign: "center", paddingTop: 6 }}>{agentHint(p.agentName, working)}</Text> : null}
+      {/* While the agent works, one line says what Enter and Tab do; when it is idle, /new and /threads are the slash menu's help, not a line that never goes away. */}
+      {p.agentName && working ? <Text size="caption" tone="label" style={{ textAlign: "center", paddingTop: 6 }}>{agentHint(p.agentName, true)}</Text> : null}
     </View>
   );
 }

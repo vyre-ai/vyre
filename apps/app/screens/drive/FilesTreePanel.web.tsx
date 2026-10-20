@@ -13,6 +13,7 @@ import { linkedRefusal } from "./linked-model";
 import { spaceDriveRefusal } from "./space-model";
 import { driveRefusal } from "./real-model";
 import { placeGroups } from "./files-places.js";
+import { useLabs } from "../settings/labs";
 import { startThread } from "./new-thread";
 import { list as listDeployments } from "../sites/real";
 import { sites as siteList } from "../sites/real-model";
@@ -30,7 +31,9 @@ function Places() {
   useEffect(() => { tool<{ projects?: { name: string; path: string }[]; agents?: { name: string; path: string }[] }>("files.places", {}).then((r) => setFolders({ projects: r?.projects ?? [], agents: r?.agents ?? [] })).catch(() => setFolders({ projects: [], agents: [] })); }, []);
   useEffect(() => { listDeployments().then((d) => setSites(siteList(d).map((s) => ({ id: s.name, name: s.name, live: Boolean(s.live) })))).catch(() => setSites([])); }, [tick]);
   // The projects are folders of the Space's tree below (named there), so they are not listed twice here.
-  const groups = placeGroups({ sites, projects: [], agents: folders.agents });
+  // Sites sits in Files only with Labs on: it is half built here, and Sites has its own page.
+  const labs = useLabs((x) => x.on);
+  const groups = placeGroups({ sites, projects: [], agents: folders.agents, labs });
   const target = (id: string) => (id === "all" ? "space" : id === "shared-links" ? "shared" : id.startsWith("project:") || id.startsWith("agent:") ? `space:${id.slice(id.indexOf(":") + 1)}` : id);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 2, paddingBottom: 8 }}>

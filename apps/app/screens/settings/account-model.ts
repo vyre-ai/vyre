@@ -19,7 +19,7 @@ export function entryLine(e: Entry): string { return `${WAY[e.kind] ?? e.kind}. 
 export const removable = (e: Entry): boolean => !e.self && e.kind !== "code";
 
 /** Why a page that only reads the list shows no buttons to change it. */
-export const READ_ONLY_LINE = "Your keys are on your Mac or your phone, so this page can show your list but not change it. Make a recovery code or take a device off from there.";
+export const READ_ONLY_LINE = "Your keys are on your computer or your phone, so this page can show your list but not change it. Make a recovery code or take a device off from there.";
 
 /** The line under the name: the Vyre name, or that setup is waiting. */
 export const identityLine = (i: Identity): string => (i.pending ? "Setting up." : i.name ?? "");
