@@ -120,7 +120,8 @@ test("New task can be saved: the kernel's status, the planner's bookkeeping and 
 test("a field is internal, locked, or a person's", () => {
   assert.equal(isInternalField({ name: "extra", kind: "text" }), true);
   assert.equal(isInternalField({ name: "old", kind: "text", hidden: true }), true);
-  assert.equal(isInternalField({ name: "planner", kind: "text", hidden_from: ["member"] }), true);
+  assert.equal(isInternalField({ name: "planner", kind: "text", hidden_from: ["owner", "admin", "manager", "member", "temp"] }), true, "hidden from everyone: bookkeeping");
+  assert.equal(isInternalField({ name: "value", kind: "money", hidden_from: ["temp"] }), false, "hidden from some roles only: still a field for the rest");
   assert.equal(isInternalField({ name: "wall", kind: "text" }, "task"), true);
   assert.equal(isInternalField({ name: "wall", kind: "text" }, "contact"), false, "only the task's own bookkeeping");
   assert.equal(isInternalField({ name: "title", kind: "text" }, "task"), false);

@@ -82,7 +82,7 @@ export function RecordPage({ def, rec, world, events, env, onOpen, story, onNew,
   const related = relatedRecords(world.types, world.byType, def, rec);
   const files = filesOf(def, rec);
   const pool = world.byType[def.name] || [rec];
-  // The stage strip above is the stage field's renderer, so the list leaves it out; so are the system's own fields (the bag, removed and role-hidden ones, bookkeeping). Empty fields wait behind one line,
+  // The stage strip above is the stage field's renderer, so the list leaves it out; so are the system's own fields (the bag, removed ones, ones hidden from every role, bookkeeping). Empty fields wait behind one line,
   // except the one being edited; an empty field only the system writes is not offered to fill.
   const listed = def.fields.filter((f: any) => (!sf || f.name !== sf.name) && !isInternalField(f, def.name) && states[f.name]?.visible !== false);
   const isBlank = (f: any) => !showEmpty && f.kind !== "sealed" && isEmpty(val(rec, f.name)) && editing !== f.name && !states[f.name]?.required;

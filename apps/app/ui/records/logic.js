@@ -10,10 +10,11 @@ const blank = (/** @type {any} */ v) => v == null || (typeof v === "string" && !
 const BOOKKEEPING = /** @type {Record<string, Set<string>>} */ ({ task: new Set(["planner", "wall", "floating", "source"]) });
 
 /**
- * A field that is the system's own, not a person's: removed from view (hidden), the fast-field bag (`extra`, JSON text), hidden from some roles (hidden_from), or a type's own bookkeeping. The record page
+ * A field that is the system's own, not a person's: removed from view (hidden), the fast-field bag (`extra`, JSON text), hidden from every role down to the owner (hidden_from, as the task's planner bookkeeping is), or a type's own bookkeeping. A field hidden from some roles only is
+ * still a field for the rest. The record page
  * shows none of them and the create form asks for none. @param {any} f @param {string} [type]
  */
-export const isInternalField = (f, type) => f.hidden === true || (f.name === "extra" && f.kind === "text") || (Array.isArray(f.hidden_from) && f.hidden_from.length > 0) || !!(type && BOOKKEEPING[type]?.has(f.name));
+export const isInternalField = (f, type) => f.hidden === true || (f.name === "extra" && f.kind === "text") || (Array.isArray(f.hidden_from) && f.hidden_from.includes("owner")) || !!(type && BOOKKEEPING[type]?.has(f.name));
 
 /** A field only the system writes: owned by the kernel (a task's status), computed, or read-only (an ID). The record page shows it and never offers to change it; the create form never asks for it. @param {any} f */
 export const isLockedField = (f) => !!(f.owned_by || f.computed || f.read_only);
