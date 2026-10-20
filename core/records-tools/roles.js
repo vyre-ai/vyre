@@ -74,8 +74,8 @@ export function registerRoles({ tool, obj, str, refuse, parseUrn }) {
         const roles = held.map((/** @type {any} */ h) => labelled(types.find((/** @type {any} */ t) => t.name === h.role) || { name: h.role, label: h.role }, h));
         return { roles, line: lineOf(roles) };
       }
-      const out = [];
-      for (const t of types) {
+      // every role type is read at once (each one's pages follow its own cursor), so the summary waits for the slowest role, not the sum of them
+      const out = await Promise.all(types.map(async (/** @type {any} */ t) => {
         const sf = (t.fields || []).find((/** @type {any} */ f) => f.kind === "stage");
         /** @type {any[]} */ const rows = [];
         let cursor;
@@ -85,8 +85,8 @@ export function registerRoles({ tool, obj, str, refuse, parseUrn }) {
           if (!r.next_cursor) break;
           cursor = r.next_cursor;
         }
-        out.push({ role: t.name, label: roleLabel(t), color: t.color || null, stages: sf ? sf.options || [] : [], ...countsOf(rows) });
-      }
+        return { role: t.name, label: roleLabel(t), color: t.color || null, stages: sf ? sf.options || [] : [], ...countsOf(rows) };
+      }));
       return { roles: out };
     }, (/** @type {any} */ i) => (i.urn ? { space: parseUrn(i.urn).space } : i));
 }

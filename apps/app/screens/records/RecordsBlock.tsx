@@ -154,7 +154,8 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
   // One scope-style control, with icons only on a phone.
   const switcher = views.length > 1 ? <Segmented<ViewKind> label="View" value={shown} onChange={setPicked} iconsOnly={phone} icons={{ list: "list", gallery: "grid", board: "board", calendar: "cal", dashboard: "chart" }} options={views.map((v) => [v, LABEL[v]] as [ViewKind, string])} /> : null;
   // a record opens in a panel that slides in over the view (the list stays where it was); its own page is still /u/record/<id>
-  const openRec = (rec: any) => (page ? setPanelId(String(rec.id)) : router.push(`/u/record/${rec.id}` as never));
+  // the panel is given the record's address, so it reads that one record (records.get) instead of waiting for every record to find it
+  const openRec = (rec: any) => (page ? setPanelId(String(rec.urn || rec.id)) : router.push(`/u/record/${rec.id}` as never));
   // The list is a table block with typed cells (the values cross into it through tableFromRecords, which stops a sealed value): the same sorting, filters and rows as the list view had.
   const table = tableFromRecords(drawn, rows, { controls: phone, roles: roleChips, view: viewName, noFilter: cleared, layout: lay.layout, env: { actors: world.actors, links: env.links } });
   // each row says where it lives (placeTag): the space its address names, else the space showing
@@ -162,6 +163,8 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
   // Export CSV: the table content above is what the list draws (the view's rows, filters and search, a sealed value already stopped), so the file holds nothing the person cannot see.
   const exportCsv = () => {
     if (typeof document === "undefined") return;
+    // a copy or a first page holds only the first rows: the file waits for the whole list
+    if (world.partial) { showToast(`The full list of ${vd.plural.toLowerCase()} is still loading. Export again in a moment.`); return; }
     const url = URL.createObjectURL(new Blob(["\uFEFF" + tableToCsv(table.content as any)], { type: "text/csv;charset=utf-8" }));
     const a = document.createElement("a");
     a.href = url; a.download = `${vd.plural.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.csv`; a.click();
@@ -219,7 +222,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
         </>
       ) : null}
       {phone || pane === "records" ? (
-      <ListHeader askBar compact={!phone} onSearch={() => openFind("records")} noun={vd.plural.toLowerCase()} shown={rows.length} total={world.partial ? Math.max(countOf(def.name) ?? all.length, all.length) : all.length} query={query} onQuery={setQuery} chips={chips} onChips={setChips} def={def} ctx={lctx} onImport={() => setImporting(true)} onExport={Platform.OS === "web" ? exportCsv : undefined}
+      <ListHeader askBar compact={!phone} onSearch={() => openFind("records")} noun={vd.plural.toLowerCase()} shown={rows.length} total={world.partial && !query && !chips.length ? Math.max(countOf(def.name) ?? all.length, all.length) : all.length} query={query} onQuery={setQuery} chips={chips} onChips={setChips} def={def} ctx={lctx} onImport={() => setImporting(true)} onExport={Platform.OS === "web" ? exportCsv : undefined}
         title={<>
           {named.length > 1 ? (
             <Menu trigger={<Pressable accessibilityRole="button" accessibilityLabel={`${vd.plural}, choose a view`} className="flex-row items-center gap-s1 self-start"><Text size="page" strong>{viewName ? (named.find((n) => n.name === viewName)?.label ?? vd.plural) : `All ${vd.plural.toLowerCase()}`}</Text><Icon name="chevron-down" size={16} tone="label" /></Pressable>}
@@ -309,7 +312,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
         onSaved={(name, t) => { if (t === type) { setViewName(name); setPicked(null); } else router.replace(`/u/records/${t}?view=${encodeURIComponent(name)}` as never); }} />
     </>, { own: true, onRefresh: reload })}
     {page ? <SidePanel open={panelId !== null} onClose={() => setPanelId(null)} title="Record">
-      {panelId ? <RecordScreen id={panelId} onClose={() => setPanelId(null)} onOpen={(urn) => setPanelId(urn.split("/").pop() || null)} /> : null}
+      {panelId ? <RecordScreen id={panelId} onClose={() => setPanelId(null)} onOpen={(urn) => setPanelId(urn || null)} /> : null}
     </SidePanel> : null}
     </View>
   );

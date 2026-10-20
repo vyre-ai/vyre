@@ -23,7 +23,7 @@ import { registerStats } from "./stats.js";
 import { withMe, withOwner } from "./me.js";
 import { seesNote } from "../../lib/note-share.js";
 import { registerQuick, quickFieldsOf, mergeOut, splitIn, bagInQuery, bagOf } from "./quick.js";
-import { nextRef, refNumber, refPrefix, formatRef, mintRef, idOnCreate, idOnUpdate, withoutBlankIds } from "./ref.js";
+import { nextRef, refNumber, refPrefix, formatRef, mintRef, idOnCreate, idOnUpdate, keptOnUpdate, withoutBlankIds } from "./ref.js";
 import { within } from "../../lib/within.js";
 
 const obj = (/** @type {any} */ props = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties: props, ...(required.length ? { required } : {}) });
@@ -226,15 +226,18 @@ export default {
     };
     // The one way a record is changed by a tool: the ID never changes, fast-field values go to the bag, the weighted value follows. records.update and records.move both come through here.
     const applyUpdate = async (/** @type {any} */ d, /** @type {{ type: string, id: string }} */ u, /** @type {any} */ inPatch, /** @type {number} */ baseVersion) => {
-      { const no = idOnUpdate(inPatch, Boolean(inPatch && Object.prototype.hasOwnProperty.call(inPatch, "ref")) && await hasRef(d, u.type)); if (no) throw Object.assign(new Error(no), { code: "field_not_allowed" }); }
-      const qf = await quickFieldsOf(d, u.type);
+      // the type is read once for the checks and the weighted value; the definitions and the fast fields are read at once
+      const [defs, qf] = await Promise.all([Promise.resolve(d.gateway.definitions(d.chain)).catch(() => []), quickFieldsOf(d, u.type)]);
+      const def = (defs || []).find((/** @type {any} */ x) => x.name === u.type);
+      const fields = (def && def.fields) || [];
+      { const no = idOnUpdate(inPatch, fields.some((/** @type {any} */ f) => f.name === "ref")) || keptOnUpdate(fields, inPatch); if (no) throw Object.assign(new Error(no), { code: "field_not_allowed" }); }
       let patch = inPatch;
       if (qf.some((f) => f.state === "bag" && patch && f.name in patch)) {
         const cur = await d.gateway.records.get(d.chain, u.type, u.id);
         try { patch = splitIn(patch, qf, cur && cur.data && cur.data.extra); } catch (e) { throw refuse(/** @type {Error} */ (e).message, "bad_input"); }
       }
       if (patch && ("amount" in patch || "probability" in patch)) {
-        const t = ((await d.gateway.definitions(d.chain)) || []).find((/** @type {any} */ x) => x.name === u.type);
+        const t = def;
         const cur = t && (await d.gateway.records.get(d.chain, u.type, u.id));
         if (t && cur) patch = withWeighted(t.fields || [], cur.data || {}, patch);
       }

@@ -1,4 +1,3 @@
-// @ts-check
 // Records opens from this device's last copy: what is kept per Space and type, what is never kept (a sealed value), when a copy is too old or not this type's, and which world draws.
 import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";

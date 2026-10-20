@@ -226,6 +226,13 @@ test("records.create gives a record of a type with an ID field the next ID (PER-
     const no = await call("records.update", { urn: first.urn, patch, base_version: first.version }, { root, caller: "cli" });
     assert.equal(no.error && no.error.code, "field_not_allowed", `${JSON.stringify(patch)}: ${JSON.stringify(no)}`);
   }
+  // a field Vyre keeps (read-only) is refused on a change through the tool, in words
+  await d.kernel.gateway.records.define(ownerChain, { add_types: [{ name: "scored", label: "Scored", fields: [{ name: "name", kind: "text", label: "Name" }, { name: "score", kind: "number", label: "Score", read_only: true }] }] });
+  const sc = (await ok("records.create", { type: "scored", data: { name: "a" } })).record;
+  const keptNo = await call("records.update", { urn: sc.urn, patch: { score: 5 }, base_version: sc.version }, { root, caller: "cli" });
+  assert.equal(keptNo.error && keptNo.error.code, "field_not_allowed", JSON.stringify(keptNo));
+  assert.match(String(keptNo.error.message), /Score is worked out by Vyre/);
+  assert.ok(!(await call("records.update", { urn: sc.urn, patch: { name: "b" }, base_version: sc.version }, { root, caller: "cli" })).error, "its other fields change");
   // a list asked for its count says how many there are, beside the first page
   const counted = await ok("records.list", { type: "contact", limit: 2, count: true });
   assert.equal(counted.rows.length, 2);

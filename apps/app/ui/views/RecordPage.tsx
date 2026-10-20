@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Platform, Pressable, View } from "react-native";
 import { Text } from "../components/Text";
-import { ID_NOTE, isRecordIdField, recordIdOf } from "../records/record-id.js";
+import { ID_NOTE, isKeptField, isRecordIdField, recordIdOf } from "../records/record-id.js";
 import { Card, Divider } from "../components/Card";
 import { GroupedList } from "../components/GroupedList";
 import { RelatedSection } from "../records/RelatedSection";
@@ -114,20 +114,25 @@ export function RecordPage({ def, rec, world, events, env, onOpen, story, onNew,
     const isEditing = editing === f.name && !ai;
     const value = valueFor(f);
     const sealed = isSealedField(f);
-    const plainEditable = !ai && f.kind !== "sealed" && f.kind !== "link" && f.kind !== "ref" && f.kind !== "file";
+    // a field Vyre keeps (read-only, computed, the kernel's own, a weighted value) is shown, never edited, and never offered to be sealed
+    const kept = isKeptField(f);
+    const plainEditable = !ai && !kept && f.kind !== "sealed" && f.kind !== "link" && f.kind !== "ref" && f.kind !== "file";
     const shown = renderField({ kind: f.kind, definition: f, value, mode: "view", read_only: true, reveal: ai ? undefined : revealFor(f) }, env);
-    const items = [
+    const items = kept ? [] : [
       { label: "Edit", onPress: () => { setEditing(f.name); setDraft(undefined); } },
       ...(sealed ? [] : [{ label: `Seal this field for all ${vd.plural.toLowerCase()}`, onPress: () => setConfirm({ f }) }]),
     ];
     // Desktop: the menu shows on hover (or while the row is being edited). Phone: tap the row to edit, long-press for the menu.
+    // a kept field has nothing to offer: its menu keeps its place, unseen and not pressable, so the rows line up
     const menuNode = !ai && !phone ? (
-      <View className="flex-none" style={{ opacity: hover === f.name || isEditing ? 1 : 0 }}>
-        <Menu trigger={<IconButton icon="more" label={`${f.label}, more`} />} items={items} />
-      </View>
+      items.length ? (
+        <View className="flex-none" style={{ opacity: hover === f.name || isEditing ? 1 : 0 }}>
+          <Menu trigger={<IconButton icon="more" label={`${f.label}, more`} />} items={items} />
+        </View>
+      ) : <View className="flex-none" style={{ opacity: 0 }} pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants"><IconButton icon="more" label={`${f.label}, more`} /></View>
     ) : null;
     return (
-      <Pressable key={f.name} disabled={ai || !phone || isEditing} onPress={plainEditable ? () => { setEditing(f.name); setDraft(undefined); } : undefined} onLongPress={() => setRowMenu({ f, items })}
+      <Pressable key={f.name} disabled={ai || !phone || isEditing} onPress={plainEditable ? () => { setEditing(f.name); setDraft(undefined); } : undefined} onLongPress={items.length ? () => setRowMenu({ f, items }) : undefined}
         onHoverIn={() => setHover(f.name)} onHoverOut={() => setHover((h) => (h === f.name ? null : h))}
         className={cn("gap-s1 px-s4 py-s3", !phone && "flex-row items-center gap-s3")}>
         <View className={cn("flex-row flex-wrap items-center gap-s2", !phone && "flex-1")}>

@@ -86,6 +86,7 @@ export function registerQuick({ tool, obj, str, refuse, addLink }) {
       // a type made before the bag existed gets it once, now (one definition change)
       if (!hasBag) await d.gateway.records.define(d.chain, { change_types: [{ ...t, fields: [...t.fields, { name: "extra", kind: "text", label: "Extra fields" }] }] });
       const row = await d.gateway.records.create(d.chain, "quick-field", { type, name, label: String(i.label).trim(), kind, options: JSON.stringify(options), state: "bag" });
+      forgetQuick(d.space);
       return { field: { name, label: String(i.label).trim(), kind, options, state: "bag", id: row.id } };
     });
   tool("records.field.status", "The fast fields of a type and where each is: bag (kept with the record), promoting or real (a field of the store). { type } -> [{ name, label, kind, state }].",
@@ -94,7 +95,7 @@ export function registerQuick({ tool, obj, str, refuse, addLink }) {
     obj({ space: str, type: str, name: str }, ["type", "name"]), async (/** @type {any} */ i, /** @type {any} */ d) => {
       admin(d);
       const type = String(i.type), name = String(i.name);
-      const q = (await quickRows(d, type)).find((r) => r.data.name === name);
+      const q = (await quickRows(d, type, { fresh: true })).find((r) => r.data.name === name);
       if (!q) throw refuse(`${type} has no fast field called ${name}. Pick one of the fields shown on its page.`, "not_found");
       const f = { name, label: q.data.label, kind: q.data.kind, options: JSON.parse(q.data.options || "[]") };
       if (q.data.state === "bag") {
@@ -105,6 +106,7 @@ export function registerQuick({ tool, obj, str, refuse, addLink }) {
           await d.gateway.records.define(d.chain, { change_types: [{ ...t, fields: [...t.fields, real] }] });
         }
         q.version = (await d.gateway.records.update(d.chain, "quick-field", q.id, { state: "promoting" }, q.version)).version;
+        forgetQuick(d.space);
       }
       let done = 0, failed = 0, total = 0, cursor = undefined;
       for (;;) {
@@ -121,14 +123,36 @@ export function registerQuick({ tool, obj, str, refuse, addLink }) {
       }
       const state = failed ? "promoting" : "real";
       if (!failed) await d.gateway.records.update(d.chain, "quick-field", q.id, { state: "real" }, q.version);
+      forgetQuick(d.space);
       return { state, done, total, failed };
     });
 }
 
-/** The quick-field rows of a type. @param {any} d @param {string} type */
-export async function quickRows(d, type) {
+// Every records list, get, create and update asks for its type's fast fields first, which was a store read (on Twenty a round trip) before the call itself. The rows are kept for
+// QUICK_MS per Space and caller (what a member may read is hers), and forgotten for the whole Space when a fast field is added or promoted here, the only writers of quick-field rows.
+export const QUICK_MS = 15_000;
+/** @type {Map<string, { at: number, rows: Promise<any[]> }>} */ const kept = new Map();
+/** @param {any} d */
+const keyOf = (d) => `${d.space}|${((d.chain && d.chain.hops) || []).map((/** @type {any} */ h) => `${h.actor && h.actor.kind}:${h.actor && h.actor.id}`).join(">")}`;
+/** Forget the Space's kept rows: a fast field was added or changed. @param {string} space */
+export function forgetQuick(space) { for (const k of [...kept.keys()]) if (k.startsWith(`${space}|`)) kept.delete(k); }
+
+/** Every quick-field row the caller may read, kept QUICK_MS; `fresh` reads them now (a change that writes one needs its current version). @param {any} d @param {{ fresh?: boolean }} [o] */
+async function allQuick(d, o = {}) {
+  const key = keyOf(d);
+  const k = kept.get(key);
+  if (!o.fresh && k && Date.now() - k.at < QUICK_MS) return k.rows;
   // no filter on the data field `type`: it came back empty for a member (see layout.js); the rows are few
-  try { return ((await d.gateway.records.query(d.chain, "quick-field", { page: { limit: 200 } })).rows || []).filter((/** @type {any} */ r) => r.data && r.data.type === type); } catch { return []; }
+  const rows = Promise.resolve(d.gateway.records.query(d.chain, "quick-field", { page: { limit: 200 } })).then((/** @type {any} */ r) => (r && r.rows) || []);
+  kept.set(key, { at: Date.now(), rows });
+  // a failed read is not kept
+  rows.catch(() => { if (kept.get(key)?.rows === rows) kept.delete(key); });
+  return rows;
+}
+
+/** The quick-field rows of a type. @param {any} d @param {string} type @param {{ fresh?: boolean }} [o] */
+export async function quickRows(d, type, o = {}) {
+  try { return (await allQuick(d, o)).filter((/** @type {any} */ r) => r.data && r.data.type === type); } catch { return []; }
 }
 /** The quick fields of a type in the shape the helpers use. @param {any} d @param {string} type */
 export async function quickFieldsOf(d, type) {

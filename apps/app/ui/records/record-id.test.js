@@ -3,7 +3,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ID_FIELD, ID_NOTE, isRecordIdField, recordIdOf } from "./record-id.js";
+import { ID_FIELD, ID_NOTE, isKeptField, isRecordIdField, keptNote, recordIdOf } from "./record-id.js";
 import { createPayload, formErrors, formOrder, guessMapping } from "./logic.js";
 import { importableFields } from "./csv.js";
 
@@ -28,6 +28,20 @@ test("the create form never asks for the ID, never requires it, and never sends 
   assert.deepEqual(formOrder(fields).map((f) => f.name), ["name", "case_id", "email"], "an ordinary 'Case ID' stays on the form");
   assert.deepEqual(Object.keys(formErrors(fields, { name: "Jo" })), [], "a required ID is not the person's to fill");
   assert.deepEqual(createPayload(fields, { name: "Jo", ref: "PER-0099", case_id: "77" }).plain, { name: "Jo", case_id: "77" }, "a stray value is not sent");
+});
+
+test("the fields Vyre keeps are never inputs: the ID, read-only, computed, the kernel's own, and a weighted value that lost its mark", () => {
+  const deal = [
+    { name: "name", label: "Name", kind: "text" }, { name: "ref", label: "ID", kind: "text" },
+    { name: "amount", label: "Amount", kind: "number" }, { name: "weighted_value", label: "Weighted value", kind: "number" },
+    { name: "total", label: "Total", kind: "number", computed: { expr: "amount" } }, { name: "status", label: "Status", kind: "choice", owned_by: "kernel" },
+    { name: "score", label: "Score", kind: "number", read_only: true },
+  ];
+  assert.deepEqual(deal.filter(isKeptField).map((f) => f.name), ["ref", "weighted_value", "total", "status", "score"]);
+  assert.deepEqual(formOrder(deal).map((f) => f.name), ["name", "amount"], "the form asks only for what a person fills in");
+  assert.deepEqual(importableFields(deal).map((f) => f.name), ["name", "amount"]);
+  assert.equal(keptNote({ name: "ref" }), ID_NOTE);
+  assert.match(keptNote({ name: "weighted_value" }), /^Worked out by Vyre/);
 });
 
 test("an import maps a sheet's ID column to an ordinary field or leaves it out, never to the record's ID", () => {

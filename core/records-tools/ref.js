@@ -75,6 +75,19 @@ export function withoutBlankIds(data, hasRefField) {
   return out;
 }
 
+/**
+ * The words a change is refused with when it sets a field Vyre keeps (a read-only field such as a deal's weighted value, which the tools work out from amount and probability), or
+ * null. The kernel itself refuses a computed field and one it owns; a read-only field is refused here. @param {any[]} fields @param {any} patch
+ */
+export function keptOnUpdate(fields, patch) {
+  if (!patch || typeof patch !== "object") return null;
+  for (const f of fields || []) {
+    if (!f || f.name === "ref" || !names(patch, f.name)) continue;
+    if (f.read_only === true || f.name === "weighted_value") return `${f.label || f.name} is worked out by Vyre, so it cannot be changed by hand. Change the fields it comes from instead.`;
+  }
+  return null;
+}
+
 /** The words a change is refused with when it names the record's identity (any value, an empty one too: clearing the ID is changing it), or null. @param {any} patch @param {boolean} hasRefField */
 export function idOnUpdate(patch, hasRefField) {
   for (const k of identity(hasRefField)) if (names(patch, k)) return ID_CHANGED;

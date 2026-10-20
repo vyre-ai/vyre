@@ -2,7 +2,7 @@
 import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { refPrefix, refNumber, formatRef, nextRef, isClash, clashStep, MAX_MINT_TRIES, mintRef, idOnCreate, idOnUpdate, withoutBlankIds, ID_GIVEN, ID_CHANGED } from "./ref.js";
+import { refPrefix, refNumber, formatRef, nextRef, isClash, clashStep, MAX_MINT_TRIES, mintRef, idOnCreate, idOnUpdate, keptOnUpdate, withoutBlankIds, ID_GIVEN, ID_CHANGED } from "./ref.js";
 
 test("an ID is a type prefix and a counter: PER-0001, and the next one follows the highest", () => {
   assert.deepEqual(["contact", "organization", "task", "note", "invoice", "x"].map(refPrefix), ["PER", "ORG", "TSK", "NOT", "INV", "X"]);
@@ -55,4 +55,13 @@ test("a record's identity is Vyre's: a create naming its ID, id or address is re
   assert.equal(idOnUpdate({ id: "x" }, false), ID_CHANGED);
   assert.equal(idOnUpdate({ name: "Jo", case_id: "78" }, true), null, "other fields change as before");
   assert.ok(!/[—–]/.test(ID_GIVEN + ID_CHANGED), "plain words");
+});
+
+test("a field Vyre keeps (read-only, or a deal's weighted value even where its mark was lost) is refused on a change; ordinary fields are not", () => {
+  const deal = [{ name: "ref", read_only: true }, { name: "amount", label: "Amount" }, { name: "weighted_value", label: "Weighted value" }, { name: "score", label: "Score", read_only: true }, { name: "case_id", label: "Case ID" }];
+  assert.match(String(keptOnUpdate(deal, { weighted_value: 9 })), /^Weighted value is worked out by Vyre/);
+  assert.match(String(keptOnUpdate(deal, { score: 1 })), /^Score is worked out by Vyre/);
+  assert.equal(keptOnUpdate(deal, { amount: 5, case_id: "A-1" }), null, "the fields it comes from change as before");
+  assert.equal(keptOnUpdate(deal, { ref: "X" }), null, "the ID has its own words (idOnUpdate)");
+  assert.equal(keptOnUpdate(deal, null), null);
 });
