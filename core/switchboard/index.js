@@ -1838,7 +1838,7 @@ export class Switchboard {
     const acct = await this.accountFor({ provider, account, project: rec.project, agent: rec.agent, ...(person ? { person } : {}) });
     if (!acct && provider !== "claude") throw Object.assign(new Error(`${provider} needs an account: add one (sessions.accounts.add or signin) and name it`), { code: "account_required" });
     const from = rec.provider || "claude";
-    model = model || await modelForAsker(this, rec, provider, kernelTurn ? kernelTurn.asker : person); const { seed, had } = await this.transferSeed(id, rec, provider, movesAccount(rec, provider, acct), model);   // the person's chosen model for the provider, not its default; the seed is sized to that model's window (carry.js)
+    model = model || await modelForAsker(this, rec, provider, kernelTurn ? kernelTurn.asker : person); const { seed, had, summarised } = await this.transferSeed(id, rec, provider, movesAccount(rec, provider, acct), model);   // the person's chosen model for the provider, not its default; the seed is sized to that model's window (carry.js)
     if (st) {
       st.switching = true;
       const proc = st.proc;
@@ -1852,7 +1852,7 @@ export class Switchboard {
     if (acct) kept.account = acct.id; else delete kept.account; if (reason === "once" && person) kept.switchPerson = person; else delete kept.switchPerson; if (reason !== "once") delete kept.hopBack;
     this.db.prepare("UPDATE threads_runs SET provider = ?, account = ?, model = ?, driver = NULL, opts = ? WHERE id = ?").run(provider, acct ? acct.id : null, model || null, JSON.stringify(kept), id);
     const capsOf = p => (p === "claude" ? { streaming: true, resume: true, interrupt: true, modes: true, questions: true, transcripts: true, steering: true, rewind: true } : { ...((this.deps.providers && this.deps.providers.get(p) && this.deps.providers.get(p).capabilities) || {}) });
-    const why = switchedLine({ from, to: provider, had, reason, fromCaps: capsOf(from), toCaps: capsOf(provider) });
+    const why = switchedLine({ from, to: provider, had, reason, fromCaps: capsOf(from), toCaps: capsOf(provider) }) + (summarised ? ` ${summarised}` : "");
     const said = (/** @type {boolean} */ inChat = true) => { if (inChat) this.emit("thread.text", { message: "vyre", text: why, done: true, notice: true }, id, rec.project); this.emit("thread.provider", { from, to: provider, account: acct ? acct.id : null, model: modelName(model), reason, text: why, ...(reason === "once" ? { once: true } : {}) }, id, rec.project); }; if (!kernelTurn) said(reason !== "back");   // the hop back says nothing in the chat: it is nobody's turn, and a reply the stream opened for it would take the next person's turn (SEQ)
     // A one-turn ask carries the history in front of its own turn (sendOnce), and a return has its own session back. A chat turn (kernelTurn: asker and chat) opens the asker's kernel session at launch; the notice is a message of that turn, said once the session is there.
     const words = reason === "once" || reason === "back" ? "" : [seed, text || ""].filter(Boolean).join("\n\n");
@@ -2056,7 +2056,7 @@ export class Switchboard {
     const had = !fresh && Boolean(this.db.prepare("SELECT 1 FROM threads_providers WHERE thread = ? AND provider = ?").get(id, provider));
     const left = had ? this.deps.ofThread(id, { types: ["thread.provider"] }).filter(e => e.payload.from === provider).at(-1) : null;
     const carry = await carryFor(this, { chain: this.nativeChain(id), provider, model: model || null, since: left ? left.at : 0 }), seed = await this.seedFor({ chain: this.nativeChain(id), rec, thread: id, roll: 1, kind: had ? "back" : "switch", since: left ? left.at : 0, carry });   // the whole conversation and its tool results, sized to the new model's window
-    if (seed.summarised) this.emit("thread.text", { message: "vyre", text: summarisedLine(carry.name), done: true, notice: true }, id, rec.project); return { seed: seed.text, had };
+    return { seed: seed.text, had, summarised: seed.summarised ? summarisedLine(carry.name) : null };   // the switch's own notice says it (doSwitchProvider), when the chat is told of the switch
   }
 
   /** The conversation as turns, newest last, from the event log (every provider writes it): what the person sent and what the assistant said, after `since` (ms) when given. @param {string} id @param {number} [limit] @param {number} [since] */
