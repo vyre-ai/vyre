@@ -18,7 +18,8 @@ const dist = path.resolve(flag("--dist", "dist-mock"));
 const refs = path.resolve(flag("--refs", "../../design-refs"));
 const only = (flag("--only", "") || "").split(",").filter(Boolean);
 const surfaceOnly = (flag("--surface", "") || "").split(",").filter(Boolean);
-const budgetMb = Number(flag("--budget-mb", "14"));
+// 16 MB from v0.6.5 (lead, 21 Oct 2026): the sign-in, unlock, empty chat, details pane and phone menu pictures were added; 14 MB was full.
+const budgetMb = Number(flag("--budget-mb", "16"));
 const update = bool("--update");
 const [out] = args;
 if (!out) { console.error("usage: design-pictures <out> [--dist d] [--refs d] [--only ids] [--surface names] [--update]"); process.exit(2); }

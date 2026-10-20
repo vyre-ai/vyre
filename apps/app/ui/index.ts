@@ -88,6 +88,7 @@ export { ResizeHandle, useStoredWidth } from "./shell/ResizeHandle";
 export { useWho, openWho, closeWho, registerWhoPane, whoPress } from "./shell/who";
 export type { Who, WhoKind } from "./shell/who";
 export { SidebarSearch } from "./shell/SidebarSearch";
+export { RailLabel, RailHeading } from "./shell/RailText";
 export { Shell } from "./shell/Shell";
 export { ShellStates, ShellSample, SpaceTileSheet } from "./shell/ShellSample";
 export { SidebarRow } from "./shell/SidebarRow";

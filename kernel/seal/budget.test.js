@@ -25,7 +25,8 @@ const GROUPS = {
   //   spaceRestore ('space.restore': opens a bundle and seals each value under THIS box's own keys, so a restore never reuses a key of the old box),
   //   'pool.key' widened to the hosted Space's id (spc_) beside a person's (per_): the pool key a hosted Space's values are sealed under, and
   //   client.js: the three request methods the daemon calls those with. link's removal of 10 dead lease lines brings the group to about 994; 1005 leaves no room to grow and is not a target.
-  sealing: { cap: 1005, files: ["seal/process.js", "seal/store.js", "seal/proof.js", "seal/wire.js", "seal/classes.js", "seal/normalise.js", "seal/client.js"] },
+  // Lead, v0.6.5 (21 Oct 2026): 1015, raised from 1005 for the `session` signer class (kernel/seal/proof.js), the password-only presence proof until Apple signing; checked exactly like every other proof.
+  sealing: { cap: 1015, files: ["seal/process.js", "seal/store.js", "seal/proof.js", "seal/wire.js", "seal/classes.js", "seal/normalise.js", "seal/client.js"] },
   door: { cap: 700, files: ["door/door.js", "door/stream.js", "seal/ledger.js"] },
   adapters: { cap: 300, files: ["seal/uses.js", "seal/placement.js"] },
   // The host CLI's wipe (`sudo vyre admin wipe`): destroys the sealing master key and folder with the daemon stopped. Never imported by the daemon.

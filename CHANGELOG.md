@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6.5
 
+- chore: the error catalogue explains bad_login; the sealing group's line cap is 1015 for the session signer; the design references budget is 16 MB; Files' sidebar uses the shared RailLabel and RailHeading.
 - fix(shell): the details pane gives its content the sidebar's side gutter, so a person's or agent's pane never sits flush against its edges.
 - fix(spawner): a session in a chat with no project joins the work folder's group, so it can enter its chat's folder (every plain chat failed its confinement check).
 - fix(threads): a resume of a session that never began starts it fresh; an error result with no text shows its errors.
