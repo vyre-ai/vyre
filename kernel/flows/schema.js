@@ -113,7 +113,7 @@ export const STEP_KEYS = {
   wait: ["for_ms", "until", "offset_ms", "event", "where", "timeout_ms", "on_timeout"],
   ask: ["to", "title", "form", "record", "reviewer", "approver"], assign: ["to", "title", "record", "output", "how", "template", "checker", "reviewer", "approver", "await", "skills", "followers", "notes", "brief"],
   call: ["action", "resource", "input", "with", "approve"], stage: ["type", "record", "to"],
-  agent: ["assistant", "title", "instructions", "record", "output", "await", "skills", "checker", "followers", "notes"], classify: ["input", "labels"], extract: ["input", "fields"],
+  agent: ["assistant", "title", "instructions", "record", "output", "await", "skills", "checker", "followers", "notes"], classify: ["input", "labels", "model"], extract: ["input", "fields", "model"],
   service: ["connector", "method", "path", "query", "headers", "body", "drive", "connection", "operation", "input", "approve"],
   fn: ["language", "source", "hash", "inputs", "outputs", "needs"],
 };

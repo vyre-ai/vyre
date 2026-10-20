@@ -3,7 +3,7 @@ import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { MODEL_COPY, SPACE_KEY, THEME_CHOICES, THEME_ICONS, UNLOCK_COPY, WELCOME_COPY, WELCOME_TONES, addressFrom, lastSpace, modelStep, rememberSpace } from "./welcome-model.js";
+import { MODEL_COPY, SPACE_KEY, THEME_CHOICES, THEME_ICONS, UNLOCK_COPY, WELCOME_COPY, WELCOME_TONES, addressFrom, lastSpace, modelStep, pickedModel, rememberSpace, welcomeGroups } from "./welcome-model.js";
 
 const store = () => { const m = new Map(); return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => void m.set(k, v), m }; };
 
@@ -90,4 +90,16 @@ test("the model step's Continue follows the models, not the accounts: an account
   assert.deepEqual(empty, { lead: MODEL_COPY.noModels, count: 0, canContinue: true }, "accounts with no models: Continue goes on with the default and the line says so");
   assert.deepEqual(modelStep([], false), { lead: MODEL_COPY.none, count: 0, canContinue: true }, "no account: the line says how to connect one");
   for (const v of Object.values(MODEL_COPY)) if (typeof v === "string") assert.doesNotMatch(v, new RegExp("[\\u2014\\u00a7]"), "plain words: no long dash, no section sign");
+});
+
+test("the model step draws the one picker: each connected account with its models and their details, and the pick names its account", () => {
+  const accounts = [
+    { id: "ac_1", label: "Work", provider: "claude", models: [{ id: "lab-deep-2", name: "Lab Deep 2", provider: "claude", vendor: "Anthropic", context: 1000000, efforts: ["low", "high"], default_effort: "high" }] },
+    { id: "ac_2", label: "Router", provider: "openrouter", models: [{ id: "acme/plain", label: "Plain Chat", provider: "openrouter", price: { in: 0.2, out: 0.6 } }] },
+  ];
+  const groups = welcomeGroups(accounts);
+  assert.deepEqual(groups.map((g) => [g.account.label, g.models.map((m) => [m.name, m.provider])]), [["Work", [["Lab Deep 2", "claude"]]], ["Router", [["Plain Chat", "openrouter"]]]]);
+  assert.deepEqual(groups[0].models[0].efforts, ["low", "high"], "the model's own effort levels come through");
+  assert.equal(pickedModel(groups, { account: "ac_2", provider: "openrouter", model: "acme/plain" })?.model.name, "Plain Chat");
+  assert.equal(pickedModel(groups, { account: "ac_1", provider: "claude", model: "gone" }), null);
 });

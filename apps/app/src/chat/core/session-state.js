@@ -74,6 +74,7 @@
 // threads.tasks {thread} lists them (seedTasks) and threads.kill-task {thread, task} stops one.
 
 import { toolDetail } from "./tool-detail.js";
+import { personWords } from "../notice-words.js";
 
 /**
  * @typedef {"idle"|"starting"|"working"|"asking"|"waiting"|"paused"|"stopped"|"finished"|"failed"} SessionState
@@ -761,7 +762,8 @@ function onText(s, p, at, e, out) {
   if (p.notice) {
     const key = `n:${e.id ?? ++s.meta.notices}`;
     if (s.byKey.has(key)) return;
-    insert(s, /** @type {NoticeItem} */ ({ key, kind: "notice", text: text ?? "", ...(at !== undefined ? { at } : {}) }));
+    // a person named by id in the box's line (a model pick) reads as "You": a session is one person's own
+    insert(s, /** @type {NoticeItem} */ ({ key, kind: "notice", text: personWords(text ?? "", () => "You"), ...(at !== undefined ? { at } : {}) }));
     out.add(key);
     return;
   }

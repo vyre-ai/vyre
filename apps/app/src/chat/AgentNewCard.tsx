@@ -2,9 +2,10 @@
 // changes the proposal: a change is asked of the Engineer in words, in this same thread, and a revised proposal comes back as a new card. The draft is read with agents.draft.get.
 import { useEffect, useState } from "react";
 import { View } from "react-native";
-import { Avatar, AgentLookPicker, Banner, Button, Field, Row, Segmented, Sheet, Switch, Text, lookOf, markRef, partsOf, withParts, PARTS, lookSeed } from "@vyre/ui";
+import { Avatar, AgentLookPicker, Banner, Button, Field, ModelPicker, Row, Segmented, Sheet, Switch, Text, lookOf, markRef, partsOf, withParts, PARTS, lookSeed } from "@vyre/ui";
 import { callT } from "../real/call-tool";
-import { accountRows, cardOf, changeWords, draftIdOf, modelRows, skillGroups, toggled } from "./agent-new-model.js";
+import { cardOf, changeWords, draftIdOf, skillGroups, toggled } from "./agent-new-model.js";
+import { useMyModels } from "../models/useMyModels";
 
 /** The draft behind a new-agent task, or null while it loads or when it cannot be read. */
 export function useNewAgentDraft(taskId: string, wanted: boolean): { input: any; problem: string } | null {
@@ -99,30 +100,15 @@ function SkillsSheet({ name, chosen, onClose, onUse }: { name: string; chosen: s
   );
 }
 
-/** The models each AI account offers (sessions.accounts.list, then sessions.accounts.models), for the primary model and the fallback. */
+/** The model and the fallback, from the one model picker: the person's own AI accounts and what each can run (src/models/useMyModels.ts). */
 function ModelSheet({ onClose, onUse }: { onClose: () => void; onUse: (which: "primary" | "fallback", id: string) => void }) {
   const [which, setWhich] = useState<"primary" | "fallback">("primary");
-  const [groups, setGroups] = useState<{ account: string; label: string; models: { id: string; label: string }[] }[] | null>(null);
-  useEffect(() => {
-    let live = true;
-    void (async () => {
-      const list = await callT<any>("sessions.accounts.list", {});
-      const accts = list.error ? [] : accountRows(list.data);
-      const out = await Promise.all(accts.slice(0, 8).map(async (a) => { const m = await callT<any>("sessions.accounts.models", { account: a.id }); return { account: a.id, label: a.label, models: m.error ? [] : modelRows(m.data) }; }));
-      if (live) setGroups(out.filter((g) => g.models.length));
-    })();
-    return () => { live = false; };
-  }, []);
+  const { groups } = useMyModels();
   return (
     <Sheet open onClose={onClose} title="Model">
       <View style={{ gap: 12 }}>
         <Segmented label="Which" value={which} onChange={(v) => setWhich(v as "primary" | "fallback")} options={[["primary", "Primary model"], ["fallback", "Fallback model"]]} />
-        {groups === null ? <Text tone="muted">Looking.</Text> : !groups.length ? <Text tone="muted">No AI account is connected yet, so there are no models to list.</Text> : groups.map((g) => (
-          <View key={g.account} style={{ gap: 4 }}>
-            <Text size="caption" tone="label">{g.label}</Text>
-            {g.models.map((m) => <Row key={m.id} dense title={m.label} chevron onPress={() => onUse(which, m.id)} />)}
-          </View>
-        ))}
+        <ModelPicker label={which === "primary" ? "Primary model" : "Fallback model"} groups={groups} value={{}} onChange={({ model }) => onUse(which, model.id)} />
       </View>
     </Sheet>
   );
