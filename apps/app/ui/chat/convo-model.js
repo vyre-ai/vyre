@@ -82,7 +82,11 @@ export function convosFrom(i) {
     const g = byAgent.get(c.agents[0]);
     byAgent.set(c.agents[0], { newest: !g || c.last > g.newest.last ? c : g.newest, n: (g?.n ?? 0) + 1 });
   }
+  // The Engineer has one chat: if the box lists several (an older server made one per open), only the newest is a row.
+  const engChats = i.chats.filter((c) => c.engineer === true);
+  const newestEng = engChats.reduce((/** @type {ChatRow | null} */ n, c) => (!n || c.last > n.last ? c : n), null);
   for (const c of i.chats) {
+    if (c.engineer === true && c !== newestEng) continue;
     const others = c.people.length + c.agents.length;
     if (others === 1 && c.agents.length === 1 && c.title === c.agents[0]) aloneAgent.add(c.agents[0]);
     if (others === 1 && c.people.length === 1 && c.title === c.people[0]) alonePerson.add(c.people[0]);

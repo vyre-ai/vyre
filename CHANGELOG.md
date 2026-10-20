@@ -2,6 +2,12 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## 0.6.5
+
+- fix(chat): the sidebar chat list draws once. The agents, teammates and assistant name it merges in are kept per Space and drawn with the kept chats (the list waits at most 1.2 s for them), so rows no longer appear and then collapse; several Engineer chats from an older server show as one row. "No chats yet" shows only after the box has answered empty (an empty kept copy is no copy, and a box that answers empty while a list is kept is asked once more). Files: screens/chats/useConvos.ts, ChatsSidebar.tsx, chats-cache.js, src/state/chats.ts, ui/chat/convo-model.js.
+
+- fix(shell): the app opens on its own screen at once. The Spaces, the person's line and the Space that was showing are kept per computer (screens/shell/shell-cache.js) and drawn before the box answers, the sign-in check no longer holds the whole screen on a skeleton (kept copy first, a 4 s limit, a box that does not answer is treated as signed in so each screen can say what is wrong).
+
 ## 0.6.4
 
 - fix(computers): one docker events stream for the module's life. The watcher was opened inside the sweep timer, so every tick added a stream; the proxy allows four and answered 429, and the server ran hot retrying. Reconnects now close the old request first, run one at a time, back off with jitter to a minute, and log only when the reason changes.

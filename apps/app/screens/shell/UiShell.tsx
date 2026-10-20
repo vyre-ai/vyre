@@ -17,6 +17,8 @@ import { gatedPath } from "./basic.js";
 import { SERVER_SETUP_ROUTE } from "../install/first-run.js";
 import { NeedsServer } from "./NeedsServer";
 import { call, listen, signIn, signOut } from "../../src/api/box";
+import { viewCache } from "../../src/state/cache";
+import { GATE_BUDGET_MS, SHELL_KEY, packShell, unpackShell } from "./shell-cache.js";
 import { useProfiles } from "../../src/state/profiles";
 import { startSpace } from "./real-model";
 import { useSpaces } from "./state";
@@ -33,7 +35,7 @@ export function UiShell({ children }: { children: React.ReactNode }) {
   const path = usePathname();
   const router = useRouter();
   const { space, looks, setShowing } = useSpaces();
-  const { data: DATA, set, fail } = useShell();
+  const { data: DATA, set, fail, loaded } = useShell();
   useEffect(() => { startKeepingAppearance(); }, []);
   const myLook = useMyLook((x) => x.look);
   useEffect(() => { startKeepingMyLook(); }, []);
@@ -45,9 +47,22 @@ export function UiShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (allowsMock()) return;
     let live = true;
+    // Open from the kept copy: a device that was signed in last time shows the shell at once and is checked behind it; the check has a time limit, and a box that does not answer is "in" (the screens say what is wrong).
+    void viewCache.get(SHELL_KEY).then((raw) => {
+      const k = unpackShell(raw);
+      if (!live || !k) return;
+      if (!useShell.getState().loaded) { set(k.data as never); if (k.space && k.data.spaces.some((x: { id: string }) => x.id === k.space) && useSpaces.getState().space === "all") setShowing(k.space); }
+      setGate((g) => (g === "asking" ? "in" : g));
+    }).catch(() => {});
+    const limit = setTimeout(() => { if (live) setGate((g) => (g === "asking" ? "in" : g)); }, GATE_BUDGET_MS);
     whoIsThere(call).then((g) => { if (live) setGate(g); });
-    return () => { live = false; };
+    return () => { live = false; clearTimeout(limit); };
   }, []);
+  // What the shell last knew (the Spaces, the person's line, the Space showing) is kept for the next open.
+  useEffect(() => {
+    if (allowsMock() || gate !== "in" || !loaded) return;
+    void viewCache.set(SHELL_KEY, packShell(DATA, space));
+  }, [gate, loaded, DATA, space]);
   useEffect(() => {
     if (allowsMock() || gate !== "in") return;
     let live = true;

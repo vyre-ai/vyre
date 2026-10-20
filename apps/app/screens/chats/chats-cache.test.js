@@ -4,7 +4,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { LIST_BUDGET_MS, MAX_AGE_MS, chatsKey, packChats, pickChats, unpackChats } from "./chats-cache.js";
+import { AUX_BUDGET_MS, LIST_BUDGET_MS, MAX_AGE_MS, auxKey, chatsKey, packAux, packChats, pickChats, unpackAux, unpackChats } from "./chats-cache.js";
 import { chatsView } from "./chats-model.js";
 import { createLanding } from "../../ui/query-order.js";
 
@@ -52,4 +52,19 @@ test("re-reads on every thread event: each answer lands unless a later one alrea
   assert.equal(order.land(a), true, "the first answer lands though two reads started after it");
   assert.equal(order.land(c), true);
   assert.equal(order.land(b), false, "an older answer never replaces a newer one");
+});
+
+test("an empty kept list is no kept list: Chat never draws No chats yet from a copy", () => {
+  assert.equal(unpackChats(packChats([], () => T), () => T), null);
+  assert.equal(pickChats({ fresh: undefined, kept: unpackChats(packChats([], () => T), () => T), failed: false }).from, "none");
+  assert.equal(pickChats({ fresh: [], kept: null, failed: false }).from, "chats", "only the box's own empty answer is an empty list");
+});
+
+test("the agents and teammates the list needs are kept per Space and come back whole", () => {
+  assert.equal(auxKey("spc_a"), "chats.aux.spc_a");
+  const a = { agents: [{ name: "kit" }], people: [{ id: "per_sam", name: "Sam" }], assistantName: "Qi", assistantAgent: "qi" };
+  assert.deepEqual(unpackAux(JSON.parse(JSON.stringify(packAux(a, () => T))), () => T), a);
+  assert.equal(unpackAux({ v: 2 }, () => T), null);
+  assert.equal(unpackAux(packAux(a, () => T), () => T + MAX_AGE_MS + 1), null);
+  assert.ok(AUX_BUDGET_MS > 0 && AUX_BUDGET_MS < LIST_BUDGET_MS);
 });

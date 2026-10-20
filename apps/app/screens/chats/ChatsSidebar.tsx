@@ -85,7 +85,9 @@ export function ChatsSidebar() {
   const pinnedFirst = (c: Convo) => (c.pinned ? 0 : c.chat && prefs.pinned.includes(c.chat) ? 1 : 2);
   // a chat you pinned sits under Pinned with your assistant
   const marked = convos.map((c) => (c.chat && prefs.pinned.includes(c.chat) && c.section !== "pinned" ? { ...c, section: "pinned" as const } : c));
-  const found = [...convosShown(marked, { project: f.project, query: f.q, type: f.type })].sort((a, b) => pinnedFirst(a) - pinnedFirst(b));
+  // one draw: the list waits (a few hundred ms at most) for the agents and teammates, kept or fresh, so rows never appear and then merge
+  const settled = allowsMock() || convos.ready === true;
+  const found = !settled ? [] : [...convosShown(marked, { project: f.project, query: f.q, type: f.type })].sort((a, b) => pinnedFirst(a) - pinnedFirst(b));
   const open = (c: Convo) => {
     if (c.id === "assistant:new") { router.push("/u/chats/new-thread" as never); return; }
     if (c.kind === "flow") { router.push(`/u/chats/flow/${encodeURIComponent(c.chat)}` as never); return; }
@@ -129,8 +131,8 @@ export function ChatsSidebar() {
       <NewAgentFlow open={f.newAgent} onClose={() => f.set({ newAgent: false })} />
       {/* Quiet, never a skeleton: the last list with a line when the box did not refresh it, a line when nothing came, and nothing at all while the first read is inside its budget. */}
       {chats.note ? <Text size="caption" tone="label" style={{ paddingHorizontal: 16, paddingTop: 4 }}>This is the last list. It did not refresh.</Text> : null}
-      {!found.length && chats.from === "failed" ? <Text tone="label" style={{ paddingHorizontal: 16, paddingTop: 8 }} accessibilityRole="button" onPress={chats.retry}>Your chats did not load. Tap to try again.</Text>
-        : !found.length && chats.from !== "none" ? <Text tone="label" style={{ paddingHorizontal: 16, paddingTop: 8 }}>{f.q.trim() || f.type !== "all" || f.project !== "all" || f.tag ? "Nothing matches." : "No chats yet. Tap + to start one."}</Text> : null}
+      {!settled ? null : !found.length && chats.from === "failed" ? <Text tone="label" style={{ paddingHorizontal: 16, paddingTop: 8 }} accessibilityRole="button" onPress={chats.retry}>Your chats did not load. Tap to try again.</Text>
+        : !found.length && chats.from === "chats" && !chats.stale ? <Text tone="label" style={{ paddingHorizontal: 16, paddingTop: 8 }}>{f.q.trim() || f.type !== "all" || f.project !== "all" || f.tag ? "Nothing matches." : "No chats yet. Tap + to start one."}</Text> : null}
       <ConversationList items={found} onOpen={open} whenOf={(c) => (c.last ? ageOf(c.last, now) : "")} menuOf={(c) => (c.chat && c.kind !== "flow" ? menu(c.chat) : [])} currentChat={openChatOf(path)} />
     </View>
   );

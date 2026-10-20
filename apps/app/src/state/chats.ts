@@ -27,6 +27,9 @@ export function useChats(): { rows: ChatRow[]; from: From; stale: boolean; note:
   const [again, setAgain] = useState(0);
   const order = useRef(createLanding());
   // the Space each answer is for: an answer for a Space no longer showing is dropped, never filed under the new one
+  const keptNow = useRef<{ key: string; rows: ChatRow[] } | null>(null);
+  keptNow.current = kept;
+  const emptyTries = useRef(0);
   const keyNow = useRef(key);
   keyNow.current = key;
   const mock = allowsMock();
@@ -50,6 +53,10 @@ export function useChats(): { rows: ChatRow[]; from: From; stale: boolean; note:
     tool("work.chat.list", {}).then((d) => {
       if (keyNow.current !== k || !order.current.land(n)) return;
       const rows = chatsFrom(d);
+      // A box that answers empty while this device kept a list is asked once more before the list is replaced: a server still starting answers empty, and "No chats yet" must mean it.
+      const had = keptNow.current;
+      if (!rows.length && had && had.key === k && had.rows.length && emptyTries.current < 1) { emptyTries.current += 1; setTimeout(() => { if (keyNow.current === k) setAgain((x) => x + 1); }, 1500); return; }
+      emptyTries.current = 0;
       setListed({ key: k, rows });
       setFailed(null);
       void viewCache.set(k, packChats(rows));

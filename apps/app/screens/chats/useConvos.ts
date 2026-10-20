@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { convosFrom, rememberLook, useStore } from "@vyre/ui";
 import type { Convo } from "@vyre/ui";
 import { agentsList } from "../settings/real";
@@ -9,18 +9,36 @@ import { teammates } from "../teammates/teammates";
 import type { ChatRow } from "./chats-model.js";
 import { useFlowChats } from "./FlowChatsList";
 import { flowChatSub } from "./flow-chat-model.ts";
+import { viewCache } from "../../src/state/cache";
+import { useSpaces } from "../shell/state";
+import { AUX_BUDGET_MS, auxKey, packAux, unpackAux } from "./chats-cache.js";
 
 type AgentItem = { name: string; role: string; projects: string[]; status: string; look: string; summary?: { count: number; latest?: string; at?: number; live?: string; needs?: boolean } };
 type Person = { id: string; name: string; role?: string };
 
 /** The Chat screen's one list: the chats you can see, plus the agents and teammates you can start one with. If the box does not answer for agents or teammates, the chats still show. */
-export function useConvos(chats: readonly ChatRow[]): Convo[] {
+export function useConvos(chats: readonly ChatRow[]): Convo[] & { ready?: boolean } {
   const st = useStore();
   const [agents, setAgents] = useState<AgentItem[]>([]);
   const [people, setPeople] = useState<Person[]>([]);
   const [assistantName, setAssistantName] = useState("");
   const [assistantAgent, setAssistantAgent] = useState("");
   const { chats: flowChats } = useFlowChats();
+  const space = useSpaces((x) => x.space);
+  const key = auxKey(space);
+  // `ready` is the key whose agents and teammates are known (kept or fresh), or whose wait ran out: the list draws once, not once per answer
+  const [ready, setReady] = useState<string | null>(null);
+  const freshFor = useRef("");
+  useEffect(() => {
+    let live = true;
+    const wait = setTimeout(() => { if (live) setReady(key); }, AUX_BUDGET_MS);
+    void viewCache.get(key).then((raw) => {
+      const a = unpackAux(raw);
+      if (!live || !a || freshFor.current === key) return;
+      setAgents(a.agents); setPeople(a.people); setAssistantName(a.assistantName); setAssistantAgent(a.assistantAgent); setReady(key);
+    }).catch(() => {});
+    return () => { live = false; clearTimeout(wait); };
+  }, [key]);
   useEffect(() => {
     let live = true;
     void (async () => {
@@ -38,14 +56,17 @@ export function useConvos(chats: readonly ChatRow[]): Convo[] {
         const sum = await callT("work.chat.summary", {}).then((r) => (r.error ? null : r.data)).catch(() => null);
         const bySummary = summaryByAgent(sum);
         if (!live) return;
-        setAssistantName(mineAsst ? mineAsst.title : "");
-        setAssistantAgent(mineAsst ? mineAsst.name : "");
-        setAgents(rows.map((r) => ({ name: r.name, title: r.title, role: r.role, status: r.status, look: String(list.find((x) => String(x.name) === r.name)?.look ?? ""), summary: bySummary.get(r.name), projects: ids(r.name).map((s) => names[s] || s) })));
-        setPeople(who.filter((w) => w.family === "person" && w.name && String(w.id) !== me).map((w) => ({ id: String(w.id), name: String(w.name), role: w.role ? String(w.role) : undefined })));
+        const nextAsst = mineAsst ? mineAsst.title : "", nextAsstAgent = mineAsst ? mineAsst.name : "";
+        const nextAgents = rows.map((r) => ({ name: r.name, title: r.title, role: r.role, status: r.status, look: String(list.find((x) => String(x.name) === r.name)?.look ?? ""), summary: bySummary.get(r.name), projects: ids(r.name).map((s) => names[s] || s) }));
+        const nextPeople = who.filter((w) => w.family === "person" && w.name && String(w.id) !== me).map((w) => ({ id: String(w.id), name: String(w.name), role: w.role ? String(w.role) : undefined }));
+        freshFor.current = key;
+        setAssistantName(nextAsst); setAssistantAgent(nextAsstAgent); setAgents(nextAgents); setPeople(nextPeople); setReady(key);
+        void viewCache.set(key, packAux({ agents: nextAgents, people: nextPeople, assistantName: nextAsst, assistantAgent: nextAsstAgent }));
       } catch { /* the chats still show */ }
     })();
     return () => { live = false; };
-  }, [st]);
+  }, [st, key]);
   const flows = useMemo(() => (flowChats ?? []).map((c) => ({ id: c.id, title: c.title, line: flowChatSub(c, Date.now()), last: c.last, runs: c.runs, needs: c.needsYou })), [flowChats]);
-  return useMemo(() => convosFrom({ chats, agents, people, flows, assistantName, assistantAgent }), [chats, agents, people, flows, assistantName, assistantAgent]);
+  const convos = useMemo(() => convosFrom({ chats, agents, people, flows, assistantName, assistantAgent }), [chats, agents, people, flows, assistantName, assistantAgent]);
+  return useMemo(() => Object.assign([...convos], { ready: ready === key }), [convos, ready, key]);
 }

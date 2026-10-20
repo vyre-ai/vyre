@@ -19,7 +19,24 @@ export const packChats = (rows, clock = Date.now) => ({ v: 1, at: clock(), rows:
  */
 export function unpackChats(raw, clock = Date.now) {
   if (!raw || typeof raw !== "object" || raw.v !== 1 || !Array.isArray(raw.rows) || !Number.isFinite(raw.at) || clock() - raw.at > MAX_AGE_MS) return null;
-  return raw.rows.filter((/** @type {any} */ r) => r && typeof r === "object" && typeof r.id === "string" && r.id);
+  const rows = raw.rows.filter((/** @type {any} */ r) => r && typeof r === "object" && typeof r.id === "string" && r.id);
+  // an empty kept list is no copy at all: it must never draw "No chats yet" before the box has answered
+  return rows.length ? rows : null;
+}
+
+/** The key of one Space's agents, teammates and assistant name (what the list needs besides the chats), kept so the first draw has them. @param {string | null | undefined} space */
+export const auxKey = (space) => `chats.aux.${space || "home"}`;
+
+/** How long the first draw may wait for the agents and teammates when nothing is kept. */
+export const AUX_BUDGET_MS = 1200;
+
+/** @param {{ agents: any[], people: any[], assistantName: string, assistantAgent: string }} a @param {() => number} [clock] */
+export const packAux = (a, clock = Date.now) => ({ v: 1, at: clock(), agents: a.agents, people: a.people, assistantName: a.assistantName, assistantAgent: a.assistantAgent });
+
+/** @param {any} raw @param {() => number} [clock] @returns {{ agents: any[], people: any[], assistantName: string, assistantAgent: string } | null} */
+export function unpackAux(raw, clock = Date.now) {
+  if (!raw || typeof raw !== "object" || raw.v !== 1 || !Array.isArray(raw.agents) || !Array.isArray(raw.people) || !Number.isFinite(raw.at) || clock() - raw.at > MAX_AGE_MS) return null;
+  return { agents: raw.agents, people: raw.people, assistantName: typeof raw.assistantName === "string" ? raw.assistantName : "", assistantAgent: typeof raw.assistantAgent === "string" ? raw.assistantAgent : "" };
 }
 
 /**

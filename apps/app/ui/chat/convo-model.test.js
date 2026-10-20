@@ -224,3 +224,8 @@ test("one row per agent even when a chat row and an agent row arrive under the s
   assert.equal(rows.filter((r) => r.agent === "engineer").length, 1);
   assert.equal(rows.find((r) => r.agent === "engineer").chat, "a");
 });
+
+test("the Engineer is one row, even when the box lists several Engineer chats", () => {
+  const rows = convosFrom({ chats: [chat({ id: "e1", title: "a", engineer: true, agents: ["engineer"], last: 1 }), chat({ id: "e2", title: "b", engineer: true, agents: ["engineer"], last: 9 }), chat({ id: "e3", title: "c", engineer: true, agents: [], last: 5 })], agents: [], people: [] });
+  assert.deepEqual(rows.filter((r) => r.title === "Engineer").map((r) => r.chat), ["e2"]);
+});
