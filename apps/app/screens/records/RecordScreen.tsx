@@ -11,6 +11,7 @@ import { Connections } from "./Connections";
 import { HeaderFields } from "./HeaderFields";
 import { useTypeLayout } from "./layout-state";
 import { pinnedFacts } from "../../ui/records/logic.js";
+import { templateLabel } from "../../ui/records/template-names.js";
 import { useMoveStage } from "./MoveStage";
 import { DocumentsBar } from "./DocumentsBar";
 import { Roles } from "./Roles";
@@ -105,7 +106,7 @@ export function RecordScreen({ id, onClose, onOpen }: { id: string; onClose?: ()
       <View className="px-s4 pt-s3"><QuickActions email={email || undefined} urn={rec.urn} onLogged={() => setLogged((n) => n + 1)} /></View>
       <View className="px-s4 pt-s3"><DocumentsBar def={def} rec={rec} related={relatedRecords(world.types, world.byType, def, rec)} email={email} canSend={canSend || allowsMock()} /></View>
       <View className="flex-row flex-wrap items-start gap-x-s8 gap-y-s3 px-s4 pt-s3">
-        {(pinned ? pinnedFacts(def, rec, pinned) : factsOf(def, rec)).map(([l, v]) => (
+        {(pinned ? pinnedFacts(def, rec, pinned) : factsOf(def, rec)).map(([l, v]) => [l, rec.type === "project" && l === def.fields.find((x: any) => x.name === "template")?.label ? templateLabel(v) : v] as [string, any]).map(([l, v]) => (
           <View key={l} className="min-w-[96px] gap-s1">
             <Text size="caption" tone="label">{l}</Text>
             {v === null ? <Text tone="faint">Add</Text> : <Text strong numberOfLines={1}>{String(v)}</Text>}
