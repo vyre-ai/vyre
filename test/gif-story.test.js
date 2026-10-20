@@ -90,7 +90,8 @@ async function world(/** @type {import("node:test").TestContext} */ t) {
 }
 
 async function story(/** @type {import("node:test").TestContext} */ t) {
-  const { root, d, owner, chain, asPerson, step, record, junoSession, started, framesOf, sent, tool } = await world(t);
+  const w = await world(t);
+  const { root, d, owner, chain, asPerson, step, record, junoSession, started, framesOf, sent, tool } = w;
   // 1: the person's words reach juno's session
   const S1 = step(1, "the person's words reach juno");
   const words = "@juno get the overdue invoices chased this week";
@@ -101,7 +102,8 @@ async function story(/** @type {import("node:test").TestContext} */ t) {
   const S2 = step(2, "juno hands it to kit");
   const script = CLIENTS.map(c => `vyre billing.email ${JSON.stringify({ to: c.email, subject: `Invoice ${c.invoice} is overdue`, body: `Hello ${c.name}, invoice ${c.invoice} is now 30 days overdue. Could you pay it this week? Thank you.`, cc: `partner@harlow.example` })}`).join("\n");
   let ask;
-  try { ask = await call("team.ask", { to: "billing", project: record, text: script }, { root, caller: "mcp", session: junoSession, timeout: 60_000 }); } catch (e) { assert.fail(S2(/** @type {Error} */ (e).message)); }
+  // Rule 2 (dec4c2d7, no person, no agent work): a call by a session key carries no kernel token, so it names nobody; juno speaks for the owner through the session's kernel token, as its thread socket stamps it
+  try { ask = await d.registry.call("team.ask", { to: "billing", project: record, text: script }, "mcp", { ...(await w.meta()), thread: started.id }); } catch (e) { assert.fail(S2(/** @type {Error} */ (e).message)); }
   assert.equal(ask.error, undefined, S2(JSON.stringify(ask.error)));
   const request = ask.data.request;
   const rows = await until(async () => { const r = framesOf(started.id).filter(f => f.type === "chat.handoff" && f.data.request === request); return r.length >= 2 ? r : null; }, S2("juno's log has no hand-off row for kit"));
@@ -149,7 +151,7 @@ async function story(/** @type {import("node:test").TestContext} */ t) {
   assert.deepEqual(answered.results.map((/** @type {any} */ r) => r.answered), ["approved", "approved", "approved"], S6(JSON.stringify(answered.results)));
   // kit retries each call with its card, in a second request
   const retries = group.items.map((/** @type {any} */ i) => `vyre billing.email ${JSON.stringify({ ...CLIENTS.map(c => ({ to: c.email, subject: `Invoice ${c.invoice} is overdue`, body: `Hello ${c.name}, invoice ${c.invoice} is now 30 days overdue. Could you pay it this week? Thank you.`, cc: "partner@harlow.example" })).find(m => m.to === i.request.fields.to), approval: i.id })}`).join("\n");
-  const again = await call("team.ask", { to: "billing", project: record, text: retries, wait: true }, { root, caller: "cli", timeout: 60_000 });
+  const again = await d.registry.call("team.ask", { to: "billing", project: record, text: retries, wait: true }, "cli", await w.meta());   // the owner's own client names the person (Rule 2)
   assert.equal(again.error, undefined, S6(JSON.stringify(again.error)));
   // the Gate now has the three messages. They must be on their way, not held again.
   const gateItems = await until(async () => { const h = await asPerson("gate.held", {}); const items = Array.isArray(h) ? h : h.items || []; return items; }, S6("the Gate has no answer")).catch(() => []);
