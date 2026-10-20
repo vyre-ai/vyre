@@ -34,8 +34,8 @@ test("every relative import of a copied file, and every /opt/agentd/<file> any f
     }
     for (const m of text.matchAll(/\/opt\/agentd\/([A-Za-z0-9._-]+)(\/?)/g)) {
       // a subfolder (computerd/, for agentd-fs.js) is checked file by file in the test below
-      if (m[2] === "/") continue;
       const name = m[1].replace(/\.$/, "");
+      if (m[2] === "/" || (fs.existsSync(path.join(DIR, name)) && fs.statSync(path.join(DIR, name)).isDirectory())) continue;
       if (GENERATED.has(name) || name === "*.js") continue;
       assert.ok(copied.has(name), `${f} names /opt/agentd/${name}, which is not copied`);
     }
