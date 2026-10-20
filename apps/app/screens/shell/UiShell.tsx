@@ -1,6 +1,6 @@
 import { SessionNotice } from "./SessionNotice";
 import { ApprovalSheet } from "./ApprovalSheet";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Platform } from "react-native";
 import { usePathname, useRouter } from "expo-router";
 import { sectionOf, stepSection } from "../build/sections.js";
@@ -18,6 +18,8 @@ import { SERVER_SETUP_ROUTE } from "../install/first-run.js";
 import { NeedsServer } from "./NeedsServer";
 import { call, listen, signIn, signOut } from "../../src/api/box";
 import { viewCache } from "../../src/state/cache";
+import { setNowScope } from "../../ui/tasks/scope";
+import { spaceForKey } from "../../ui/shell/switcher-model.js";
 import { GATE_BUDGET_MS, SHELL_KEY, packShell, unpackShell } from "./shell-cache.js";
 import { useProfiles } from "../../src/state/profiles";
 import { startSpace } from "./real-model";
@@ -43,6 +45,7 @@ export function UiShell({ children }: { children: React.ReactNode }) {
   const arranged = useNavDef(space);
   const loadSidebar = useSidebar((x) => x.load);
   // Nobody signed in: ask once and show the sign-in state, instead of mounting screens that each get a refusal from the box.
+  const lastSpace = useRef("");
   const [gate, setGate] = useState<"asking" | "in" | "out">(allowsMock() ? "in" : "asking");
   useEffect(() => {
     if (allowsMock()) return;
@@ -51,7 +54,8 @@ export function UiShell({ children }: { children: React.ReactNode }) {
     void viewCache.get(SHELL_KEY).then((raw) => {
       const k = unpackShell(raw);
       if (!live || !k) return;
-      if (!useShell.getState().loaded) { set(k.data as never); if (k.space && k.data.spaces.some((x: { id: string }) => x.id === k.space) && useSpaces.getState().space === "all") setShowing(k.space); }
+      lastSpace.current = k.space;
+      if (!useShell.getState().loaded) { set(k.data as never); if (k.space && k.data.spaces.some((x: { id: string }) => x.id === k.space) && !useSpaces.getState().space) setShowing(k.space); }
       setGate((g) => (g === "asking" ? "in" : g));
     }).catch(() => {});
     const limit = setTimeout(() => { if (live) setGate((g) => (g === "asking" ? "in" : g)); }, GATE_BUDGET_MS);
@@ -66,7 +70,7 @@ export function UiShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (allowsMock() || gate !== "in") return;
     let live = true;
-    loadReal().then((d) => { if (!live) return; set(d); if (!d.spaces.some((x) => x.id === useSpaces.getState().space)) setShowing(startSpace(d)); }).catch((e) => live && fail(e instanceof Error ? e.message : "The box did not answer."));
+    loadReal().then((d) => { if (!live) return; set(d); if (!d.spaces.some((x) => x.id === useSpaces.getState().space)) setShowing(startSpace(d, lastSpace.current)); }).catch((e) => live && fail(e instanceof Error ? e.message : "The box did not answer."));
     return () => { live = false; };
   }, [set, fail, setShowing, gate]);
   useEffect(() => {
@@ -79,15 +83,18 @@ export function UiShell({ children }: { children: React.ReactNode }) {
     if (Platform.OS !== "web" || typeof window === "undefined" || (window as unknown as { __vyreShell?: unknown }).__vyreShell) return;
     const on = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return;
-      if (e.key === ",") { e.preventDefault(); router.push("/u/settings" as never); return; }
+      if (e.key === ",") { e.preventDefault(); router.push("/u/spaces" as never); return; }
+      if (e.key.toLowerCase() === "l" && !allowsMock()) { e.preventDefault(); void lockIdentity().then((r: { ok: boolean; message?: string }) => { if (r.ok) lockChanged(); else showToast(r.message ?? "That did not go through."); }); return; }
+      // inside Chat, Cmd N opens the New menu (ChatsSidebar), which starts a thread with anyone
+      if (e.key.toLowerCase() === "n" && !/^\/u\/chats/.test(window.location.pathname)) { e.preventDefault(); router.push("/u/chats/new-thread" as never); return; }
       if (e.key.toLowerCase() === "b" && arranged.bottom.some((b) => b.id === "build")) { e.preventDefault(); router.push("/u/playbooks" as never); return; }
-      const n = Number(e.key);
-      const to = n >= 1 && n <= 4 ? arranged.items[n - 1]?.href : undefined;
-      if (to) { e.preventDefault(); router.push(to as never); }
+      // Cmd 1 to Cmd 9 pick the Space in that place of the footer menu
+      const to = spaceForKey(DATA.spaces, e.key);
+      if (to) { e.preventDefault(); setShowing(to); }
     };
     window.addEventListener("keydown", on);
     return () => window.removeEventListener("keydown", on);
-  }, [router, arranged]);
+  }, [router, arranged, DATA.spaces, setShowing]);
   // Inside Build, up and down move through its list and Escape folds back to the main sidebar, as in Settings.
   useEffect(() => {
     if (Platform.OS !== "web" || typeof window === "undefined" || sectionOf(path) === null) return;
@@ -102,13 +109,13 @@ export function UiShell({ children }: { children: React.ReactNode }) {
   }, [path, router]);
   // On a Basic personal space (no server) the places that need a server say so, and offer the team spaces and a server of the person's own.
   const showing = DATA.spaces.find((x) => x.id === space);
-  const teams = DATA.spaces.filter((x) => x.id !== "all" && !x.basic);
+  const teams = DATA.spaces.filter((x) => !x.basic);
   const needsServer = Boolean(showing?.basic) && gatedPath(path, teams.length > 0);
   const setSpace = useAppearance((s) => s.setSpace);
   const world = useWorld();
   const waiting = world.data ? nowCount(world.data) : 0;
   const nav = { ...arranged, items: arranged.items.map((it) => (it.id === "now" && waiting ? { ...it, badge: waiting } : it)) };
-  const look = looks[space === "all" ? "mine" : space];
+  const look = looks[space || "mine"];
   useEffect(() => { useSpaceLogos.getState().set(Object.fromEntries(Object.entries(looks).filter(([, l]) => l.logo).map(([id, l]) => [id, l.logo as string]))); }, [looks]);
   // Recent: the latest chats under the places, read again when the person moves and the last read is over 20 s old.
   const [recent, setRecent] = useState<{ id: string; label: string; href: string }[]>([]);
@@ -124,9 +131,10 @@ export function UiShell({ children }: { children: React.ReactNode }) {
   useEffect(() => { if (!allowsMock() && gate === "in") void loadProfiles(space); }, [gate, space, loadProfiles]);
   const go = (href: string) => router.push(href as never);
   const { panel, id: panelId } = usePanel(go);
+  useEffect(() => { setNowScope(space); }, [space]);
   useEffect(() => { setSpace(themeFor(space, looks)); }, [space, look, looks, setSpace]);
   return (
-    <Shell {...nav} recent={recent} current={path} onNavigate={(href) => (href === "/u/search" ? openFind() : go(href))} onSearch={openFind} onTheme={(v) => { if (!allowsMock()) setScheme(v).catch(() => showToast("The theme changed here, but it could not be saved.")); }} onLock={() => { void lockIdentity().then((r: { ok: boolean; message?: string }) => { if (r.ok) lockChanged(); else showToast(r.message ?? "That did not go through."); }); }} onSignOut={allowsMock() ? undefined : () => { void signOut(); }} panel={panel} spaces={DATA.spaces} space={space} onSpace={setShowing} user={{ name: DATA.me.name, sub: DATA.me.vyreName, look: ownLook || myLook || undefined }}>
+    <Shell {...nav} onNewChat={() => router.push("/u/chats/new-thread" as never)} recent={recent} current={path} onNavigate={(href) => (href === "/u/search" ? openFind() : go(href))} onSearch={openFind} onTheme={(v) => { if (!allowsMock()) setScheme(v).catch(() => showToast("The theme changed here, but it could not be saved.")); }} onLock={() => { void lockIdentity().then((r: { ok: boolean; message?: string }) => { if (r.ok) lockChanged(); else showToast(r.message ?? "That did not go through."); }); }} onSignOut={allowsMock() ? undefined : () => { void signOut(); }} panel={panel} spaces={DATA.spaces} space={space} onSpace={setShowing} user={{ name: DATA.me.name, sub: DATA.me.vyreName, look: ownLook || myLook || undefined }}>
       <SessionNotice />
       {gate === "asking" ? <LoadingState rows={3} /> : gate === "out" ? (
         <EmptyState title="Sign in to Vyre" body="Nobody is signed in on this device yet." action={{ label: "Sign in", onPress: () => { void signIn(); } }} />

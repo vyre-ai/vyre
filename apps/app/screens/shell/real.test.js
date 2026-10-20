@@ -21,14 +21,14 @@ async function load1(/** @type {any} */ sp, /** @type {any} */ id) {
   return shellFrom(r.spaces, r.identity);
 }
 
-test("one space is the whole switcher; two get All spaces first; names and roles are the box's", { skip: !strip }, async () => {
+test("one space is the whole switcher; two are just the two; names and roles are the box's", { skip: !strip }, async () => {
   const { shellSource } = await import("./real-source.ts");
   const { shellFrom } = await import("./real-model.ts");
   const load = async (/** @type {any} */ sp, /** @type {any} */ id) => { const r = await shellSource(/** @type {any} */ (box(sp, id))).load(); return shellFrom(r.spaces, r.identity); };
   const one = await load({ data: [S1] }, { data: ID });
   assert.deepEqual(one.spaces, [{ id: "spc_a", name: "Juniper Studio", tag: "Juniper Studio", sub: "Owner" }], "the tag is the space's own name");
   const two = await load({ data: [S1, S2] }, { data: ID });
-  assert.deepEqual(two.spaces.map((s) => [s.id, s.name, s.sub]), [["all", "All spaces", "One list, everything"], ["spc_a", "Juniper Studio", "Owner"], ["spc_b", "mine", "Member"]]);
+  assert.deepEqual(two.spaces.map((s) => [s.id, s.name, s.sub]), [["spc_a", "Juniper Studio", "Owner"], ["spc_b", "mine", "Member"]]);
 });
 
 test("the person is their identity on this box, and a missing identity still shows the spaces", { skip: !strip }, async () => {
@@ -48,24 +48,24 @@ test("a box with no identity of its own shows the name this computer has, never 
   assert.equal(pickIdentity(null, null), null);
 });
 
-test("a space still being created says so, and an empty box has only All spaces", { skip: !strip }, async () => {
+test("a space still being created says so, and an empty box has no Space", { skip: !strip }, async () => {
   const { shellSource } = await import("./real-source.ts");
   const m = await import("./real-model.ts");
   const d = await load1({ data: [{ ...S2, status: "creating" }] }, { data: ID });
   assert.equal(d.spaces[0].sub, "Setting up");
   const dead = await load1({ data: [{ ...S2, status: "failed" }] }, { data: ID });
-  assert.deepEqual(dead.spaces.map((s) => s.id), ["all"], "a space that never got its home is not listed");
+  assert.deepEqual(dead.spaces.map((s) => s.id), [], "a space that never got its home is not listed");
   const e = await load1({ data: [] }, { data: ID });
-  assert.deepEqual(e.spaces.map((s) => s.id), ["all"]);
-  assert.equal(m.showingName(e, "all"), "Space");
-  assert.equal(m.startSpace(e), "all");
+  assert.deepEqual(e.spaces.map((s) => s.id), []);
+  assert.equal(m.showingName(e, ""), "Space");
+  assert.equal(m.startSpace(e), "");
 });
 
 test("the showing space's name is the one picked, else the only one", { skip: !strip }, async () => {
   const { shellSource } = await import("./real-source.ts");
   const m = await import("./real-model.ts");
   const d = await load1({ data: [S1, S2] }, { data: ID });
-  assert.deepEqual([m.showingName(d, "spc_b"), m.showingName(d, "all"), m.startSpace(d)], ["mine", "Juniper Studio", "all"]);
+  assert.deepEqual([m.showingName(d, "spc_b"), m.showingName(d, ""), m.startSpace(d), m.startSpace(d, "spc_b")], ["mine", "Juniper Studio", "spc_a", "spc_b"]);
 });
 
 test("a box that cannot list spaces is an error with its code, not an empty shell", { skip: !strip }, async () => {
@@ -97,7 +97,7 @@ test("the switcher: Personal, then a team space with its Cloud tag; nobody sees 
     { id: "spc_1", name: "alex.vyre.run", tier: "basic", setup: { who: "personal" }, role: "owner", status: "done" },
     { id: "spc_2", name: "juniper.vyre.run", tier: "cloud", setup: { who: "team" }, role: "member", status: "done" },
   ]);
-  assert.deepEqual(rows.map((r) => [r.name, r.sub]), [["All spaces", "One list, everything"], ["My Home", "Owner"], ["juniper", "Member"]]);
-  assert.equal(rows[1].basic, true);
+  assert.deepEqual(rows.map((r) => [r.name, r.sub]), [["My Home", "Owner"], ["juniper", "Member"]]);
+  assert.equal(rows[0].basic, true);
   assert.ok(!rows.map((r) => `${r.name} ${r.sub}`).join(" ").match(/Basic|Pro\b|spc_/));
 });

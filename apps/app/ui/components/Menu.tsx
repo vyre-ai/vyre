@@ -25,12 +25,7 @@ export function Menu({ trigger, items, align, header, side }: { trigger: React.R
       {items.map((i) => (
         <Fragment key={i.id ?? i.label}>
           {i.divider ? <View style={{ height: 1, backgroundColor: color.edge, marginVertical: px(map, "--s-1") }} /> : null}
-          <P.Item onPress={i.onPress} style={{ minHeight: px(map, "--control-sm"), flexDirection: "row", alignItems: "center", gap: px(map, "--s-3"), borderRadius: px(map, "--r-row"), paddingHorizontal: px(map, "--s-3") }}>
-            {i.lead ?? null}
-            {/* The theme's colour as a style, never a class: the menu is portalled outside the themed view, where a class only has the custom properties on <html>. */}
-            <Text tone={i.danger ? "err" : "default"} style={{ flex: 1 }} numberOfLines={1}>{i.label}</Text>
-            {i.selected ? <Icon name="check" size={16} tone="text" /> : null}
-          </P.Item>
+          <Choice i={i} map={map} color={color} scheme={resolved.scheme} />
         </Fragment>
       ))}
     </P.Content>

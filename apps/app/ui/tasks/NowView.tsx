@@ -7,7 +7,6 @@ import { Banner } from "../components/Banner";
 import { Card, Divider } from "../components/Card";
 import { Icon } from "../components/Icon";
 import { Row } from "../components/Row";
-import { Segmented } from "../components/Segmented";
 import { Text } from "../components/Text";
 import { ActorMark } from "./ActorMark";
 import { Section } from "./Section";
@@ -140,7 +139,7 @@ export function NeedsList({ world, list, showSpace, onAction, onOpen, hero = 0 }
  * and Recent lives in Chat.
  */
 export function NowView({ world, onAction, onOpen, onMore, notice }: Props & { onMore?: (kind: "needs" | "doing") => void; notice?: string | null }) {
-  const { scope, setScope } = useNowScope();
+  const { scope } = useNowScope(world);
   const [moreNeeds, setMoreNeeds] = useState(false);
   const [moreDoing, setMoreDoing] = useState(false);
   const [doneOpen, setDoneOpen] = useState(false);
@@ -254,7 +253,6 @@ export function NowView({ world, onAction, onOpen, onMore, notice }: Props & { o
   return (
     <View className="gap-s4">
       {/* The greeting, the date and what needs the person are Home's one header (screens/now/HomeHeader.tsx), not repeated here. */}
-      <Segmented fill={phone} label="Spaces" value={scope} onChange={setScope} options={[["all", "All spaces"], ...world.spaces.map((s: any) => [s.id, s.name] as [string, string])]} />
       {notice ? <Banner>{notice}</Banner> : null}
       {wide ? (
         <View className="flex-row items-start gap-s8">

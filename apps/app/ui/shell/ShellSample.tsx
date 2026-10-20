@@ -14,7 +14,6 @@ const SAMPLE_LOGO = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAA
 const SPACES: ShellSpace[] = [
   { id: "spc_juniperstudi", name: "Juniper Studio", sub: "6 people", logo: SAMPLE_LOGO },
   { id: "spc_northwindst", name: "Northwind Studio", sub: "3 people" },
-  { id: "all", name: "All spaces", sub: "" },
 ];
 
 const NAV: NavDef = {
