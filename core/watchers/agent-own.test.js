@@ -3,6 +3,7 @@
 // the person who asked (quoted, capped per day), a Routine that starts its agent at its time with its instructions, the model question on the asker's account, and
 // what is lent to the agent counting in the vault. No child runs here: exec is stubbed, as in wake-runtime.test.js.
 import "../../scripts/mac-test-guard.mjs";
+import { lentToAgent } from "../vault/lent.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -153,7 +154,7 @@ test("its model question carries the agent and the person who asked; the account
 test("the vault lets an agent's own watcher use what is lent to its agent, only for the watchers module and a named watcher", async () => {
   const asked = [];
   const fake = { access: { effectFor: async (agent, item, action) => { asked.push([agent, item, action]); return item === "billing-inbox" ? "allow" : item === "held" ? "ask" : "deny"; } } };
-  const lent = (...a) => Vault.prototype.lentToAgent.call(fake, ...a);
+  const lent = (...a) => lentToAgent(fake, ...a);
   assert.equal(await lent("billing-inbox", "watchers", "northwind-invoices", "scout"), true);
   assert.deepEqual(asked[0], ["scout", "billing-inbox", "vault.read"]);
   assert.equal(await lent("held", "watchers", "northwind-invoices", "scout"), false, "an act held for a person is not lent");

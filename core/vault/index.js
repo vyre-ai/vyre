@@ -57,6 +57,7 @@ import { grantPrompt, putPrompt } from "./prompt.js";
 import { scanEnvFiles } from "./envscan.js";
 import * as requestTools from "./request.js";
 import * as useTools from "./use.js";
+import { lentToAgent } from "./lent.js";
 
 export { presence };
 import * as shareTools from "./tools/share.js";
@@ -373,7 +374,7 @@ export default {
       description: "Whether an item is granted to the calling module, and to exactly this watcher when one is named: { granted }. The same check vault.release makes; no value is returned.",
       input: obj({ name: str, watcher: str, project: str, agent: str }, ["name"]),
       // agent: for an agent's own watcher, what is lent to that agent counts (only the watchers module, for a named watcher)
-      run: async (input, { caller }) => { const mod = String(caller).startsWith("module:") ? String(caller).slice(7) : null; if (!mod) throw new Error("only modules ask whether they hold a grant"); return { granted: vault.granted({ name: input.name, module: mod, ...(input.watcher ? { watcher: input.watcher } : {}), ...(input.project ? { project: input.project } : {}) }) || (await vault.lentToAgent(input.name, mod, String(input.watcher || ""), String(input.agent || ""))) }; },
+      run: async (input, { caller }) => { const mod = String(caller).startsWith("module:") ? String(caller).slice(7) : null; if (!mod) throw new Error("only modules ask whether they hold a grant"); return { granted: vault.granted({ name: input.name, module: mod, ...(input.watcher ? { watcher: input.watcher } : {}), ...(input.project ? { project: input.project } : {}) }) || (await lentToAgent(vault, input.name, mod, String(input.watcher || ""), String(input.agent || ""))) }; },
     });
 
     ctx.tool("vault.release", {
