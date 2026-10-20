@@ -43,7 +43,7 @@ export function BulkActions({ def, records, noun, clear, reload }: { def: any; r
       <Sheet open={open} onClose={() => setOpen(false)} title={`Set a field for ${n} ${noun}`}>
         <View className="gap-s3">
           <Select label="Field" value={f?.name ?? ""} options={fields.map((x) => [x.name, x.label] as [string, string])} onChange={(v) => { setField(v); setValue(""); }} />
-          {f ? <Select label="Value" value={value} options={f.options.map((o) => [o, o] as [string, string])} onChange={setValue} /> : null}
+          {f ? <Select label="Value" value={value} options={f.options.map((o: string) => [o, o] as [string, string])} onChange={setValue} /> : null}
           <Text size="caption" tone="label">Each record is changed as if you changed it yourself. One you may not change is left as it was.</Text>
           <View className="flex-row gap-s2">
             <Button kind="primary" label="Set it" loading={busy} disabled={busy || !value} onPress={() => void setAll()} />

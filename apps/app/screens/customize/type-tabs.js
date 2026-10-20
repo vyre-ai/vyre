@@ -29,7 +29,8 @@ export const holderRows = (rows, nameOf) => (rows || []).filter((r) => r && r.ho
  */
 export function seenRows(def, data, nameOf) {
   if (!data || typeof data !== "object") return [];
-  const word = (/** @type {any} */ v) => {
+  /** @type {(v: any) => string} */
+  const word = (v) => {
     if (v === null || v === undefined || v === "") return "Empty";
     if (typeof v === "boolean") return v ? "Yes" : "No";
     if (typeof v === "string") return /\{\{field:/.test(v) ? "Sealed" : v;
