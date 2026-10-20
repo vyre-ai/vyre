@@ -127,7 +127,9 @@ export default {
     const runTask = async item => {
       if (item.paused) return;
       // Rule 2: a task runs as the person recorded on it. One with nobody (made before Vyre recorded who it runs for, and missed by the upgrade) is held, never run as the owner or the Space's own.
-      if (K && !item.by) { hold(item); return; }
+      // the person is read from the working set: a chained task arrives here in its tool shape (shape()), which leaves the maker out
+      const by = (st.item(item.id) || item).by || null;
+      if (K && !by) { hold(item); return; }
       const text = item.body || item.title;
       const agent = AGENT_SOURCE.exec(item.source || "")?.[1] || null;
       let ok = true, note = "", thread = null;
@@ -145,8 +147,8 @@ export default {
         const r = item.thread
           ? await ctx.call("threads.post", { thread: item.thread, text, kind: "scheduled", from: "planner" })
           : agent
-            ? await ctx.call("agents.job", { agent, prompt: text, ...(item.project ? { project: item.project } : {}), ...(item.by ? { person: String(item.by) } : {}) })
-            : await ctx.call("threads.launch", { project: item.project || undefined, prompt: text, purpose: "job", once: true, ...(item.by ? { person: String(item.by) } : {}) });   // the schedule's maker: it runs on their own account (asker-account.js memberAccount), never the owner's for an admin
+            ? await ctx.call("agents.job", { agent, prompt: text, ...(item.project ? { project: item.project } : {}), ...(by ? { person: String(by) } : {}) })
+            : await ctx.call("threads.launch", { project: item.project || undefined, prompt: text, purpose: "job", once: true, ...(by ? { person: String(by) } : {}) });   // the schedule's maker: it runs on their own account (asker-account.js memberAccount), never the owner's for an admin
         if (r.error) { ok = false; note = r.error.message; }
         else if (r.data && typeof r.data.thread === "string") thread = r.data.thread;   // the job's thread, so the run says where the work is
       } catch (e) { ok = false; note = /** @type {Error} */ (e).message; }

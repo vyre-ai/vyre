@@ -32,7 +32,8 @@ test("a session asks a teammate: the asker's log gets queued, running (with the 
   const { tool, root, project, launches } = await boot(t);
   await tool("team.add", { project: project.record, role: "billing", brief: "invoices" });
   const { thread, session } = await realSession(root, tool, launches, project.slug);
-  const ask = await call("team.ask", { to: "billing", project: project.record, wait: true, text: 'vyre team.done {"result":"Three invoices are overdue: Northwind, Oakline, Brightwell.","notes":"unchanged","reason":"test"}' }, { root, caller: "mcp", session, timeout: 60_000 });
+  // the session's own call from the person's terminal (the socket's cli carries the owner, the bound session names the thread): a request is a person's (Rule 2)
+  const ask = await call("team.ask", { to: "billing", project: project.record, wait: true, text: 'vyre team.done {"result":"Three invoices are overdue: Northwind, Oakline, Brightwell.","notes":"unchanged","reason":"test"}' }, { root, caller: "cli", session, timeout: 60_000 });
   assert.equal(ask.error, undefined, JSON.stringify(ask.error));
   assert.equal(ask.data.state, "done");
 
