@@ -1,13 +1,23 @@
 import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { greeting, partOfDay, summary, dateLine } from "./home-model.js";
+import { greeting, homeName, partOfDay, summary, dateLine } from "./home-model.js";
 
 test("the greeting follows the local hour and uses the first name", () => {
   assert.deepEqual([5, 11, 12, 16, 17, 21, 22, 4].map(partOfDay), ["morning", "morning", "afternoon", "afternoon", "evening", "evening", "night", "night"]);
   assert.equal(greeting(9, "Alex Rivera"), "Good morning, Alex.");
   assert.equal(greeting(2, "Alex"), "Still up, Alex.");
   assert.equal(greeting(14), "Good afternoon.");
+});
+
+test("Home greets the display name, else the username, never You or an id", () => {
+  assert.equal(homeName({ label: "Sam Rivera", name: "sam" }), "Sam Rivera");
+  assert.equal(homeName({ name: "sam" }), "sam");
+  assert.equal(homeName({ label: "You", name: "sam" }), "sam");
+  assert.equal(homeName({ label: "You" }), "");
+  assert.equal(homeName({ name: "per_pbiglgp6ji6jzrnbskpuzw77np" }), "");
+  assert.equal(homeName(null), "");
+  assert.equal(greeting(3, homeName({ label: "Sam Rivera" })), "Still up, Sam.");
 });
 
 test("the summary names only what is there", () => {

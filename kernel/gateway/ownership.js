@@ -39,8 +39,8 @@ export function actingForOf(chain, doer) {
   return doer && doer.kind === "person" ? String(doer.id) : null;
 }
 
-/** The three types this file judges. */
-export const OWNED_TYPES = Object.freeze(["project", "team-member", "task"]);
+/** The types this file judges: the three that decide who sees what, and a person's own profile. */
+export const OWNED_TYPES = Object.freeze(["project", "team-member", "task", "member-profile"]);
 
 /** Project fields that point at files, memory, credentials, another Space or whose project is personal: written only by an owner, an admin or the work service, never by a member, even the project's own. */
 const PROJECT_TRUSTED_FIELDS = Object.freeze(["drive_path", "memory_scope", "credentials", "moved_to", "moved_from", "personal_of", "slug", "archived_at"]);
@@ -62,6 +62,7 @@ const actorsOf = chain => (chain && Array.isArray(chain.hops) ? chain.hops.map((
  * @param {{ op: "create" | "update" | "remove", trusted: boolean, actingFor?: string | null, role?: string, project: (ref: string) => Promise<{ owner: string | null, team: string[], levels?: Record<string, string> } | null>, task?: (id: string) => Promise<any> }} ctx
  */
 export async function mayWrite(chain, type, row, patch, ctx) {
+  if (type === "member-profile") return mayWriteProfile(chain, row, patch, ctx);
   if (!OWNED_TYPES.includes(type) || ctx.trusted) return true;
   const acting = ctx.actingFor ? [...actorsOf(chain), { kind: "person", id: ctx.actingFor }] : actorsOf(chain);
   const me = acting.find((/** @type {any} */ a) => a.kind === "person");
@@ -141,6 +142,24 @@ export async function mayWrite(chain, type, row, patch, ctx) {
     return true;
   }
   throw no("a task is changed by whoever it is for, whoever gave it, or its project's owner or team. Ask one of them.");
+}
+
+/**
+ * A person's profile in a Space (records/core-types.js MEMBER_PROFILE): only that person writes it, as themselves. An owner or an admin is not an exception: they may remove a profile (someone who
+ * left) and never make or change one. No agent writes one, not even the person's own assistant, so how a person is shown to the Space is always their own act.
+ * @param {any} chain @param {any} row @param {any} patch @param {{ op: "create" | "update" | "remove", trusted: boolean }} ctx
+ */
+function mayWriteProfile(chain, row, patch, ctx) {
+  if (ctx.op === "remove" && ctx.trusted) return true;
+  // exactly one hop, the person's own: a person calling through a module, a hook, a Flow step or an agent carries a service or agent hop and is refused
+  const acting = actorsOf(chain);
+  const me = acting.length === 1 && acting[0].kind === "person" ? acting[0] : null;
+  if (!me) throw no("a profile is changed only by its person, from their own device. A module, a Flow or an agent cannot change it.");
+  const person = String(me.id), p = patch && typeof patch === "object" ? patch : {};
+  if (ctx.op === "create") { if (idOf(p.person) !== person) throw no("a profile you make is your own: name yourself as its person."); return true; }
+  if (idOf(row && row.data && row.data.person) !== person) throw no("only the person a profile is about changes it. Ask them.");
+  if (Object.prototype.hasOwnProperty.call(p, "person") && idOf(p.person) !== person) throw no("a profile stays with its person.");
+  return true;
 }
 
 /** May this chain READ this task (one rule, for the Records routes and the tasks service): its doer, giver, checkers, the owner or team of its project, an owner or admin. Only the chain's person counts, never a later hop; a chain with no person is not judged.

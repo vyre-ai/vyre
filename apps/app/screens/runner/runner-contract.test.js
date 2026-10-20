@@ -33,7 +33,7 @@ test("runner contract: each placement the chip has to draw reads as the words DE
   assert.equal(chip(fx.placements.onTheComputer)?.label, "On Office Mac");
   assert.equal(chip(fx.placements.handingOver)?.label, "Moving");
   assert.deepEqual([chip(fx.placements.movedByCondition)?.label, chip(fx.placements.movedByCondition)?.why], ["On the server", "lid closed"]);
-  assert.deepEqual([chip(fx.placements.offeredBack)?.label, chip(fx.placements.offeredBack)?.moveTo], ["Bring back to this Mac?", "mac"]);
+  assert.deepEqual([chip(fx.placements.offeredBack)?.label, chip(fx.placements.offeredBack)?.moveTo], ["Bring back to this computer?", "mac"]);
   assert.deepEqual([chip(fx.placements.theServersOwn)?.label, chip(fx.placements.theServersOwn)?.moveTo], ["On the server", "mac"]);
   for (const p of Object.values(fx.placements)) assert.ok(chipOf(pickPlacement(p)), "every placement the contract lists draws a chip");
 });
@@ -43,7 +43,7 @@ test("runner contract: every reason code and state the contract lists has words,
   for (const r of REASONS) assert.match(movedLine({ to: "server", reason: r }), /^Moved to the server: .+\.$/);
   assert.equal(movedLine({ to: "server", reason: "from-the-future" }), "Moved to the server.");
   for (const s of STATES) assert.ok(chipOf(pickPlacement({ ...fx.placements.onTheComputer, state: s })), `the state ${s} draws a chip`);
-  assert.equal(whyNotLine(fx.calls.whyNot.output.reason), "It did not run on this Mac because lid closed.");
+  assert.equal(whyNotLine(fx.calls.whyNot.output.reason), "It did not run on this computer because lid closed.");
 });
 
 test("runner contract: settings and the list read as the contract's answers; the list reads the producer's own line", () => {

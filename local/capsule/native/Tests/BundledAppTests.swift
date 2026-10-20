@@ -32,6 +32,9 @@ let bundledAppSuite = Suite("bundled app") { t in
             t.eq(VyreAppWindow.shared.boxless, false, "closed, it is not boxless")
             t.ok(VyreAppWindow.bridgeSource.contains("version: window.__vyreVersion"), "the bridge carries the app version")
             t.eq(VyreAppWindow.versionScript("0.3.0-rc.1"), "window.__vyreVersion = \"0.3.0-rc.1\";")
+            t.ok(VyreAppWindow.bridgeSource.contains("arch: window.__vyreArch"), "the bridge carries this Mac's chip, for the update's dmg")
+            t.eq(VyreAppWindow.archScript("aarch64"), "window.__vyreArch = \"aarch64\";")
+            t.ok(["aarch64", "x86_64"].contains(VyreAppWindow.arch))
         }
     }
 

@@ -25,3 +25,21 @@ export function newMenuRows(query, agents, people) {
 
 /** The first row Enter picks. @param {ReturnType<typeof newMenuRows>} r @returns {NewRow | null} */
 export const firstRow = (r) => r.agents[0] ?? r.people[0] ?? r.make[0] ?? null;
+
+/**
+ * The agents the New menu offers, from the chat list's rows: every row that is one agent (your assistant's own chat, an agent's threads, an agent with no chat yet), by the name a person reads,
+ * your assistant first and said as yours. Never a second row for the same agent.
+ * @param {readonly { id: string, title: string, lone: string, section: string, agent?: string, names?: readonly string[] }[]} convos @returns {{ id: string, name: string, role?: string }[]}
+ */
+export function newMenuAgents(convos) {
+  const seen = new Set();
+  /** @type {{ id: string, name: string, role?: string }[]} */ const out = [];
+  for (const c of convos) {
+    if (c.lone !== "agent") continue;
+    const key = String(c.agent || (c.names && c.names[0]) || c.title).toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ id: c.id, name: c.title, ...(c.section === "pinned" ? { role: "Your assistant" } : {}) });
+  }
+  return out.sort((a, b) => Number(!!b.role) - Number(!!a.role));
+}

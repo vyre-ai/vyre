@@ -231,6 +231,18 @@ test("waiting.list on a Mac leaves out the planner, which is the box's over the 
   assert.equal(w.calls["planner.ringing"] || 0, 0, "a Mac's vyred never asks the box's planner on its own");
 });
 
+test("waiting.list: one source that hangs no longer delays the list; the others answer and the slow one is named in partial", async t => {
+  const slow = new Promise(r => setTimeout(() => r([RING]), 3500));
+  const w = await world(t, ALL, { held: [HELD], pending: [PAIR], ringing: slow });
+  const t0 = Date.now();
+  const r = (await w.call("waiting.list")).data;
+  const took = Date.now() - t0;
+  assert.ok(took < 3000, `the list answered in ${took} ms, inside the source budget, not after the hanging planner`);
+  assert.deepEqual(r.rows.map(x => x.id), ["gate:g1", "link:p1"], "what answered is on the list");
+  assert.ok(Array.isArray(r.partial) && r.partial.includes("planner"), "the slow source is named");
+  await slow;
+});
+
 test("a signing card from the approvals queue is counted as its own kind and reads like the others", async () => {
   const { tally } = await import("./index.js");
   assert.deepEqual(tally([{ kind: "signing" }, { kind: "ask" }]).by_kind.signing, 1);

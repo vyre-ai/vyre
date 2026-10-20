@@ -46,7 +46,7 @@ import * as config from "../config/index.js";
 import { ensure as ensureBearer } from "../../lib/bearer/index.js";
 import { agentClaim } from "../modules/index.js";
 import { effectiveComputers } from "../../lib/computers-env.js";
-import { plainError, plainComputerError, NO_EXEC_WORDS, NOT_STARTED_WORDS } from "./plain.js";
+import { plainError, plainComputerError, NO_EXEC_WORDS } from "./plain.js";
 import { AGENT_NAME_RE, modelSessionMustClaimAgent, resolveComputerAgent } from "../../lib/computer-agent.js";
 
 const str = { type: "string" };
@@ -153,7 +153,7 @@ export default {
       open: async (/** @type {string} */ agent) => {
         await agentUsers.wake(agent);
         const h = pool.hosts.get(SHARED_COMPUTER_ID);
-        if (!h) throw new Error(NOT_SET);
+        if (!h) throw notSet();
         // the relay lets in vyred's address only: have the computer pin this vyred's address (it can change when vyred is recreated) before the ticket
         await pool.pin(SHARED_COMPUTER_ID);
         const hello = crypto.randomBytes(24).toString("base64url");
@@ -167,7 +167,7 @@ export default {
     /** The agent's Chrome for the code that drives it (hands, fill): a ticket with the relay for its debugging pipe, held as one link per agent in the adapter (cdp-adapter.js). */
     const cdpAdapter = createCdpAdapter({ log: ctx.log, open: async (/** @type {string} */ agent) => {
       const h = pool.hosts.get(SHARED_COMPUTER_ID);
-      if (!h) throw new Error(NOT_SET);
+      if (!h) throw notSet();
       await pool.pin(SHARED_COMPUTER_ID);
       const hello = crypto.randomBytes(24).toString("base64url");
       await agentUsers.cdpTicket(agent, hello);
@@ -179,7 +179,7 @@ export default {
     const agentTerminal = {
       openTerminal: async (/** @type {string} */ agent, /** @type {string} */ session) => {
         const h = pool.hosts.get(SHARED_COMPUTER_ID);
-        if (!h) throw new Error(NOT_SET);
+        if (!h) throw notSet();
         await pool.pin(SHARED_COMPUTER_ID);
         const hello = crypto.randomBytes(24).toString("base64url");
         await agentUsers.terminalTicket(agent, hello, session);
@@ -290,7 +290,8 @@ export default {
     // What starts work there (a new agent user, a screen, a command, a session, a terminal) first brings the Space's computer up when it is not running: it is made
     // from the current image the first time an agent needs it, so waking an agent works on a fresh server. A failure to bring it up is kept, in plain words, for
     // computers.agent.status to show until the computer runs.
-    const NOT_SET = NOT_STARTED_WORDS;
+    // Said to a person in the Computer tab, so in plain words with the next step; the code lets the app add the button (computer_unavailable in lib/error-catalogue.js).
+    const NOT_SET = "This agent's computer isn't running on your server yet. An owner can set it up in Settings, This computer.";
     const BRINGS_UP = new Set(["createUser", "startScreen", "exec", "runTicket", "terminalTicket"]);
     /** @type {{ code: string, message: string } | null} */
     let spaceProblem = null;
@@ -549,7 +550,7 @@ export default {
       ticket: (agent, hello, spec) => agentUsers.runTicket(agent, hello, spec),
       where: async () => {
         const h = pool.hosts.get(SHARED_COMPUTER_ID);
-        if (!h) throw new Error(NOT_SET);
+        if (!h) throw notSet();
         // the relay lets in vyred's address only: have the computer pin this vyred's address first
         await pool.pin(SHARED_COMPUTER_ID);
         return { host: h.host, port: RELAY_PORT };

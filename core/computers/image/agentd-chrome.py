@@ -15,6 +15,10 @@ BASE = "/var/lib/vyre/browsers/agb%d" % uid
 PROFILE = BASE + "/profile"
 SOCK = BASE + "/cdp.sock"
 DOWNLOADS = "/var/lib/vyre/downloads/ag%d" % N
+# The dock's Chrome button (agentd-dock.py, the agent's uid): a FIFO in the folder that already carries the agent's X cookie (the browser's, group = the agent's, 2750, so the agent cannot
+# replace it). The agent may write to it and nothing it writes is read: any byte means "show Chrome", at most once every two seconds, and the holder then opens one blank tab itself.
+SHOW = "/var/lib/vyre/x/ag%d/show-chrome" % N
+SHOW_ID = 2147000001                # far above any id a client of the pipe counts up to; its answer is dropped by the client (no such pending call)
 MAX_MSG = 16 * 1024 * 1024
 MAX_PENDING = 32 * 1024 * 1024
 IDLE = 600
@@ -66,6 +70,8 @@ def into_place():
 chrome = subprocess.Popen(
     ["/usr/bin/chromium", "--user-data-dir=" + PROFILE, "--no-first-run", "--restore-last-session", "--disk-cache-dir=" + BASE + "/cache",
      "--password-store=basic", "--disable-sync", "--disable-extensions", "--no-default-browser-check", "--remote-debugging-pipe",
+     # closing the last window leaves Chrome running (the holder, the agent's hands and the dock's Chrome button keep working); sleep still ends it with Browser.close
+     "--keep-alive-for-test",
      # the computer is the sandbox: Docker's default seccomp refuses the namespaces Chrome's own sandbox needs ("No usable sandbox!"), exactly as for the computer's Chrome in entrypoint.sh
      "--no-sandbox", "--test-type", "--disable-gpu"],
     env=ENV, preexec_fn=into_place, pass_fds=(3, 4), close_fds=True)
@@ -82,6 +88,26 @@ srv.bind(SOCK)
 os.umask(old)
 os.chmod(SOCK, 0o600)
 srv.listen(1)
+
+
+def show_fifo():
+    # made fresh each start, as the browser uid, in the setgid folder: the group is the agent's, and only the group may write (no read: the agent learns nothing from it)
+    try:
+        os.unlink(SHOW)
+    except OSError:
+        pass
+    try:
+        os.mkfifo(SHOW, 0o600)
+        os.chmod(SHOW, 0o620)
+        # read and write, so the FIFO never reads as closed when a writer goes away
+        return os.open(SHOW, os.O_RDWR | os.O_NONBLOCK)
+    except OSError:
+        return None     # no button, nothing else lost
+
+
+show = show_fifo()
+show_due = False   # a show was asked for and waits for the client's message in progress to end
+show_at = 0.0
 
 client = None
 out = b""          # waiting to be written to the client
@@ -113,20 +139,32 @@ def finish(*_):
             chrome.terminate()
     except OSError:
         pass
-    try:
-        os.unlink(SOCK)
-    except OSError:
-        pass
+    for path in (SOCK, SHOW):
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
     sys.exit(0)
 
 
 signal.signal(signal.SIGTERM, finish)
 while chrome.poll() is None:
-    rl = [srv, from_chrome_r] + ([client] if client else [])
+    rl = [srv, from_chrome_r] + ([client] if client else []) + ([show] if show is not None else [])
     wl = [client] if client and out else []
     ready, writable, _ = select.select(rl, wl, [], 5)
     if client and time.time() - last > IDLE:
         drop()
+    if show is not None and show in ready:
+        try:
+            os.read(show, 4096)     # what was written is never looked at
+        except OSError:
+            pass
+        if time.time() - show_at >= 2:
+            show_due, show_at = True, time.time()
+    # only between two of the client's messages, so the tab request is never written into the middle of one
+    if show_due and since_nul == 0:
+        show_due = False
+        os.write(to_chrome_w, b'{"id":%d,"method":"Target.createTarget","params":{"url":"about:blank"}}\0' % SHOW_ID)
     if srv in ready:
         c, _ = srv.accept()
         if client is None:

@@ -20,6 +20,7 @@ import { createDeferredStore } from "./deferred-store.js";
 import { TwentyClient } from "./client.js";
 import { provisionSpace, spaceDir, realRunner, MEMORY_PROFILES, autoProfile, keyHealth, rotateApiKey, KEY_WARN_DAYS } from "./provision.js";
 import { CORE_TYPES } from "../../records/core-types.js";
+import { typesChanged } from "../../kernel/store/types-signal.js";
 import { helperPresent, helperRunner } from "./helper.js";
 import { isPackaged } from "../../kernel/devbuild.js";
 
@@ -105,7 +106,7 @@ export async function planStore(o) {
  * Space; for a hosted one its space.json, which carries `accept_builtin_store` when the person agreed to the built-in store). Returns a store, or undefined for SQLite.
  * Options, all with defaults: `home` (the daemon's root; a Space's state lives under <home>/kernel), `reach` ("ip", or "alias" with `gatewayContainer` attached to the
  * Space's network), `memory` ("small"), `runner` (docker through the box's proxy), `mode` (VYRE_STORE).
- * @param {{ home: string, mode?: string, degrade?: boolean, retryBaseMs?: number, retryMaxMs?: number, log?: (line: string) => void, runner?: any, memory?: any, preflight?: typeof preflight, provision?: typeof provisionSpace, reach?: "alias" | "ip", gatewayContainer?: string | null, rotate?: typeof rotateApiKey, keyCheckEveryMs?: number, makeStore?: (o: { space: string, name: string, p: any }) => any }} cfg
+ * @param {{ home: string, mode?: string, degrade?: boolean, retryBaseMs?: number, retryMaxMs?: number, log?: (line: string) => void, runner?: any, memory?: any, preflight?: typeof preflight, provision?: typeof provisionSpace, reach?: "alias" | "ip", gatewayContainer?: string | null, rotate?: typeof rotateApiKey, keyCheckEveryMs?: number, makeStore?: (o: { space: string, name: string, p: any }) => any, coreTypes?: boolean }} cfg
  * @returns {(space: string, meta?: any) => Promise<any | undefined>}
  */
 /** What the first start is doing, in words a person can read, for each phase the provisioning reports (stores/twenty/provision.js `phase`). */
@@ -124,8 +125,10 @@ export function startingWords(phase, sinceMs) {
 export function createStoreFor(cfg) {
   const mode = cfg.mode ?? storeMode(process.env, { server: cfg.server });
   const log = cfg.log ?? (() => {});
-  /** @type {Map<string, { phase?: string, since: number }>} where each Space's first start is */
+  /** @type {Map<string, { phase?: string, since: number, upgrade?: { done: number, total: number } | null }>} where each Space's first start is */
   const progress = new Map();
+  /** How far the new core types are while the store is still away and in its core-types phase, or null. @param {string} space */
+  const upgradeOf = (space) => { const g = progress.get(space); return g && g.upgrade && /^core types/.test(g.phase || "") ? g.upgrade : null; };
   /** @type {any} */
   const open = async function (/** @type {string} */ space, /** @type {any} */ meta = {}) {
     if (!progress.has(space)) progress.set(space, { since: Date.now() });
@@ -176,23 +179,27 @@ export function createStoreFor(cfg) {
     const timer = setInterval(() => { checkKey().catch((e) => log(`the daily key check failed: ${e.message}`)); }, (cfg.keyCheckEveryMs ?? 24 * 3600 * 1000)); timer.unref();
     const sdir = path.join(spaceDir(twentyHome, name), "state");
     fs.mkdirSync(sdir, { recursive: true, mode: 0o700 });
-    // `cfg.makeStore` (a test seam) stands in for the Twenty store and its core types, so the attach paths can be exercised without a Twenty.
+    // `cfg.makeStore` (a test seam) stands in for the Twenty store and its core types, so the attach paths can be exercised without a Twenty; with `cfg.coreTypes` the core types are still added to it.
     const store = cfg.makeStore ? cfg.makeStore({ space, name, p }) : createTwentyStore({ space, client: new TwentyClient({ url: p.url, key: () => fs.readFileSync(p.keyFile, "utf8").trim() }), dir: sdir, webhookSecret: fs.readFileSync(p.webhookSecretFile, "utf8").trim(), log });
-    // the kernel's own types are a kernel act at start (idempotent), like a module's `needs.types`
+    // the kernel's own types are a kernel act at start (idempotent), like a module's `needs.types`. A Space that already has its types opens on them; the core types an update brought are added
+    // after "Records ready", in the background (openCore): Twenty pays a cache rebuild per field, and 13 new types held a live server's Records, Flows and Kits for 25 minutes.
     const tc = Date.now();
     { const g = progress.get(space); if (g) g.phase = "core types"; }
     log("phase core types: started");
-    if (!cfg.makeStore) await defineCore(store, log);
+    /** @type {any} */ let opened = store;
+    if (!cfg.makeStore || cfg.coreTypes) opened = await openCore(store, log, { onUpgrade: (u) => { const g = progress.get(space); if (g) g.upgrade = u; } });
     log(`phase core types: ${((Date.now() - tc) / 1000).toFixed(1)}s`);
     // the firewall rules are the root helper's to derive from the Space's real network (docs/work/records.md, "Root helper"); a guessed subnet written here would be wrong
     fs.writeFileSync(choiceFile, JSON.stringify({ kind: "twenty", name, ...(/** @type {any} */ (p).port ? { host: "127.0.0.1", port: /** @type {any} */ (p).port } : {}) }), { mode: 0o600 });
     log(`store for ${space}: Records ready`);
     // The first list a person opens is the slow one (Twenty's first query of a fresh server: p95 316 ms against 41 ms after, stores/twenty/live/perf-live.mjs): ask once now, throwaway, so they never meet it.
     if (!cfg.makeStore) void Promise.resolve().then(() => store.query("contact", { page: { limit: 50 } })).catch(() => {});
-    /** @type {any} */ (store).keyCheck = checkKey;
-    /** @type {any} */ (store).stopKeyCheck = () => clearInterval(timer);
-    return store;
+    /** @type {any} */ (opened).keyCheck = checkKey;
+    /** @type {any} */ (opened).stopKeyCheck = () => clearInterval(timer);
+    return opened;
   };
+  /** The new core types start once whoever holds the store has it: at once for a store handed straight over, after the replay for one that joins a waiting store (`holder`, told when each type lands). @param {any} real @param {any} [holder] */
+  const begin = (real, holder) => { if (real && typeof real.startUpgrade === "function") real.startUpgrade(holder); return real; };
   // `cfg.degrade` (the daemon sets it): a store that cannot be set up must not stop the daemon, or the supervisor starts it again forever. The Space gets a store that
   // answers `unavailable` in plain words, `<dir>/store-state.json` says why, and the setup is tried again in the background (5 s, doubling to a minute, or now with `retry`).
   // A refusal that is an answer to a person (`needs_confirmation`) and a bad VYRE_STORE value still throw.
@@ -217,6 +224,7 @@ export function createStoreFor(cfg) {
       waiting.delete(space);
       try { fs.rmSync(stateFile(w.dir), { force: true }); } catch { /* none */ }
       log(`store for ${space}: Records are available now`);
+      begin(real, w.store);
     } catch (e) {
       w.starting = false; w.attempts++; w.reason = /** @type {Error} */ (e).message;
       const wait = backoff(w.attempts);
@@ -226,7 +234,7 @@ export function createStoreFor(cfg) {
     } finally { w.running = false; }
   };
   const storeFor = async function (/** @type {string} */ space, /** @type {any} */ meta = {}) {
-    if (!cfg.degrade) return open(space, meta);
+    if (!cfg.degrade) return begin(await open(space, meta));
     const dir = meta.personal ? path.join(cfg.home, "kernel") : path.join(cfg.home, "kernel", "spaces", space);
     // A first start makes the Space's database (minutes, and on a box it needs the root helper, which the installer adds once the server answers): past `startWaitMs` the
     // server goes on with the waiting store and the setup finishes in the background, so a slow store never keeps the server's socket closed.
@@ -237,10 +245,10 @@ export function createStoreFor(cfg) {
       const got = await Promise.race([opening, late]);
       clearTimeout(slow);
       // The store opened at once. A record left by an earlier process that could not (this one has no waiting entry to clear it) is no longer true.
-      if (got !== LATE) { if (!waiting.has(space)) { try { fs.rmSync(stateFile(dir), { force: true }); } catch { /* none */ } } return got; }
+      if (got !== LATE) { if (!waiting.has(space)) { try { fs.rmSync(stateFile(dir), { force: true }); } catch { /* none */ } } return begin(got); }
       const w = waiting.get(space) ?? { store: null, dir, meta, attempts: 0, reason: "", since: new Date().toISOString(), timer: null, running: true };
       w.reason = "the record store is still starting"; w.running = true; w.starting = true;
-      if (!w.store) w.store = createDeferredStore({ onProgress: (words) => { const g = progress.get(space); if (g) g.phase = words; }, ...(cfg.storeWaitMs !== undefined ? { waitMs: cfg.storeWaitMs } : {}), waits: () => w.starting === true, reason: () => (w.starting ? startingWords(progress.get(space)?.phase, Date.now() - (progress.get(space)?.since ?? Date.now())) : `the record store for this space is not available yet: ${w.reason}`), log });
+      if (!w.store) w.store = createDeferredStore({ onProgress: (words) => { const g = progress.get(space); if (g) g.phase = words; }, ...(cfg.storeWaitMs !== undefined ? { waitMs: cfg.storeWaitMs } : {}), waits: () => w.starting === true, upgrade: () => upgradeOf(space), reason: () => (w.starting ? startingWords(progress.get(space)?.phase, Date.now() - (progress.get(space)?.since ?? Date.now())) : `the record store for this space is not available yet: ${w.reason}`), log });
       waiting.set(space, w);
       log(`store for ${space}: still starting; the server goes on and the store joins when it is ready`);
       opening.then(async (real) => {
@@ -249,6 +257,7 @@ export function createStoreFor(cfg) {
         waiting.delete(space);
         try { fs.rmSync(stateFile(w.dir), { force: true }); } catch { /* none */ }
         log(`store for ${space}: Records are available now`);
+        begin(real, w.store);
       }).catch((e) => {
         // A failed open AND an attach() that throws after it come here (a second argument to then() would not catch the attach): the record was removed when the store opened, so it is written again.
         w.starting = false; w.attempts++; w.reason = /** @type {Error} */ (e).message;
@@ -264,7 +273,7 @@ export function createStoreFor(cfg) {
       if (err && (err.code === "needs_confirmation" || /^VYRE_STORE is /.test(String(err.message)))) throw e;
       const w = waiting.get(space) ?? { store: null, dir, meta, attempts: 0, reason: "", since: new Date().toISOString(), timer: null, running: false };
       w.attempts++; w.reason = String(err && err.message || e);
-      if (!w.store) w.store = createDeferredStore({ onProgress: (words) => { const g = progress.get(space); if (g) g.phase = words; }, ...(cfg.storeWaitMs !== undefined ? { waitMs: cfg.storeWaitMs } : {}), waits: () => w.starting === true, reason: () => (w.starting ? startingWords(progress.get(space)?.phase, Date.now() - (progress.get(space)?.since ?? Date.now())) : `the record store for this space is not available yet: ${w.reason}`), log });
+      if (!w.store) w.store = createDeferredStore({ onProgress: (words) => { const g = progress.get(space); if (g) g.phase = words; }, ...(cfg.storeWaitMs !== undefined ? { waitMs: cfg.storeWaitMs } : {}), waits: () => w.starting === true, upgrade: () => upgradeOf(space), reason: () => (w.starting ? startingWords(progress.get(space)?.phase, Date.now() - (progress.get(space)?.since ?? Date.now())) : `the record store for this space is not available yet: ${w.reason}`), log });
       waiting.set(space, w);
       const wait = backoff(w.attempts);
       writeState(w, { next_try_at: new Date(Date.now() + wait).toISOString() });
@@ -299,4 +308,127 @@ export async function defineCore(store, log = () => {}) {
   }
   // a Space made when links were urn text is moved onto relations once, here (a Space already on relations: one metadata read)
   { const up = await store.upgradeLinks(); if (up.applied) log(`links moved to relations: ${up.changes.join("; ")}`); }
+}
+
+/** What a call gets while an update's new record types are being added: how far it is, and that nobody has to do anything. @param {number} done @param {number} total */
+export const upgradeWords = (done, total) => `Records are being upgraded (${done} of ${total} new types). This finishes on its own.`;
+
+/** The store calls that name a type first: refused in words for a new type that has not landed yet. */
+const TYPED = new Set(["describe", "get", "query", "aggregate", "create", "update", "remove", "restore", "scrub", "destroy", "verify"]);
+
+/** The types `def` links to. @param {any} def @returns {string[]} */
+const linksOf = (def) => (def && Array.isArray(def.fields) ? def.fields : []).filter((/** @type {any} */ f) => f && f.kind === "link" && typeof f.to === "string").map((/** @type {any} */ f) => String(f.to));
+
+/**
+ * The new types in an order each can be added on its own: first a type whose links all name a type that is there (or one added before it). Types that link to each other in a ring go in together.
+ * @param {any[]} fresh @param {Set<string>} known @returns {any[][]}
+ */
+export function upgradeOrder(fresh, known) {
+  const have = new Set(known), left = [...fresh], out = [];
+  while (left.length) {
+    const i = left.findIndex((t) => linksOf(t).every((to) => to === t.name || have.has(to) || !left.some((x) => x.name === to)));
+    if (i < 0) { out.push(left.splice(0)); break; }
+    const [t] = left.splice(i, 1); have.add(t.name); out.push([t]);
+  }
+  return out;
+}
+
+/**
+ * A Space's core types when its store opens. A new Space (none of its core types yet) gets them all now, as before. A Space that already has its types opens on them: the types an update added are
+ * left for `startUpgrade(holder)` to add in the background, one at a time (each define is short, so a definition anyone else makes waits for one type, not all of them), each said in the log
+ * ("adding n of m new record types"). Until a type lands, a record call for it is refused in words (upgradeWords), and a definition that links to it brings it along. The returned store is the
+ * real one with that layer on top; its `upgrade()` says { done, total, pending } while types are missing, and null after.
+ * @param {any} store @param {(line: string) => void} [log] @param {{ onUpgrade?: (u: { done: number, total: number } | null) => void }} [o]
+ */
+export async function openCore(store, log = () => {}, o = {}) {
+  const known = new Set((await store.types()).map((/** @type {any} */ t) => t.name));
+  const fresh = CORE_TYPES.filter((t) => !known.has(t.name));
+  if (!fresh.length || fresh.length === CORE_TYPES.length) { await defineCore(store, log); return store; }
+  // the links of the types the Space already has are its own: brought onto relations before it opens, as before
+  if (typeof store.upgradeLinks === "function") { const up = await store.upgradeLinks(); if (up && up.applied) log(`links moved to relations: ${up.changes.join("; ")}`); }
+  return withUpgrade(store, fresh, known, log, o.onUpgrade);
+}
+
+/**
+ * The store with the new types still to add on top of it (see openCore).
+ * @param {any} store @param {any[]} fresh @param {Set<string>} known @param {(line: string) => void} log @param {(u: { done: number, total: number } | null) => void} [onUpgrade]
+ */
+export function withUpgrade(store, fresh, known, log, onUpgrade = () => {}) {
+  const total = fresh.length;
+  /** @type {Map<string, any>} */ const pending = new Map(fresh.map((t) => [t.name, t]));
+  let done = 0, started = false;
+  /** @type {any[]} */ const holders = [];
+  const state = () => (pending.size ? { done, total, pending: [...pending.keys()] } : null);
+  const say = () => { const u = state(); onUpgrade(u ? { done: u.done, total: u.total } : null); };
+  /** @type {any} */ let proxy = null;
+  const landed = (/** @type {string[]} */ names) => {
+    for (const n of names) if (pending.delete(n)) done++;
+    say();
+    for (const h of [proxy, ...holders]) if (h) typesChanged(h);   // the gateway keeps a copy of what the store's types say
+  };
+  /** The pending types `diff` links to (and the ones they link to), which it must bring along. @param {any} diff */
+  const needed = (diff) => {
+    const mine = [...(diff.add_types ?? []), ...(diff.change_types ?? [])].filter(Boolean);
+    const named = new Set(mine.map((t) => t.name));
+    /** @type {Map<string, any>} */ const want = new Map();
+    const walk = (/** @type {any} */ t) => { for (const to of linksOf(t)) { const p = pending.get(to); if (p && !named.has(to) && !want.has(to)) { want.set(to, p); walk(p); } } };
+    for (const t of mine) walk(t);
+    return [...want.values()];
+  };
+  /** @param {any} diff @param {any} [opt] */
+  const define = async (diff, opt) => {
+    const bring = diff && typeof diff === "object" ? needed(diff) : [];
+    if (!bring.length) return store.define(diff, opt);
+    log(`a definition links to ${bring.map((t) => t.name).join(", ")}, still being added: added with it`);
+    const r = await store.define({ ...diff, add_types: [...bring, ...(diff.add_types ?? [])] }, opt);
+    landed(bring.map((t) => t.name));
+    return r;
+  };
+  /** The fields a definition costs on this store, the new types it brings along counted (stores/twenty/deferred-store.js defineTimeout). @param {any} diff */
+  const fieldsFor = (diff) => (diff && typeof diff === "object" ? [...needed(diff), ...(diff.add_types ?? []), ...(diff.change_types ?? [])] : []).reduce((n, t) => n + (Array.isArray(t && t.fields) ? t.fields.length : 0), 0);
+  const run = async () => {
+    log(`adding ${total} new record types in the background: ${fresh.map((t) => t.name).join(", ")}`);
+    const t0 = Date.now();
+    for (const group of upgradeOrder(fresh, known)) {
+      const left = group.filter((t) => pending.has(t.name));
+      if (!left.length) continue;
+      const names = left.map((t) => t.name).join(", ");
+      log(`adding ${done + 1}${left.length > 1 ? `-${done + left.length}` : ""} of ${total} new record types (${names})`);
+      const t1 = Date.now();
+      try { await store.define({ add_types: left }); }
+      catch (e) { log(`new record types ${names} could not be added (${/** @type {Error} */ (e).message}); they are tried again at the next start`); continue; }
+      landed(left.map((t) => t.name));
+      log(`added ${names} in ${((Date.now() - t1) / 1000).toFixed(1)}s (${done} of ${total})`);
+    }
+    log(`new record types: ${done} of ${total} added in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+    // a type that could not be added is not held as "being added" for ever: its calls go to the store and say what it says
+    if (pending.size) { log(`not added this time: ${[...pending.keys()].join(", ")}`); pending.clear(); say(); }
+  };
+  /** @type {Record<string, any>} */ const extra = {
+    upgrade: state,
+    fieldsFor,
+    define,
+    /** Start adding the new types (once). `holder`: the store the kernel holds when it is not this one (a waiting store this one joined), told when each type lands. @param {any} [holder] */
+    startUpgrade: (/** @type {any} */ holder) => {
+      if (holder && !holders.includes(holder)) holders.push(holder);
+      if (started) return;
+      started = true;
+      void run().catch((e) => log(`the new record types stopped: ${/** @type {Error} */ (e).message}`));
+    },
+  };
+  say();
+  proxy = new Proxy(store, {
+    get(target, prop) {
+      if (prop === "then") return undefined;
+      if (typeof prop === "string" && Object.prototype.hasOwnProperty.call(extra, prop)) return extra[prop];
+      const v = target[prop];
+      if (typeof v !== "function") return v;
+      if (typeof prop === "string" && TYPED.has(prop)) return (/** @type {any} */ type, /** @type {any[]} */ ...a) => {
+        if (pending.has(type)) return Promise.reject(Object.assign(new Error(`${upgradeWords(done, total)} The ${type} records are not there until it does.`), { code: "unavailable", name: "StoreError" }));
+        return v.call(target, type, ...a);
+      };
+      return v.bind(target);
+    },
+  });
+  return proxy;
 }

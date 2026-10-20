@@ -22,3 +22,13 @@ export function columnCall(type, d) {
 
 /** The name of the field a call made, when the answer says: { field: { name } } or { name }. @param {any} data */
 export const madeName = (data) => (data && (data.field && data.field.name || data.name)) || undefined;
+
+/**
+ * After a fast field is added, the call that makes it a real field of the store (records.field.promote), so it can be filtered and sorted; the app starts it in the background. Null for a link, which is real at once,
+ * or when the answer names no field. @param {string} type @param {{ tool: string }} call @param {any} data
+ */
+export function promoteCall(type, call, data) {
+  const f = data && data.field;
+  if (call.tool !== "records.field.add" || !f || typeof f.name !== "string" || f.state === "real") return null;
+  return { tool: "records.field.promote", input: { type, name: f.name } };
+}

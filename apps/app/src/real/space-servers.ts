@@ -2,6 +2,7 @@
 // asks (src/real/box.ts tool) routes by it (server-route.js). With one pairing there is nothing to route, so the map is empty and every call goes where it always went. A server that did not answer keeps what
 // was known of it, so one server being offline never loses the other's Spaces.
 import { approvalServersFrom, mergeAmbiguous, chatServersFrom, itemSpacesFrom, mergeSpaceLists, serverFor, spaceServersFrom } from "./server-route.js";
+import { within } from "../../../../lib/within.js";
 
 type Rows = Array<{ id?: unknown; member?: unknown } | null>;
 
@@ -66,13 +67,17 @@ export async function listAllSpaces(): Promise<Array<Record<string, any>> | null
   return mergeSpaceLists(await askAll());
 }
 
-/** Ask every server for its chats and learn which holds which. A server that does not answer keeps what was known of it. */
+/** How long one server's chat list may take: past it the list is drawn from the servers that answered, so one slow server never holds the Chat list on its placeholder. */
+export const CHATS_SERVER_MS = 4000;
+const LATE = Symbol("late");
+
+/** Ask every server for its chats and learn which holds which. A server that does not answer, or not within CHATS_SERVER_MS, keeps what was known of it. */
 async function learnChats(input: Record<string, unknown> = {}): Promise<Record<string, any>> {
   const ids = await pairedBoxes();
   const { peerCall } = await io();
-  const got = await Promise.allSettled(ids.map((id) => peerCall<any>("work.chat.list", { limit: 200, ...input }, id)));
+  const got = await Promise.allSettled(ids.map((id) => within(peerCall<any>("work.chat.list", { limit: 200, ...input }, id), CHATS_SERVER_MS, LATE)));
   const lists: Record<string, any> = {};
-  ids.forEach((id, n) => { const r = got[n]; if (r.status === "fulfilled") lists[id] = r.value; });
+  ids.forEach((id, n) => { const r = got[n]; if (r.status === "fulfilled" && r.value !== LATE) lists[id] = r.value; });
   chatMap = { ...Object.fromEntries(Object.entries(chatMap).filter(([, b]) => !(b in lists))), ...chatServersFrom(lists) };
   return lists;
 }

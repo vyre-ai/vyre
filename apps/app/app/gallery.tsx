@@ -14,7 +14,7 @@ import { setBoxOverride } from "../src/real/box";
 import { RealSite, RealSites } from "../screens/sites/RealSites";
 import RealVault from "../screens/vault/RealVault";
 import { RunHereView } from "../screens/runner/RunHere";
-import { PlacementChip, MovedLines } from "../src/chat/placement";
+import { PlacementSwitch, MovedLines } from "../src/chat/placement";
 import { StatusLine } from "../src/chat/StatusLine";
 import { AwayView } from "../screens/now/AwayCard";
 import { ComputersView } from "../screens/spaces/ComputersSection";
@@ -258,10 +258,10 @@ function Sample({ name }: { name: string }) {
   if (name === "runner-chip") {
     return (
       <View style={{ gap: 12, alignItems: "flex-start" }}>
-        <PlacementChip placement={{ where: "mac" }} onMove={() => {}} />
-        <PlacementChip placement={{ where: "server", reason: "lid-closed" }} onMove={() => {}} />
+        <PlacementSwitch placement={{ where: "mac" }} onMove={() => {}} />
+        <PlacementSwitch placement={{ where: "server", reason: "lid-closed" }} onMove={() => {}} />
         <View style={{ alignSelf: "stretch" }}><StartingSample /></View>
-        <MovedLines lines={[{ at: 1, text: "Moved to the server: lid closed." }, { at: 2, text: "Moved to this Mac: you moved it." }, { at: 3, text: "Dana's MacBook did not answer. Running on the server instead." }, { at: 4, text: "This chat borrowed Dana's MacBook. It can reach the AI provider and nothing else." }]} />
+        <MovedLines lines={[{ at: 1, text: "Moved to the server: lid closed." }, { at: 2, text: "Moved to this computer: you moved it." }, { at: 3, text: "Dana's MacBook did not answer. Running on the server instead." }, { at: 4, text: "This chat borrowed Dana's MacBook. It can reach the AI provider and nothing else." }]} />
       </View>
     );
   }
@@ -271,7 +271,7 @@ function Sample({ name }: { name: string }) {
 /** The chat's status line while its process starts on a computer: the words, then Stop, and no chip yet (the chip comes when it is up). */
 function StartingSample() {
   const { phone } = useUiTheme();
-  return <StatusLine starting="Starting on Dana's MacBook..." presence="" state="working" busy canStop stopping={false} offline={false} phone={phone} onStop={() => {}} place={<PlacementChip placement={{ where: "mac", computer: "Dana's MacBook" }} onMove={() => {}} />} />;
+  return <StatusLine starting="Starting on Dana's MacBook..." presence="" state="working" busy canStop stopping={false} offline={false} phone={phone} onStop={() => {}} />;
 }
 
 /** The guided-flow kit in one page: /gallery?f=flow-kit. Phases, not a step count. */
@@ -389,7 +389,7 @@ export default function Gallery() {
     return <ThemeProvider><Page><View nativeID="fixture"><RunPage flow="reminder" run="run_9" /></View></Page></ThemeProvider>;
   }
   if (q.f === "flow-kit") return <ThemeProvider><FlowKit /></ThemeProvider>;
-  // The shell looks and the space tiles are components, not block fixtures: /gallery?f=shell shows every state of the sidebar, ?f=shell-main|shell-folded|shell-projects|shell-projects-folded|shell-records one, ?f=space-tiles the tiles.
+  // The shell looks and the space tiles are components, not block fixtures: /gallery?f=shell shows every state of the sidebar, ?f=shell-main|shell-folded|shell-projects|shell-projects-folded|shell-records one (shell-folded-account and shell-folded-space are the folded rail the picture test presses), ?f=space-tiles the tiles.
   if (typeof q.f === "string" && (q.f === "space-tiles" || q.f === "shell" || q.f.startsWith("shell-"))) return <ThemeProvider><Page><View nativeID="fixture"><Sample name={q.f} /></View></Page></ThemeProvider>;
   const form = q.form === "compact" || q.form === "glance" ? q.form : "full";
   const given = fromQuery(q.screen);

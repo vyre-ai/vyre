@@ -1,4 +1,5 @@
-import { Platform } from "react-native";
+import { Fragment } from "react";
+import { Platform, View } from "react-native";
 import * as P from "@rn-primitives/dropdown-menu";
 import { cn } from "../lib/cn";
 import { Text } from "./Text";
@@ -7,20 +8,30 @@ import { elevation } from "../lib/elevation";
 import { useUiTheme } from "../theme";
 import { px } from "../lib/measure";
 
-export type MenuItem = { label: string; onPress: () => void; danger?: boolean; /** Marks the choice that is on (a filter applied, the sort in use) with a check. */ selected?: boolean };
+export type MenuItem = {
+  label: string; onPress: () => void; danger?: boolean; /** Marks the choice that is on (a filter applied, the sort in use) with a check. */ selected?: boolean;
+  /** Drawn before the label: a Space's tile, a face or an icon. */ lead?: React.ReactNode;
+  /** A hairline above this item, to start a new group of choices. */ divider?: boolean;
+  /** When two items may share a label (two Spaces with one name). */ id?: string;
+};
 
 /** Anchored choices. `trigger` is any pressable element, passed as the anchor. */
 export function Menu({ trigger, items, align, header, side }: { trigger: React.ReactNode; items: MenuItem[]; /** A block above the choices that is not a choice (a name and a space). */ header?: React.ReactNode; /** Which side of the trigger it opens on (default: below, flipping when there is no room). */ side?: "top" | "bottom"; /** Which edge of the trigger the menu lines up with (default: centred). A trigger at the left of a card uses "start" so the menu stays inside it; the menu flips above when there is no room below. */ align?: "start" | "center" | "end" }) {
   const { resolved, color, map } = useUiTheme();
   const content = (
-    <P.Content align={align} side={side} sideOffset={4} avoidCollisions style={{ ...elevation(resolved.scheme, 2), minWidth: px(map, "--s-12") * 4, borderRadius: px(map, "--r-card"), borderWidth: 1, borderColor: color["edge-strong"], backgroundColor: color["surface-3"], padding: px(map, "--s-1") }}>
+    // Portalled to the document's end, kept 8 off the window's edges, and above every pane (Radix lifts its wrapper to the content's zIndex): a trigger in the folded rail opens it whole, over the page.
+    <P.Content align={align} side={side} sideOffset={4} avoidCollisions insets={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ ...elevation(resolved.scheme, 2), zIndex: 1000, minWidth: px(map, "--s-12") * 4, borderRadius: px(map, "--r-card"), borderWidth: 1, borderColor: color["edge-strong"], backgroundColor: color["surface-3"], padding: px(map, "--s-1") }}>
       {header}
       {items.map((i) => (
-        <P.Item key={i.label} onPress={i.onPress} style={{ minHeight: px(map, "--control-sm"), flexDirection: "row", alignItems: "center", gap: px(map, "--s-3"), borderRadius: px(map, "--r-row"), paddingHorizontal: px(map, "--s-3") }}>
-          {/* The theme's colour as a style, never a class: the menu is portalled outside the themed view, where a class only has the custom properties on <html>. */}
-          <Text tone={i.danger ? "err" : "default"} style={{ flex: 1 }}>{i.label}</Text>
-          {i.selected ? <Icon name="check" size={16} tone="text" /> : null}
-        </P.Item>
+        <Fragment key={i.id ?? i.label}>
+          {i.divider ? <View style={{ height: 1, backgroundColor: color.edge, marginVertical: px(map, "--s-1") }} /> : null}
+          <P.Item onPress={i.onPress} style={{ minHeight: px(map, "--control-sm"), flexDirection: "row", alignItems: "center", gap: px(map, "--s-3"), borderRadius: px(map, "--r-row"), paddingHorizontal: px(map, "--s-3") }}>
+            {i.lead ?? null}
+            {/* The theme's colour as a style, never a class: the menu is portalled outside the themed view, where a class only has the custom properties on <html>. */}
+            <Text tone={i.danger ? "err" : "default"} style={{ flex: 1 }} numberOfLines={1}>{i.label}</Text>
+            {i.selected ? <Icon name="check" size={16} tone="text" /> : null}
+          </P.Item>
+        </Fragment>
       ))}
     </P.Content>
   );

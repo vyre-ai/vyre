@@ -7,7 +7,7 @@ export { RewindSheet, type RewindPoint } from "./RewindSheet";
 export { SecondOpinionSheet, type OpinionTarget } from "./SecondOpinionSheet";
 export { PanelCapabilityRows, type PanelCapabilityRowsProps } from "./PanelCapabilityRows";
 export { NewPopover, type NewRow } from "./NewPopover";
-export { newMenuRows, firstRow } from "./new-menu-model.js";
+export { newMenuRows, firstRow, newMenuAgents } from "./new-menu-model.js";
 export { ConversationList, ConversationTypes, ConversationHeader, type Convo } from "./ConversationList";
 export { displayName, convosFrom, convoChips, convosShown, convoKindWord, convoSections, CONVO_TYPES, agentLine, summaryLine, placeOf } from "./convo-model.js";
 export { AgentComputerPane, type ComputerView } from "./AgentComputerPane";

@@ -8,6 +8,8 @@ import { autoLine, checkedLine, howLine, KIND_ROWS, noteLines, QUIET_DEFAULT, qu
 import { pushDevices, pushSet, pushSettings, updateApply, updateCheck, updateStatus } from "./real";
 import { askLine } from "./update-model.js";
 import { BackupsSection } from "./BackupsScreen";
+import { shell } from "../../src/shell/shell";
+import { AppUpdateCard } from "../now/AppUpdateCard";
 
 const say = (e: unknown, f = "That did not work.") => (e instanceof Error ? e.message : f);
 
@@ -23,6 +25,7 @@ export function RealUpdates() {
   return (
     <Page title="Updates and backups" back="/u/settings">
       <ServerLine />
+      {shell() ? <AppUpdateCard hint={s?.available ?? null} /> : null}
       {err ? <Card flush><ErrorState title="Updates did not load" reason={err} retry={load} /></Card> : null}
       {s ? (
         <>

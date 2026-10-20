@@ -4,7 +4,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createMockStore } from "../../src/store-core/mock-store.js";
 import { runClientPays } from "../../src/store-core/scenario.js";
-import { isRawId, plainLine, cardModel, cardFor, nowModel, stageGroups, teamOf, liveLine, createdLine, draftOf, briefOf, taskFacts, progressText, stateWord, whenLabel } from "./model.js";
+import { isRawId, isSetupEvent, plainLine, cardModel, cardFor, nowModel, stageGroups, teamOf, liveLine, createdLine, draftOf, briefOf, taskFacts, progressText, stateWord, whenLabel } from "./model.js";
 import { loadWorld } from "./world.js";
 
 const NOW = Date.parse("2026-10-01T13:00:00");
@@ -128,12 +128,22 @@ test("Now never greets a raw id, and Recent is plain sentences with kernel house
   assert.equal(isRawId("Devbox"), false);
   assert.equal(nowModel(w).greeting, "Good afternoon");
   assert.equal(nowModel({ ...w, actors: [{ id, name: "Devbox", family: "person" }] }).greeting, "Good afternoon, Devbox");
-  assert.deepEqual(plainLine(w, { what: "owner.changed", actor: "Vyre", record: "vyre://spc_1/space/x" }), { what: "became the owner of Home", actor: "You", record: "vyre://spc_1/space/x" });
+  assert.equal(plainLine(w, { what: "owner.changed", actor: "Vyre", record: "vyre://spc_1/space/x" }), null, "setting the owner is setup, not news");
   assert.equal(plainLine(w, { what: "member.set", actor: "Vyre" }), null);
   // the Flows system's own bookkeeping records have hyphenated names: they are not a person's news either
   for (const what of ["def-flow.created", "flow-approval.created", "flow-state.updated", "flow-run.created", "flow-schedule.updated"]) assert.equal(plainLine(w, { what, actor: "Vyre" }), null, what);
   assert.equal(plainLine(w, { what: "grant.created", actor: "Vyre" }), null);
   assert.deepEqual(plainLine(w, { what: "sent the Welcome email", actor: "Intake" }), { what: "sent the Welcome email", actor: "Intake" });
+});
+
+test("Recent leaves out setup and the system's own events by their kind, whatever words their data carries", () => {
+  const id = "per_pbiglgp6ji6jzrnbskpuzw77np";
+  const ev = (type, what, n) => ({ id: `e${n}`, type, time: NOW - n * 1000, actor: "svc:vyre@spc_1", data: { what } });
+  const w = { me: id, actors: [{ id, name: "Sam", family: "person" }], spaces: [{ id: "spc_1", name: "north" }], types: new Map(), tasks: [], calendar: [], records: new Map(), now: NOW,
+    events: [ev("owner.changed", "became the owner of tess", 1), ev("space.created", "created tess", 2), ev("servers.listed", "listed the server", 3), ev("member.joined", "joined tess", 4), ev("task.done", "sent the Welcome email", 5)] };
+  assert.deepEqual(nowModel(w).recent.map((l) => l.what), ["joined tess", "sent the Welcome email"]);
+  assert.equal(isSetupEvent({ type: "owner.changed" }), true);
+  assert.equal(isSetupEvent({ type: "task.done" }), false);
 });
 
 test("a task's brief is shown as what to do; a tag line is not a brief", () => {

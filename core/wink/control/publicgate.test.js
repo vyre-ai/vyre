@@ -6,7 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { SCRATCH } from "../../../test/scratch.mjs";
-import { createPublicGate } from "./publicgate.js";
+import { createPublicGate, isNotListed, NOT_LISTED_WHY } from "./publicgate.js";
 import * as certsReal from "../../../lib/acme/certs.js";
 import * as acmeReal from "../../../lib/acme/acme.js";
 import { certPin } from "./gate.js";
@@ -135,6 +135,32 @@ test("a failed issue is a plain failed state with the reason, the gate is not st
   assert.equal(w.gates.length, 0);
   assert.equal(g.controlUrl(), null);
   await g.stop();
+});
+
+test("a Space that has not listed this server: the directory's refusal is the distinct not-listed state that tells the owner's app what to do, for the certificate and for the address", async () => {
+  const w = world();
+  const refuse = () => Object.assign(new Error("that name is not served by this server"), { code: "not_yours" });
+  const base = { async acme() { throw refuse(); }, async acmeClear() {}, async publish() { throw refuse(); } };
+  const g = w.mk({ directory: base });
+  const s = await g.start();
+  assert.equal(s.state, "not-listed");
+  assert.equal(s.why, NOT_LISTED_WHY);
+  assert.match(String(s.why), /open the Vyre app as the owner/);
+  assert.equal(w.gates.length, 0, "no certificate, no gate");
+  await g.stop();
+
+  // a certificate on hand, but the address is refused: the same state once the publish is turned down
+  const w2 = world();
+  const g2 = w2.mk({ publish: true, directory: { ...base, async acme() {} } });
+  const s2 = await g2.start();
+  assert.equal(s2.state, "not-listed");
+  assert.equal(g2.status().why, NOT_LISTED_WHY);
+  await g2.stop();
+
+  // any other failure stays the plain failed state with its own reason
+  assert.equal(isNotListed(refuse()), true);
+  assert.equal(isNotListed(new Error("that name is not served by this server")), true, "the directory's words alone are enough");
+  assert.equal(isNotListed(Object.assign(new Error("the CA said no"), { code: "x" })), false);
 });
 
 test("the staging and test-CA choices", async () => {

@@ -9,10 +9,10 @@ export function showNotice(s) {
   return Boolean(s && s.available && s.available !== s.current && !s.pending);
 }
 
-/** The card's words. @param {Status} s */
-export function noticeLines(s) {
+/** The card's words. `server`: the page is the Mac app's window on a server, which has its own update card, so this one says it is the server's. @param {Status} s @param {{ server?: boolean }} [o] */
+export function noticeLines(s, o = {}) {
   return {
-    title: `Update available: version ${s.available}`,
+    title: o.server ? `Your server has an update: version ${s.available}` : `Update available: version ${s.available}`,
     detail: `You are on ${s.current}. ${s.canApply ? "Updating keeps your data, your vault and your sign-ins." : howToLine(s)}`.trim(),
   };
 }

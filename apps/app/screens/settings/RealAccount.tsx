@@ -12,7 +12,8 @@ import { Group, Page } from "../places/Frame";
 import { GithubCard } from "./GithubCard";
 import { contacts, codeOf, displayNameOk, devices, entryLine, entryTitle, hasCode, identityLine, READ_ONLY_LINE, removable, sealedFields, approvalsLine, type Entry, type Identity, type TypeDef } from "./account-model";
 import { worksLine, type Agent } from "./agents-model";
-import { agentsList, entries as loadEntries, identity as loadIdentity, canSetName, chatSetupProblem, needsPasswordForCode, removeEntry, retryChatSetup, replaceCode, setDisplayName, types as loadTypes } from "./real";
+import { agentsList, entries as loadEntries, identity as loadIdentity, canSetName, chatSetupProblem, listingProblem, needsPasswordForCode, removeEntry, retryChatSetup, retryListing, replaceCode, setDisplayName, types as loadTypes } from "./real";
+import { listingLine } from "./account-read.js";
 import { useUpdate } from "../../src/state/update";
 import { aboutButton, aboutLine, appliedLine, askLine } from "./update-model.js";
 import { CREDITS } from "./data";
@@ -33,13 +34,15 @@ export function RealAccount() {
   const [busy, setBusy] = useState(false);
   const [pw, setPw] = useState("");
   const [chatProblem, setChatProblem] = useState("");
+  const [listing, setListing] = useState("");
+  const [listingBusy, setListingBusy] = useState(false);
   const [editing, setEditing] = useState(false);
   const [nameDraft, setNameDraft] = useState("");
   const [autoLock, setAutoLock] = useState("15");
   useEffect(() => { void readLockMinutes().then((m) => setAutoLock(String(m))); }, []);
   const chooseLock = (v: string) => { setAutoLock(v); void writeLockMinutes(v); };
   const lockNow = () => { void lockIdentity().then((r) => { if (r.ok) lockChanged(); else showToast(r.message); }); };
-  const load = useCallback(() => { setErr(""); loadIdentity().then(setId).catch((e) => setErr(say(e, "Account did not answer."))); loadEntries().then(setEs).catch(() => setEs([])); void chatSetupProblem().then(setChatProblem).catch(() => {}); }, []);
+  const load = useCallback(() => { setErr(""); loadIdentity().then(setId).catch((e) => setErr(say(e, "Account did not answer."))); loadEntries().then(setEs).catch(() => setEs([])); void chatSetupProblem().then(setChatProblem).catch(() => {}); void listingProblem().then(setListing).catch(() => {}); }, []);
   useEffect(load, [load]);
   const newCode = () => { setBusy(true); replaceCode(pw).then((r) => { const c = codeOf(r); setPw(""); if (c) setFresh(c); else showToast("A new code was made, but Vyre did not return it."); load(); }).catch((e) => showToast(say(e))).finally(() => setBusy(false)); };
   const remove = (e: Entry) => removeEntry(e.eid).then(() => { showToast(`${entryTitle(e)} is off your list.`); load(); }).catch((x) => showToast(say(x)));
@@ -49,7 +52,8 @@ export function RealAccount() {
   return (
     <Page title="Account and recovery" back="/u/settings">
       {err ? <Card flush><ErrorState title="Account did not load" reason={err} retry={load} /></Card> : null}
-      {chatProblem ? <Banner icon="refresh"><View className="gap-s2"><Text tone="warn">{`This Mac could not finish setting up private chats: ${chatProblem}.`}</Text><View className="self-start"><Button size="sm" label="Try again" onPress={() => void retryChatSetup().then((p) => { setChatProblem(p); load(); }).catch((e) => setChatProblem(say(e)))} /></View></View></Banner> : null}
+      {chatProblem ? <Banner icon="refresh"><View className="gap-s2"><Text tone="warn">{`This computer could not finish setting up private chats: ${chatProblem}.`}</Text><View className="self-start"><Button size="sm" label="Try again" onPress={() => void retryChatSetup().then((p) => { setChatProblem(p); load(); }).catch((e) => setChatProblem(say(e)))} /></View></View></Banner> : null}
+      {listing ? <Banner icon="refresh"><View className="gap-s2"><Text tone="warn">{listingLine(listing)}</Text><View className="self-start"><Button size="sm" label={listingBusy ? "Trying" : "Retry"} disabled={listingBusy} onPress={() => { setListingBusy(true); void retryListing().then((p) => { setListing(p); if (!p) showToast("Your server is on your Space's address. It goes live within a few minutes."); }).catch((e) => setListing(say(e))).finally(() => setListingBusy(false)); }} /></View></View></Banner> : null}
       {id?.exists ? (
         <Card className="gap-s2">
           <Row lead={<Avatar of={markRef("person", id.label || id.name || "you")} size={40} />} title={id.label || id.name || "You"} sub={identityLine(id)} className="px-0"

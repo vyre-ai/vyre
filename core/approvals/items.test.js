@@ -293,3 +293,34 @@ test("a request to join is one access card in fixed words, with the fingerprint 
   assert.ok(!JSON.stringify(cards).includes("ignore all"), "the note never rides on a card");
   assert.equal(ada.facts.entry, "e".repeat(26));
 });
+
+test("one owner that hangs no longer holds back the list: the rest answer within the budget, the slow one is named in partial, and its cards land when it answers", async () => {
+  /** @type {(v: any) => void} */ let answerSigning = () => {};
+  const signing = new Promise(res => { answerSigning = res; });
+  let asked = 0;
+  const items = createItems({
+    now: () => Date.now(),
+    budgetMs: 80,
+    call: async tool => {
+      if (tool === "gate.held") return { data: [{ id: "g1", kind: "send", via: "mail", to: ["dana@example.com"], summary: "Re: retainer", at: 9 }] };
+      if (tool === "documents.signing.waiting") { asked++; return signing; }
+      return { data: [] };
+    },
+    on: () => () => {},
+  });
+  const t0 = Date.now();
+  const first = await items.list();
+  const took = Date.now() - t0;
+  assert.ok(took < 1000, `the list answered in ${took} ms, not after the hanging owner`);
+  assert.deepEqual(first.items.map(i => i.id), ["gate:g1"], "the owners that answered are on the list");
+  assert.ok(first.partial && first.partial.includes("documents"), "the slow owner is named, even a quiet one");
+  const again = await items.list();
+  assert.equal(asked, 1, "a slow owner is asked once while its read is still running, not once per list");
+  assert.ok(again.partial && again.partial.includes("documents"));
+  answerSigning({ data: { requests: [{ submission: 7, signer: "Dana", email: "dana@example.com", template: "Retainer", at: 5 }] } });
+  await wait(400);
+  const late = await items.list();
+  assert.ok(late.items.some(i => i.id === "documents:7"), "the late answer's card is on the list");
+  assert.ok(!(late.partial || []).includes("documents"), "and the owner is no longer partial");
+  await items.stop();
+});

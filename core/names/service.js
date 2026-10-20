@@ -140,6 +140,8 @@ export function withIngress(status, ingress) {
     case "waiting": return { ...status, phase: "waiting", why: why || "the gate is up but this box's name does not point at it yet" };
     case "getting-cert": return { ...status, phase: "getting-cert", why };
     case "failed": return { ...status, phase: "failed", why: why || "the public gate did not come up" };
+    // the directory refused the name because the Space has not listed this server: only the owner's app can list it, and it does so when it reads this phase (apps/app/src/host/host-core.js ensureServers)
+    case "not-listed": return { ...status, phase: "not-listed", why: why || "open the Vyre app as the owner to put this server on your Space's address" };
     default: return status;
   }
 }

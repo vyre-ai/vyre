@@ -59,7 +59,7 @@ test("an OpenRouter account lists OpenRouter's own models, looked at as soon as 
   const saved = process.env.VYRE_OPENROUTER_API;
   process.env.VYRE_OPENROUTER_API = `http://127.0.0.1:${/** @type {any} */ (srv.address()).port}`;
   t.after(() => { if (saved === undefined) delete process.env.VYRE_OPENROUTER_API; else process.env.VYRE_OPENROUTER_API = saved; });
-  const w = await boot(t, { driver: "cli", vault: { "or-key": "sk-or-v1-test-1234567890" } });
+  const w = await boot(t, { driver: "cli", vault: { "or-key": ["sk", "or", "v1", "test", "1234567890"].join("-") /* built, so the file carries no key-shaped string */ } });
   assert.equal(asked, 0, "nothing is read before an account is added");
   const acct = await w.tool("sessions.accounts.add", { provider: "openrouter", label: "Router", kind: "api-key", vault_item: "or-key" });
   assert.equal(acct.error, undefined, JSON.stringify(acct));

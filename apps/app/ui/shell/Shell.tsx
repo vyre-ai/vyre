@@ -5,9 +5,10 @@ import { cn } from "../lib/cn";
 import { Text } from "../components/Text";
 import { Icon, type IconName } from "../components/Icon";
 import { Avatar } from "../components/Avatar";
-import { SpaceSwitcherTitle } from "../components/SpaceSwitcherTitle";
+import { SpaceSwitcherTitle, spaceMenuItems } from "../components/SpaceSwitcherTitle";
+import { ACCOUNT_HREF, THEME_CHOICES, accountHeader } from "./switcher-model.js";
 import { markRef, spaceRef } from "../marks/useMark";
-import { Menu } from "../components/Menu";
+import { Menu, type MenuItem } from "../components/Menu";
 import { Row } from "../components/Row";
 import { Sheet } from "../components/Sheet";
 import { useAppearance, useUiTheme } from "../theme";
@@ -45,17 +46,19 @@ export type ShellProps = NavDef & {
   folded?: boolean;
   /** Opens search: the footer's search button. */
   onSearch?: () => void;
-  /** The foot's theme toggle chose a scheme: the caller saves it where Appearance keeps it (the shell itself only changes the look). */
-  onTheme?: (scheme: "dark" | "paper") => void;
+  /** The account menu's theme choice: the caller saves it where Appearance keeps it (the shell itself only changes the look). */
+  onTheme?: (scheme: "dark" | "paper" | "system") => void;
   /** Lock the vault on this device (the account menu's Lock). */
   onLock?: () => void;
+  /** Sign out of this device (the account menu's last choice), where the app has a sign-out. */
+  onSignOut?: () => void;
   /** The few latest chats, under the places: a short Recent list. Folded, it is not drawn. */
   recent?: { id: string; label: string; href: string }[];
   children: React.ReactNode;
 };
 
-function SpaceSwitcher({ spaces, space, onSpace, compact }: Pick<ShellProps, "spaces" | "space" | "onSpace"> & { compact?: boolean }) {
-  return <SpaceSwitcherTitle spaces={spaces} space={space} onSpace={onSpace} compact={compact} />;
+function SpaceSwitcher({ spaces, space, onSpace, onOpen, compact }: Pick<ShellProps, "spaces" | "space" | "onSpace"> & { onOpen?: (href: string) => void; compact?: boolean }) {
+  return <SpaceSwitcherTitle spaces={spaces} space={space} onSpace={onSpace} onOpen={onOpen} compact={compact} />;
 }
 
 type RailProps = ShellProps;
@@ -77,7 +80,7 @@ function RailSwitcher({ p, folded }: { p: RailProps; folded: boolean }) {
           {folded ? null : <><Text medium style={{ fontSize: RAIL.labelSize, lineHeight: RAIL.labelLine, flexShrink: 1 }} numberOfLines={1}>{cur.name}</Text><Icon name="chevron-down" size={14} tone="label" /></>}
         </Pressable>
       }
-      items={p.spaces.map((s) => ({ label: s.id === p.space ? `${s.name} (showing)` : s.name, onPress: () => p.onSpace(s.id) }))}
+      items={spaceMenuItems(p.spaces, p.space, p.onSpace, p.onNavigate)}
     />
   );
 }
@@ -119,38 +122,53 @@ function MainNav({ p, folded }: { p: RailProps; folded: boolean }) {
   );
 }
 
+/** A menu item's leading icon, in the width a Space tile takes, so the labels line up. */
+const lead = (name: IconName) => <View style={{ width: 20, alignItems: "center" }}><Icon name={name} tone="label" size={16} /></View>;
+
 /**
- * You at the foot, as a profile row: your face, your name and a muted line (your name on the box, else the space), and a chevron. Pressing it opens a short menu above it: your profile and Assistant,
- * Appearance, the theme, the other spaces, Lock, Collapse and About. Folded, only the face shows and the name is its tip. No name yet reads "You". Every section's sidebar has this same foot.
+ * You at the foot, as a profile row: your face, your name and a muted line (your username, else the space), and a chevron. Pressing it opens the account menu above it: your name and username, then
+ * Your profile, AI accounts and Settings; the theme (Light, Match this device, Dark, a check on the one in use); then folding the sidebar, Lock and Sign out. Folded, only the face shows and the name is
+ * its tip (the tip sits outside the menu, so the face itself is the menu's trigger). No name yet reads "You". Every section's sidebar has this same foot.
  */
 function RailFoot({ p, folded, toggle }: { p: RailProps; folded: boolean; toggle: () => void }) {
-  const { color, resolved } = useUiTheme();
+  const { color } = useUiTheme();
+  const theme = useAppearance((s) => s.person.theme) ?? "system";
   const cur = p.spaces.find((s) => s.id === p.space) ?? p.spaces[0];
-  const name = (p.user.name || "").trim() || "You";
-  const sub = (p.user.sub || "").trim() || cur?.name || "";
-  const others = p.spaces.filter((s) => s.id !== p.space && s.id !== "all").slice(0, 5);
-  const items = [
-    { label: "Your profile and Assistant", onPress: () => p.onNavigate("/u/settings/account") },
-    { label: "Appearance", onPress: () => p.onNavigate("/u/appearance") },
-    { label: resolved.scheme === "paper" ? "Use the dark theme" : "Use the light theme", onPress: () => { const next = resolved.scheme === "paper" ? "dark" : "paper"; useAppearance.getState().setPerson({ theme: next }); p.onTheme?.(next); } },
-    ...others.map((s) => ({ label: `Switch to ${s.name}`, onPress: () => p.onSpace(s.id) })),
-    ...(p.onLock ? [{ label: "Lock now", onPress: p.onLock }] : []),
-    { label: folded ? "Expand sidebar" : "Collapse sidebar", onPress: toggle },
-    { label: "Help and About", onPress: () => p.onNavigate("/u/about") },
+  const { name, handle } = accountHeader(p.user);
+  const sub = handle || cur?.name || "";
+  const THEME_ICON = { paper: "sun", system: "laptop", dark: "moon" } as const;
+  const items: MenuItem[] = [
+    { id: "profile", label: "Your profile", lead: lead("person"), onPress: () => p.onNavigate(ACCOUNT_HREF.profile) },
+    { id: "ai", label: "AI accounts", lead: lead("spark"), onPress: () => p.onNavigate(ACCOUNT_HREF.ai) },
+    { id: "settings", label: "Settings", lead: lead("settings"), onPress: () => p.onNavigate(ACCOUNT_HREF.settings) },
+    ...THEME_CHOICES.map(([v, l], i) => ({ id: `theme:${v}`, label: l, divider: i === 0, selected: theme === v, lead: lead(THEME_ICON[v]), onPress: () => { useAppearance.getState().setPerson({ theme: v }); p.onTheme?.(v); } })),
+    { id: "fold", label: folded ? "Expand sidebar" : "Collapse sidebar", divider: true, lead: lead("menu"), onPress: toggle },
+    ...(p.onLock ? [{ id: "lock", label: "Lock", lead: lead("lock"), onPress: p.onLock }] : []),
+    ...(p.onSignOut ? [{ id: "out", label: "Sign out", lead: lead("back"), onPress: p.onSignOut }] : []),
   ];
   const header = (
-    <View style={{ paddingHorizontal: 12, paddingVertical: 8, gap: 2 }}>
-      <Text medium numberOfLines={1}>{name}</Text>
-      <Text size="caption" tone="label" numberOfLines={1}>{sub}</Text>
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 12, paddingTop: 8, paddingBottom: 10, marginBottom: 4, borderBottomWidth: 1, borderColor: color.edge }}>
+      <Avatar of={markRef("person", name, undefined, p.user.look)} size={32} />
+      <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+        <Text medium numberOfLines={1}>{name}</Text>
+        {handle ? <Text size="caption" tone="label" numberOfLines={1}>{handle}</Text> : null}
+      </View>
     </View>
   );
-  const label = `${name}: profile, appearance, spaces, lock and the sidebar`;
+  const label = `${name}: your profile, AI accounts, settings, theme, lock and sign out`;
   const face = <Avatar of={markRef("person", name, undefined, p.user.look)} size={RAIL.face} />;
-  const trigger = folded ? (
-    <Tip label={name}>
-      <Pressable accessibilityRole="button" accessibilityLabel={label} style={({ hovered, focused }: any) => [{ width: RAIL.foldedRow, height: RAIL.foldedRow, borderRadius: RAIL.rowRadius, alignItems: "center", justifyContent: "center", backgroundColor: hovered || focused ? color.hover : "transparent" } as any]}>{face}</Pressable>
-    </Tip>
-  ) : (
+  if (folded) {
+    return (
+      <View style={{ height: RAIL.footH, justifyContent: "center", alignItems: "center" }}>
+        <Tip label={name}>
+          <Menu align="start" side="top" header={header} items={items} trigger={
+            <Pressable accessibilityRole="button" accessibilityLabel={label} style={({ hovered, focused }: any) => [{ width: RAIL.foldedRow, height: RAIL.foldedRow, borderRadius: RAIL.rowRadius, alignItems: "center", justifyContent: "center", backgroundColor: hovered || focused ? color.hover : "transparent" } as any]}>{face}</Pressable>
+          } />
+        </Tip>
+      </View>
+    );
+  }
+  const trigger = (
     <Pressable accessibilityRole="button" accessibilityLabel={label}
       style={({ hovered, focused }: any) => [{ minHeight: RAIL.navRowH + 8, marginHorizontal: RAIL.rowInset, borderRadius: RAIL.rowRadius, paddingHorizontal: RAIL.gutter - RAIL.rowInset, flexDirection: "row", alignItems: "center", gap: RAIL.iconGap, backgroundColor: hovered || focused ? color.hover : "transparent",
         ...(focused ? { outlineStyle: "solid", outlineWidth: 2, outlineColor: color.primary, outlineOffset: -2 } : {}), transitionProperty: "background-color", transitionDuration: `${RAIL.easeMs}ms` } as any]}>
@@ -163,7 +181,7 @@ function RailFoot({ p, folded, toggle }: { p: RailProps; folded: boolean; toggle
     </Pressable>
   );
   return (
-    <View style={{ height: RAIL.footH, justifyContent: "center", alignItems: folded ? "center" : "stretch" }}>
+    <View style={{ height: RAIL.footH, justifyContent: "center", alignItems: "stretch" }}>
       <Menu align="start" side="top" header={header} items={items} trigger={trigger} />
     </View>
   );
@@ -191,7 +209,9 @@ function Rail(p: RailProps) {
   const w = useStoredWidth("rail", RAIL.width, RAIL.minWidth, RAIL.maxWidth);
   const enter = reduced ? undefined : (panel ? SlideInRight : SlideInLeft).duration(RAIL.slideMs);
   return (
-    <View role="navigation" accessibilityLabel="Places" style={{ width: railWidth(folded, w.width), flexShrink: 0, flexGrow: 0, borderRightWidth: 1, borderColor: color.edge, backgroundColor: color.bg }}>
+    // zIndex 1: on the web every View is its own stacking layer (react-native-web gives each z-index 0), so without it the main pane, drawn after the rail, covers what the rail draws past its edge:
+    // the folded rail's name tips sat under the page, a white sliver beside the face.
+    <View role="navigation" accessibilityLabel="Places" style={{ width: railWidth(folded, w.width), flexShrink: 0, flexGrow: 0, zIndex: 1, borderRightWidth: 1, borderColor: color.edge, backgroundColor: color.bg }}>
       {/* The top bar: the space switcher on the left, the section's + on the right. */}
       <View style={{ height: RAIL.topH, flexDirection: "row", alignItems: "center", justifyContent: folded ? "center" : "space-between", paddingHorizontal: folded ? 0 : RAIL.gutter }}>
         <RailSwitcher p={p} folded={folded} />
@@ -234,7 +254,7 @@ function PhoneShell(p: ShellProps) {
       {/* The switcher shows on the tab bar's own places only; a page opened from More (Vault, Drive, Settings, Spaces) is pushed and has its own title row. */}
       {isTopLevel(p.current, all) && !inMore ? (
         <View className="flex-row items-center px-s4">
-          <SpaceSwitcher spaces={p.spaces} space={p.space} onSpace={p.onSpace} compact />
+          <SpaceSwitcher spaces={p.spaces} space={p.space} onSpace={p.onSpace} onOpen={p.onNavigate} compact />
         </View>
       ) : null}
       <View className="min-h-0 flex-1">{p.children}</View>

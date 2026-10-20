@@ -385,6 +385,16 @@ export const DEAL = {
   views: [{ name: "deals_board", type: "board", label: "Sales pipeline", groupBy: "stage", columns: ["name", "amount", "close_date"] }, { name: "deals_list", type: "list", label: "All deals", columns: ["name", "ref", "stage", "amount", "close_date"], sort: { field: "name", dir: "asc" } }],
 };
 
+/**
+ * A person's profile in this Space: how they look here and a line or two about them, shown to the people of the Space in People and in chats. One row per person, written only by that person
+ * (kernel/gateway/ownership.js): the people of the Space read it, and an owner or an admin may remove a departed person's but never changes one. `person` is the person's id, `name` the name they had
+ * when they last saved it, `look` a look seed from the look picker.
+ */
+export const MEMBER_PROFILE = {
+  name: "member-profile", label: "Member profile", icon: "IconUser", hidden_in_records: true,
+  fields: [text("person", "Person", { required: true }), text("name", "Name"), text("about", "About me"), text("look", "Look")],
+};
+
 /** The addresses of the sample data records.sample.add made, so records.sample.remove takes away those and nothing else (core/records-tools/sample.js). */
 export const SAMPLE_LEDGER = {
   name: "sample-ledger", label: "Sample data ledger", icon: "IconList", hidden_in_records: true,
@@ -427,4 +437,4 @@ export const RECORD_LAYOUT = {
 /** The bag every record type that people add fields to carries: the values of fast fields, as JSON text (core/records-tools/quick.js). */
 const WITH_BAG = new Set(["contact", "organization", "task", "relationship", "project", "deal"]);
 const withBag = (/** @type {any} */ t) => (WITH_BAG.has(t.name) && !t.fields.some((/** @type {any} */ x) => x.name === "extra") ? { ...t, fields: [...t.fields, text("extra", "Extra fields")] } : t);
-export const CORE_TYPES = Object.freeze([CONTACT, CONTACT_POINT, ORGANIZATION, COMMUNICATION, EVENT, TEMPLATE, PLAYBOOK, TEAM_MEMBER, PROJECT, PROJECT_TEMPLATE, SKILL, CHAT, TASK, RELATIONSHIP, DEAL, QUICK_FIELD, RECORD_LAYOUT, SAMPLE_LEDGER, ...ROLE_TYPES].map(withBag).map((t) => Object.freeze(t)));
+export const CORE_TYPES = Object.freeze([CONTACT, CONTACT_POINT, ORGANIZATION, COMMUNICATION, EVENT, TEMPLATE, PLAYBOOK, TEAM_MEMBER, PROJECT, PROJECT_TEMPLATE, SKILL, CHAT, TASK, RELATIONSHIP, DEAL, QUICK_FIELD, RECORD_LAYOUT, SAMPLE_LEDGER, MEMBER_PROFILE, ...ROLE_TYPES].map(withBag).map((t) => Object.freeze(t)));

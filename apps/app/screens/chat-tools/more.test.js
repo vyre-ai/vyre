@@ -88,8 +88,8 @@ test("files, recall and memory answers: bad rows dropped, the Mac note, the hist
   const m = await import("./more-model.ts");
   const f = m.fileHitsOf({ results: [{ path: "/Users/me/work/a.md", name: "a.md", source: "box", size: 10 }, { name: "no path" }], sources: [{ source: "mac", ok: false, error: "asleep" }] });
   assert.equal(f.results.length, 1);
-  assert.deepEqual(f.notes, ["The Mac did not answer: asleep", "Files on your Mac are not searched from here."]);
-  assert.deepEqual(m.fileHitsOf({ results: [] }).notes, ["Files on your Mac are not searched from here."]);
+  assert.deepEqual(f.notes, ["Your computer did not answer: asleep", "Files on your computer are not searched from here."]);
+  assert.deepEqual(m.fileHitsOf({ results: [] }).notes, ["Files on your computer are not searched from here."]);
   assert.equal(m.recentFilesOf({ files: [{ path: "/a" }] }).length, 1);
   assert.deepEqual(m.recallOf([{ session: "s1", name: "N", snippet: "a «b» c" }, { name: "none" }]).map((x) => x.snippet), ["a b c"]);
   assert.deepEqual(m.factsOf([{ text: "t", ref: { name: "Mail" } }, { text: "" }]), [{ text: "t", source: "Mail" }]);
