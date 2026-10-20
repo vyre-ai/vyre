@@ -18,7 +18,7 @@ const dist = path.resolve(flag("--dist", "dist-mock"));
 const refs = path.resolve(flag("--refs", "../../design-refs"));
 const only = (flag("--only", "") || "").split(",").filter(Boolean);
 const surfaceOnly = (flag("--surface", "") || "").split(",").filter(Boolean);
-const budgetMb = Number(flag("--budget-mb", "12"));
+const budgetMb = Number(flag("--budget-mb", "14"));
 const update = bool("--update");
 const [out] = args;
 if (!out) { console.error("usage: design-pictures <out> [--dist d] [--refs d] [--only ids] [--surface names] [--update]"); process.exit(2); }
