@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { Animated, Platform, View } from "react-native";
+import { Animated, Platform, View, type ViewStyle } from "react-native";
 import { useUiTheme } from "../theme";
 import { useReducedMotion } from "../motion/useReducedMotion";
 import { Sheet } from "./Sheet";
@@ -28,7 +28,7 @@ export function SidePanel({ open, onClose, title, children, width = 520 }: { ope
   if (mode === "closed") return null;
   if (mode === "sheet") return <Sheet open onClose={onClose} title={title} scroll={false}>{children}</Sheet>;
   return (
-    <Animated.View accessibilityViewIsModal={false} accessibilityLabel={title} className="border-l border-edge bg-bg" style={{ ...sidePanelBox(width), transform: [{ translateX: x }] }}>
+    <Animated.View accessibilityViewIsModal={false} accessibilityLabel={title} className="border-l border-edge bg-bg" style={{ ...(sidePanelBox(width) as ViewStyle), transform: [{ translateX: x }] }}>
       <View className="min-h-0 flex-1">{children}</View>
     </Animated.View>
   );
