@@ -275,6 +275,11 @@ test("a task given to the kernel's own assistant slot is worked from the person'
   assert.equal(r.error, undefined, JSON.stringify(r.error));
   assert.deepEqual([r.data.thread, r.data.chat], [null, true]);
   assert.equal(w.count(), before, "no job");
+  // the same once the home's assistant is named "assistant": still the chat's, no job
+  assert.equal((await w.call("agents.create", { name: "assistant", kind: "assistant" })).error, undefined);
+  const named = await w.call("agents.wake", { task: "slot3", agent: "assistant", title: "Draft the engagement letter", approver: OWNER }, "module:vyred");
+  assert.deepEqual([named.data && named.data.thread, named.data && named.data.chat], [null, true]);
+  assert.equal(w.count(), before, "no job");
   // a named agent that does not exist is still refused (the host marks that task stuck)
   assert.ok((await w.call("agents.wake", { task: "slot2", agent: "nobody-here", title: "x", approver: OWNER }, "module:vyred")).error);
 });

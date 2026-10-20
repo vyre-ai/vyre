@@ -1046,8 +1046,8 @@ export default {
       run: async (i, { caller }) => {
         if (String(caller || "") !== "module:vyred") throw Object.assign(new Error("only the Space's own host wakes an agent for a task"), { code: "denied" }); // internal-word: the caller label, not shown text
         // The kernel's own "assistant" actor is the home's assistant slot, whatever name the person gave it (the daemon's kernel sessions act as it): a task given to it is worked from the person's own chat
-        // (tasks.list), not by a job, so it wakes nothing and is never marked stuck for want of an agent row of that name.
-        if (i.agent === "assistant" && !get("assistant")) return { agent: "assistant", thread: null, already: false, chat: true };
+        // (tasks.list), not by a job, so it wakes nothing and is never marked stuck, whether or not the assistant happens to be named "assistant". An agent of another kind under that name is woken as any agent.
+        if (i.agent === "assistant") { const slot = get("assistant"); if (!slot || slot.kind === "assistant") return { agent: "assistant", thread: null, already: false, chat: true }; }
         const a = must(i.agent);
         // Rule 2: a task's job runs for the person it is for (who gave it, a Flow's run_as). A task with nobody (no approver, assigned_by or requested_for) starts nothing, and no wake is claimed: the host marks it stuck
         if (!i.approver && K) throw Object.assign(new Error(noPerson("Give the task again from your own signed-in Vyre, so it runs for you.")), { code: "denied" });
