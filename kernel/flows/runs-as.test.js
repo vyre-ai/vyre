@@ -77,6 +77,10 @@ test("a model step asks the host as the runs-as person, on the account Runs on n
   assert.equal(run.steps.k.output.label, "refund");
   assert.equal(asked.length, 1);
   assert.deepEqual([asked[0].person, asked[0].account, asked[0].provider, asked[0].purpose], [ALEX.id, "k-alex", "openrouter", "classify"]);
+  // the door is called as the run's own chain, so its record shows the Flow run: the runs-as person first, then the automation hop
+  const hops = asked[0].chain.hops.map((/** @type {any} */ h) => h.actor);
+  assert.deepEqual([hops[0].kind, hops[0].id], ["person", ALEX.id]);
+  assert.ok(hops.some((/** @type {any} */ a) => a.kind === "automation" && a.id === d.id), JSON.stringify(hops));
 });
 
 test("no account: the step stops with the plain words, nothing is sent, and the runs-as person gets a card", async () => {
@@ -108,4 +112,35 @@ test("a run whose runs-as person did not turn this version on does no AI work: t
   assert.equal(run.state, "failed");
   assert.equal(run.error.code, "runs_as");
   assert.equal(asked, 0, "nothing was asked of anyone's account");
+});
+
+test("an owner approves a member's Flow with no Runs on: the model step AND an agent in any task slot (reviewer, checker) are refused; a person's task is not", async () => {
+  let asked = 0;
+  const w = await aiWorld(async () => { asked++; return { content: "refund" }; });
+  const flowOf = (/** @type {string} */ name, /** @type {any} */ step) => ({ format: 1, name, label: name, authorship: "human", trigger: { on: "manual" }, steps: [step] });
+  const steps = {
+    model: { id: "k", kind: "classify", input: "refund please", labels: ["refund", "other"] },
+    reviewer: { id: "a", kind: "assign", to: `person:${BOB.id}`, title: "Draft the reply", output: { kind: "note" }, reviewer: { who: "teammate:research" } },
+    checker: { id: "a", kind: "assign", to: `person:${BOB.id}`, title: "Check the reply", output: { kind: "note" }, checker: "teammate:research" },
+    doer: { id: "a", kind: "assign", to: "teammate:research", title: "Do the reply", output: { kind: "note" } },
+    person: { id: "a", kind: "assign", to: `person:${BOB.id}`, title: "Just a person", output: { kind: "note" } },
+  };
+  /** @type {Record<string, any>} */ const runs = {};
+  for (const [name, step] of Object.entries(steps)) {
+    const d = await w.runner.define(null, flowOf(`m_${name}`, step), BOB);
+    assert.ok(d.ok, `${name}: ${JSON.stringify(d.errors)}`);
+    await w.runner.approve(d.id, d.version, ALEX, d.hash);
+    await w.runner.start(d.id, {}, w.kernel.as(ALEX), `s-${name}`).catch(() => null);
+    await settle(w);
+    runs[name] = (await w.runner.listRuns({ flow: d.id }))[0];
+  }
+  for (const name of ["model", "reviewer", "checker", "doer"]) {
+    assert.equal(runs[name].runs_as, BOB.id, `${name}: it runs as its maker`);
+    assert.equal(runs[name].state, "failed", `${name}: ${JSON.stringify(runs[name].steps)}`);
+    assert.equal(runs[name].error.code, "runs_as", `${name}: refused before anything ran`);
+  }
+  assert.equal(asked, 0, "no model was asked");
+  const tasks = await w.kernel.allTasks();
+  for (const title of ["Draft the reply", "Check the reply", "Do the reply"]) assert.ok(!tasks.some((/** @type {any} */ t) => t.title === title), `no task was made for "${title}", so no agent was woken on the approver's account`);
+  assert.notEqual(runs.person.error && runs.person.error.code, "runs_as", "a task with no agent in it is not this rule's business");
 });

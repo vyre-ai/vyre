@@ -6,6 +6,8 @@
 // it assigns carry that person as the assigner and never exceed what they could do. A task that puts an AGENT to work (as doer, checker, reviewer
 // or approver) is assigned instead by the person whose write moved the record into the stage (`chainFor`, [that person, service:flows]): the
 // agent's job runs as whoever assigned it, on their own AI account, never on the installer's.
+// The mover rides the module's own moves (on to the next stage, an early move: that person's) and the gate, so a restart keeps them. A write with
+// no person on it starts no agent: the agent task is a stage error ("no person moved this record, so no agent was started"), never the installer's.
 //
 //   const stages = createStages({ kernel, catalog, chain, ports, clock, emit });
 //   kernel events -> stages.onEvent(event)
@@ -186,6 +188,8 @@ export function createStages(o) {
       /** @type {any} */ let task;
       // One task the kernel refuses (its doer is not a member of the Space yet) is said so and skipped; the stage's other tasks are still made.
       const agentAt = [spec.doer, spec.checker, /** @type {any} */ (spec).reviewer, /** @type {any} */ (spec).approver].some((/** @type {any} */ a) => a && a.kind === "agent");
+      // With movers known (chainFor) a write with no person on it (an outside agent's Gate-approved write, the home's own services) puts no agent to work: the module's chain would be the installer's, on their account.
+      if (agentAt && o.chainFor && !moverChain) { const why = "no person moved this record, so no agent was started"; emit("stage.error", { record: e.urn, stage: e.stage, task: t.title, why }); skipped.push({ task: t.title, why }); held(t, why); continue; }
       try { task = await o.kernel.ask.request(agentAt && moverChain ? moverChain : chain, spec, { idem: `stage:${key}:${t.title}` }); }
       catch (err) {
         emit("stage.error", { record: e.urn, stage: e.stage, task: t.title, why: `the task could not be made: ${err instanceof Error ? err.message : String(err)}` });
@@ -220,7 +224,7 @@ export function createStages(o) {
       const stages = await stagesOfRecord(ent.type, await recordData(ent.type, ent.id));
       const at = stages.findIndex((/** @type {any} */ s) => s.name === ent.stage);
       ent.owner = owner; ent.next = at >= 0 && stages[at + 1] ? stages[at + 1].name : null;
-      ent.run = await o.gates.open({ key: ent.key, urn: ent.urn, type: ent.type, id: ent.id, stage: ent.stage, next: ent.next, owner: owner || undefined, unmade: ent.unmade, tasks: ent.tasks.map((/** @type {any} */ t) => ({ id: t.id, title: t.title, required: t.required, ...(t.since ? { since: t.since } : {}), ...(t.checklist ? { checklist: t.checklist } : {}) })) });
+      ent.run = await o.gates.open({ key: ent.key, urn: ent.urn, type: ent.type, id: ent.id, stage: ent.stage, next: ent.next, owner: owner || undefined, ...(ent.by ? { by: ent.by } : {}), unmade: ent.unmade, tasks: ent.tasks.map((/** @type {any} */ t) => ({ id: t.id, title: t.title, required: t.required, ...(t.since ? { since: t.since } : {}), ...(t.checklist ? { checklist: t.checklist } : {}) })) });
     } catch (err) { emit("stage.error", { record: ent.urn, stage: ent.stage, why: `the gate could not be written: ${err instanceof Error ? err.message : String(err)}` }); }
   }
 
@@ -284,7 +288,7 @@ export function createStages(o) {
     // The record was moved by hand (or removed) while the tasks were open: leave it where the person put it.
     if (cur.data[fieldOf(cur.data)] !== ent.stage) { emit("stage.left-alone", { record: ent.urn, stage: ent.stage, now: cur.data[fieldOf(cur.data)] }); await closeGate(ent, { note: `the record was moved to ${cur.data[fieldOf(cur.data)]} by hand` }); return; }
     // the move is the module's write, but the next stage's agent tasks are still the person's who moved the record into this one
-    if (ent.by) carried.set(`${ent.urn}|${next.name}`, ent.by);
+    carried.set(`${ent.urn}|${next.name}`, ent.by || "");   // "": nobody moved it in, and the module's own chain (the installer's) must not stand in for a mover
     try { await o.kernel.records.update(chain, ent.type, ent.id, { [fieldOf(cur.data)]: next.name }, cur.version, { idem: `advance:${key}` }); }
     catch (e) { ent.advanced = false; throw e; }
     finally { carried.delete(`${ent.urn}|${next.name}`); }   // the hook ran inside the write, or never will
@@ -300,7 +304,7 @@ export function createStages(o) {
     const m = /^vyre:\/\/[^/]+\/([^/]+)\/([^/]+)$/.exec(e.record);
     if (!m) return Promise.resolve();
     // who moved it: the first person on the writer's verified chain, or, for the module's own move on to the next stage, the person who moved it into the stage before
-    const ck = `${e.record}|${e.stage}`, by = carried.get(ck) || requestedFor(e.chain); carried.delete(ck);
+    const ck = `${e.record}|${e.stage}`, by = carried.has(ck) ? (carried.get(ck) || null) : requestedFor(e.chain); carried.delete(ck);
     // Not awaited: the gateway calls this inside the write, and the queue may be mid-advance on this very record (an awaited call would wait on itself).
     void serial(() => enter({ urn: e.record, type: m[1], id: m[2], stage: e.stage, entry: `gw${++entrySeq}`, templates: e.templates, owner: e.owner, by })).catch(err => emit("stage.error", { record: e.record, stage: e.stage, why: String(err && err.message) }));
     return Promise.resolve();
@@ -343,7 +347,7 @@ export function createStages(o) {
     for (const run of await o.gates.list()) {
       const g = run.gate;
       if (!g || entries.has(g.key)) continue;
-      const ent = { key: g.key, urn: g.urn, type: g.type, id: g.record, stage: g.stage, tasks: g.tasks.map((/** @type {any} */ t) => ({ ...t, memo: run.steps[`task:${t.title}`] && run.steps[`task:${t.title}`].output ? run.steps[`task:${t.title}`].output.memo : undefined })), advanced: false, unmade: Array.isArray(g.unmade) ? g.unmade : (run.steps.tasks && run.steps.tasks.output && Array.isArray(run.steps.tasks.output.unmade) ? run.steps.tasks.output.unmade : []), run: run.id, owner: g.owner, next: g.next };
+      const ent = { key: g.key, urn: g.urn, type: g.type, id: g.record, stage: g.stage, tasks: g.tasks.map((/** @type {any} */ t) => ({ ...t, memo: run.steps[`task:${t.title}`] && run.steps[`task:${t.title}`].output ? run.steps[`task:${t.title}`].output.memo : undefined })), advanced: false, unmade: Array.isArray(g.unmade) ? g.unmade : (run.steps.tasks && run.steps.tasks.output && Array.isArray(run.steps.tasks.output.unmade) ? run.steps.tasks.output.unmade : []), run: run.id, owner: g.owner, next: g.next, by: typeof g.by === "string" && g.by ? g.by : null };   // the mover, kept on the gate: after a restart the next stage's agent tasks are still theirs
       entries.set(g.key, ent);
       latest.set(`${g.urn}|${g.stage}`, g.key);
       for (const t of ent.tasks) taskEntry.set(t.id, g.key);
@@ -386,12 +390,16 @@ export function createStages(o) {
       const chain = o.chain();
       const cur = await o.kernel.records.get(chain, ent.type, ent.id);
       if (!cur || cur.data[fieldOf(cur.data)] !== ent.stage) throw fail("bad_state", "the record is not in that stage any more");
-      await o.kernel.records.update(chain, ent.type, ent.id, { [fieldOf(cur.data)]: ent.next }, cur.version, { idem: `advance:${ent.key}` });
+      // the early move is the person's act: the next stage's agent tasks are theirs (never the module's chain standing in for a mover)
+      const mover = who && who.kind === "person" && who.id ? String(who.id) : "";
+      carried.set(`${ent.urn}|${ent.next}`, mover);
+      try { await o.kernel.records.update(chain, ent.type, ent.id, { [fieldOf(cur.data)]: ent.next }, cur.version, { idem: `advance:${ent.key}` }); }
+      finally { carried.delete(`${ent.urn}|${ent.next}`); }
       ent.advanced = true;
       await mark(ent, "move", { status: "done", output: { to: ent.next, early: true, by: who.id, reason: String(reason).slice(0, 300) } });
       await closeGate(ent, { note: `moved on early by ${who.id}: ${String(reason).slice(0, 120)}` });
       emit("stage.advanced-early", { record: ent.urn, from: ent.stage, to: ent.next, by: who.id, reason: String(reason).slice(0, 300) });
-      if (fieldOf(cur.data) === "template_stage") await enter({ urn: ent.urn, type: ent.type, id: ent.id, stage: ent.next, entry: advEntry(ent.key) });
+      if (fieldOf(cur.data) === "template_stage") await enter({ urn: ent.urn, type: ent.type, id: ent.id, stage: ent.next, entry: advEntry(ent.key), by: mover || null });
       return { ok: true, record: ent.urn, from: ent.stage, to: ent.next };
     });
   }

@@ -4,12 +4,13 @@ import { create } from "zustand";
 import { Text } from "./Text";
 import { elevation } from "../lib/elevation";
 import { useUiTheme } from "../theme";
+import { toastLine } from "./toast-model.js";
 
 const useToasts = create<{ line: string | null; undo: { label: string; run: () => void } | null; set: (l: string | null, undo?: { label: string; run: () => void }) => void }>((set) => ({ line: null, undo: null, set: (line, undo) => set({ line, undo: undo ?? null }) }));
 
-/** One line, four seconds (eight with an action, so there is time to press it: an Undo). */
+/** One line, four seconds (eight with an action, so there is time to press it: an Undo, or the next step). The line is one short sentence with a capital (toast-model.js). */
 export function showToast(line: string, undo?: { label: string; run: () => void }) {
-  useToasts.getState().set(line, undo);
+  useToasts.getState().set(toastLine(line), undo);
 }
 
 /** The press of a button whose feature is not built yet: it says so in the one phrase every screen uses, never nothing (FOUNDATION section 4). */

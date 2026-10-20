@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { allowsMock, getStore, setStore } from "../src/store-core/store.js";
 import type { Store } from "../src/store-core/contracts.js";
+import { createLanding } from "./query-order.js";
 
 export { allowsMock, setStore };
 export type { Store };
@@ -19,13 +20,14 @@ export type Query<T> = { data: T | undefined; loading: boolean; error: Error | n
  */
 export function useStoreQuery<T>(read: (s: Store) => T | Promise<T>, deps: unknown[] = []): Query<T> {
   const [state, setState] = useState<{ data: T | undefined; loading: boolean; error: Error | null }>({ data: undefined, loading: true, error: null });
-  const seq = useRef(0);
+  // An answer lands unless a later read already has (ui/query-order.js): a read overtaken by a box event still shows, so a busy box cannot hold the screen on its placeholder.
+  const order = useRef(createLanding());
   const run = useCallback((): Promise<void> => {
-    const mine = ++seq.current;
+    const mine = order.current.start();
     return Promise.resolve()
       .then(() => read(getStore()))
-      .then((data) => { if (mine === seq.current) setState({ data, loading: false, error: null }); })
-      .catch((e) => { if (mine === seq.current) setState((s) => ({ data: s.data, loading: false, error: e instanceof Error ? e : new Error(String(e)) })); });
+      .then((data) => { if (order.current.land(mine)) setState({ data, loading: false, error: null }); })
+      .catch((e) => { if (order.current.land(mine)) setState((s) => ({ data: s.data, loading: false, error: e instanceof Error ? e : new Error(String(e)) })); });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
   useEffect(() => {

@@ -1,0 +1,26 @@
+! The agent's screen (agentd.js starts fluxbox with -rc on this file, as the screen's owner, the browser uid). Root's and read-only in the image.
+! No toolbar, one workspace, no desktop menu and no key that starts a program: the only launchers on the screen are the agent's own dock (agentd-dock.py).
+! The wallpaper is set by agentd (ImageMagick on the root window); the overlay keeps fluxbox from setting one of its own.
+session.configVersion:	13
+session.menuFile:	/etc/vyre-desk/fluxbox/menu
+session.keyFile:	/etc/vyre-desk/fluxbox/keys
+session.appsFile:	/etc/vyre-desk/fluxbox/apps
+session.styleOverlay:	/etc/vyre-desk/fluxbox/overlay
+session.screen0.windowMenu:	/etc/vyre-desk/fluxbox/windowmenu
+session.screen0.rootCommand:
+session.screen0.toolbar.visible:	false
+session.screen0.slit.autoHide:	true
+session.screen0.workspaces:	1
+session.screen0.workspaceNames:	Desk,
+session.screen0.workspacewarping:	false
+session.screen0.windowPlacement:	CascadePlacement
+session.screen0.focusModel:	ClickFocus
+session.screen0.clickRaises:	true
+session.screen0.focusNewWindows:	true
+session.screen0.allowRemoteActions:	false
+session.screen0.showwindowposition:	false
+session.screen0.titlebar.left:
+session.screen0.titlebar.right:	Maximize Close
+session.screen0.defaultDeco:	NORMAL
+session.screen0.fullMaximization:	false
+session.doubleClickInterval:	250

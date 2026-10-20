@@ -11,6 +11,15 @@ export function greeting(hour, name) {
   return p === "night" ? `Still up${who}.` : `Good ${p}${who}.`;
 }
 
+/**
+ * The name Home greets: the person's display name (set at first run or in Account), else their username; never a stand-in like "You" or "Someone", and never a raw id. Empty when there is none.
+ * @param {{ label?: string, name?: string } | null | undefined} id what Account's identity read says
+ */
+export function homeName(id) {
+  const ok = (/** @type {unknown} */ s) => typeof s === "string" && s.trim() !== "" && !/^(you|someone)$/i.test(s.trim()) && !/^[a-z]{2,4}_[a-z0-9]{8,}$/.test(s.trim());
+  return ok(id?.label) ? String(id?.label).trim() : ok(id?.name) ? String(id?.name).trim() : "";
+}
+
 /** The date line, "Sunday, 18 October". @param {number} at ms @param {string} [zone] */
 export const dateLine = (at, zone) => {
   const p = Object.fromEntries(new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long", ...(zone ? { timeZone: zone } : {}) }).formatToParts(new Date(at)).map((x) => [x.type, x.value]));

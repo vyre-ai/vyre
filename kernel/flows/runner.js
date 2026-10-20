@@ -205,7 +205,7 @@ export class FlowRunner {
     /** @type {Run} */
     const run = { id, flow: `gate:${g.type}:${g.stage}`, version: 0, hash: "", space: cat.space, trigger: { kind: "gate", key: g.key, source: `stage:${g.type}.${g.stage}`, input: { record: g.urn, stage: g.stage } }, tainted: false, source_spaces: [cat.space], depth: 0,
       state: "waiting", started_at: now, updated_at: now, steps: {}, waiting: { step: "tasks", kind: "gate" }, approver: g.approver || { kind: "service", id: "stages", space: cat.space },
-      gate: { key: g.key, urn: g.urn, type: g.type, record: g.id, stage: g.stage, next: g.next, owner: g.owner || null, tasks: g.tasks, unmade: g.unmade || [] } };
+      gate: { key: g.key, urn: g.urn, type: g.type, record: g.id, stage: g.stage, next: g.next, owner: g.owner || null, ...(typeof g.by === "string" && g.by ? { by: g.by } : {}), tasks: g.tasks, unmade: g.unmade || [] } };   // by: the person who moved the record in, so a restart moves it on as them
     run.steps.tasks = { status: "waiting", at: now, output: { count: g.tasks.length, required: g.tasks.filter(t => t.required).length } };
     for (const t of g.tasks) run.steps[`task:${t.title}`] = { status: "waiting", at: now, task: t.id, output: { required: t.required } };
     await this.store.putRun(run);
@@ -1791,7 +1791,7 @@ export class FlowRunner {
       if (ctx.dry) { ctx.dryTasks = [...(ctx.dryTasks || []), { step: s.id, to: who, kind: s.kind }]; return { dry: true, task: "sim_" + key }; }
       const title = String(val(s.title) ?? "");
       const record = s.record !== undefined ? urnOf(ctx, val(s.record), s.type) : undefined;
-      const { doer, helpers, why } = await this.#actor(ctx, who, { skills: s.skills, record }); if (doer && doer.kind === "agent" && typeof this.ports.model === "function") await runsAsChecked(this.store, ctx);   // an agent's job runs as the task's assigner: the runs-as person
+      const { doer, helpers, why } = await this.#actor(ctx, who, { skills: s.skills, record }); if (typeof this.ports.model === "function" && ([doer, ...helpers].some((/** @type {any} */ x) => x && x.kind === "agent") || [s.checker, s.reviewer && s.reviewer.who, s.approver && s.approver.who].some((/** @type {any} */ r) => typeof r === "string" && r.startsWith("teammate:")))) await runsAsChecked(this.store, ctx);   // an agent in ANY slot (doer, helper, checker, reviewer, approver) works as the task's assigner: the runs-as person
       // What each person on the task is told: tags in a box are resolved now, through THAT reader's own chain (a role: each holder's), so a record is read as it is at this moment, a sealed field stays
       // sealed, and nobody is handed a record through someone else's reach.
       const ioOf = (/** @type {any} */ actor) => {

@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { tempHome } from "../../test/helpers.js";
 import { open as openStore } from "../store/index.js";
-import { duties, makeWake, dutyHash, DUTIES_MIGRATION, DUTIES_SEEN_MIGRATION, DUTIES_TITLE_MIGRATION } from "./duties.js";
+import { duties, makeWake, dutyHash, DUTIES_MIGRATION, DUTIES_SEEN_MIGRATION, DUTIES_TITLE_MIGRATION, DUTIES_RUNAS_MIGRATION } from "./duties.js";
 import { dutyNewsBlock, addRefusal, addIsolation } from "./index.js";
 
 const tm = { agent: "reviewer-harlow-legal", project: "harlow-legal", role: "reviewer" };
@@ -193,6 +193,25 @@ test("wake: nothing queues for a duty that only looks, a paused one, a firing wi
   assert.equal(wake({ name: "some-other-watcher", items: 3 }), false);
   assert.equal(wake(null), false);
   assert.equal(queued.length, 0);
+});
+
+test("wake: the bus's envelope (what a listener is handed) wakes the duty the same as its payload", async t => {
+  const { d, queued, wake } = await wakeSetup(t);
+  assert.equal(wake({ id: 7, type: "watcher.fired", source: "watchers", payload: { name: d.watcher, items: 1, seen: 1, trigger: "schedule" } }), true, "the envelope's payload is the firing");
+  assert.equal(queued.length, 1);
+  assert.equal(wake({ id: 8, type: "watcher.fired", source: "watchers", payload: { name: d.watcher, items: 0 } }), false, "nothing new in it: nothing queued");
+});
+
+test("a duty keeps the person it runs as: who made it running, who turns it on or changes it; a proposal keeps nobody until then", async t => {
+  const s = setup(t);
+  s.db.exec(DUTIES_RUNAS_MIGRATION);
+  const made = await s.api.create(tm, { when: "daily 07:00", instruction: "Note what went stale.", act: true, by: "deck", run_as: "per_ada" });
+  assert.equal(made.run_as, "per_ada", "started at once: its maker");
+  const proposed = await s.api.create(tm, { when: "daily 08:00", instruction: "Check the pricing page.", act: true, by: "agent:juno", propose: true, run_as: "per_ada" });
+  assert.equal(proposed.run_as, null, "NEGATIVE: a proposal runs as nobody until it is turned on");
+  assert.equal((await s.api.update(proposed.id, { enabled: true, run_as: "per_ben" })).run_as, "per_ben", "whoever turns it on");
+  assert.equal((await s.api.update(made.id, { instruction: "Note what went stale, and why.", run_as: "per_ben" })).run_as, "per_ben", "whoever changes what it does");
+  assert.equal((await s.api.update(made.id, { enabled: false })).run_as, "per_ben", "a pause changes nobody");
 });
 
 test("wake: a second firing while one request waits adds nothing (that request carries every new item), and one more queues once it has run", async t => {

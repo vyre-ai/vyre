@@ -805,7 +805,8 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
       const who = run.agent ? `assistant:${run.agent}` : String(run.slot || `model:${run.provider || "claude"}/${run.model || "default"}#${parseInt(thread.slice(0, 5), 16) % 1000000}`);
       let m = g.bots.get(who);
       if (m && m.thread) continue; // that slot already answers on another thread of its own
-      if (!m) { join(grp, who, { name: run.name ? String(run.name) : undefined }); m = g.bots.get(who); }
+      // an agent's run is named by the agent; a model run's name is its thread's title, which is not who answers, so a model slot joins with no name of its own
+      if (!m) { join(grp, who, { name: run.agent && run.name ? String(run.name) : undefined }); m = g.bots.get(who); }
       if (!m) continue;
       m.thread = thread; m.kind = "run"; save(m);
       await seedRun(m, asker);
