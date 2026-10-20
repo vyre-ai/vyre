@@ -23,7 +23,7 @@ import * as C from "../../../../kernel/identity/chain.js";
 import { BROWSER_TOO_OLD, ed25519Works, ed25519Mode } from "../identity/webcrypto-web.js";
 import { githubSay } from "../identity/github-core.js";
 import { actMessage } from "../../../../names/worker/id-messages.js";
-import { acceptKdf, bundleHash, deriveLogin, loginMessage, registerMessage } from "./login-web.js";
+import { acceptKdf, bundleHash, deriveLogin, githubLinkMessage, loginMessage, registerMessage } from "./login-web.js";
 
 /**
  * Is this key a DEVICE key on the person's checked chain? A sign-in that opens a record whose identity key the chain does not list as a device is refused: the server (or a swapped record) cannot hand a device
@@ -42,7 +42,7 @@ const unb64 = (/** @type {string} */ s) => { const t = s.replace(/-/g, "+").repl
 
 /**
  * @typedef {{ id: string, name: string, role: string, server: string | null, paired?: { box: string, route: string, relay: string, name: string } | null }} KeptSpace
- * @typedef {{ master: any, username: string, display?: string, id: string, ops: unknown[], pin: unknown, device?: { pub: string, wrapped: { iv: string, ct: string } }, signin?: { space: string }, spaces?: KeptSpace[], listed?: Record<string, string>, current?: string | null, progress?: { screen: string, stack: string[] } | null, done?: boolean }} Kept
+ * @typedef {{ master: any, username: string, display?: string, githubLogin?: string, id: string, ops: unknown[], pin: unknown, device?: { pub: string, wrapped: { iv: string, ct: string } }, signin?: { space: string }, spaces?: KeptSpace[], listed?: Record<string, string>, current?: string | null, progress?: { screen: string, stack: string[] } | null, done?: boolean }} Kept
  * @typedef {{ load(): Promise<Kept | null>, save(k: Kept): Promise<void> }} KeptStore
  * The GitHub leg of sign-in, bound in the app (host/index.ts): `start` runs the GitHub sign-in (src/real/github.ts signInWithGithub: who GitHub says this is, and the session the relay holds), `assert` asks the relay for a short assertion
  * for one audience (a space's name, or "names" for the directory). @typedef {{ start(): Promise<{ ok: boolean, code?: string, session?: any, user?: { id: number, login: string } }>, assert(session: any, audience: string): Promise<string> }} GithubPorts
@@ -666,7 +666,41 @@ export function createHost(o) {
     "identity.status": async () => {
       const k = await o.store.load();
       if (!k) return { exists: false, unlocked: false, username: null, id: null, url: null, private: true, github: null, needsMigration: false };
-      return { exists: true, unlocked: held !== null, username: k.username, ...(k.display ? { display: k.display } : {}), id: k.id, url: personRoutes(k.username).route, private: true, github: null, needsMigration: false };
+      return { exists: true, unlocked: held !== null, username: k.username, ...(k.display ? { display: k.display } : {}), id: k.id, url: personRoutes(k.username).route, private: true, github: k.githubLogin || null, needsMigration: false };
+    },
+
+    // Link a GitHub account to this username at each space the identity signs in to, so "Continue with GitHub, then your password" finds them on a new device. GitHub says who it is (the relay's short assertion, one per space);
+    // the identity key says the person wants it (a signature over the space, the username, the GitHub id and the time). The password is not needed: the space holds the same record as before.
+    "identity.github.link": async ({ session, user } = {}) => {
+      if (!o.github) throw Object.assign(new Error("This step is not ready in the app yet."), { code: "host_unsupported" });
+      const k = await o.store.load();
+      if (!k) throw bad("Make your username first.", "no_identity");
+      if (!held) throw bad("Unlock with your password first.", "locked");
+      /** @type {any} */ let ticket = session, who = user;
+      if (!ticket) {
+        const started = await o.github.start();
+        if (!started.ok || !started.session) throw Object.assign(new Error(githubSay(started.code)), { code: started.code || "denied" });
+        ticket = started.session; who = started.user;
+      }
+      if (!who || who.id === undefined) throw bad("GitHub did not say who you are. Try again.", "denied");
+      const names = [...new Set([...(Array.isArray(k.spaces) ? k.spaces.map((/** @type {any} */ x) => String(x.name || "")) : []), ...(k.signin && k.signin.space ? [String(k.signin.space)] : [])].filter(Boolean))];
+      if (!names.length) throw bad("Link GitHub from a space you belong to: create or join one first.", "no_space");
+      const key = await fromSeed(held);
+      let linked = 0;
+      /** @type {any} */ let last = null;
+      for (const space of names) {
+        try {
+          const assertion = await o.github.assert(ticket, space);
+          const ts = o.now ? o.now() : Date.now();
+          const sig = b64u(await key.sign(githubLinkMessage(space, k.username, String(who.id), ts)));
+          await door(space, { op: "link-github", username: k.username, person: k.id, pub: key.publicKey, ts, sig, assertion });
+          linked += 1;
+          try { await api.publishSpace(space, "add"); } catch { /* the directory line is added the next time */ }
+        } catch (e) { last = e; trail(`github link at ${space}: ${String(/** @type {any} */ (e) && /** @type {any} */ (e).code || "error")}`); }
+      }
+      if (!linked) throw last || bad("Your spaces did not take the link. Try again.", "unreachable");
+      await o.store.save({ ...(await o.store.load() || k), githubLogin: String(who.login || "") });
+      return { linked: true, login: String(who.login || ""), spaces: linked };
     },
 
     "identity.unlock": async ({ password, recovery }) => {

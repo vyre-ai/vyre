@@ -764,3 +764,31 @@ test("the chat key lives in the master record: an account with none gets one mad
   assert.ok(iraEntry.entry.agree, "a new account's genesis entry already carries the record's key");
   assert.ok(made.recoveryKey);
 });
+
+test("link GitHub from Settings: each of the person's spaces gets a signed link-github request (the relay's assertion for that space, the identity key's signature over space, username, GitHub id and time), and the status names the login", { timeout: 240000 }, async (t) => {
+  const { githubLinkMessage } = await import("./login-web.js");
+  const w = spaceWorld(t);
+  const one = createHost({ store: memoryStore(), directory: w.base, fetch: w.fetch, now: w.now });
+  await one.call("onboard.person.create", { username: "alex", password: PASSWORD, confirm: PASSWORD });
+  await w.svc.register(await one.registerLogin("juniper", PASSWORD));
+  const linkPosts = [];
+  const fetchLink = async (url, init = {}) => {
+    const u = new URL(url);
+    if (u.host === "juniper.vyre.run" && u.pathname === "/login" && JSON.parse(init.body).op === "link-github") { linkPosts.push(JSON.parse(init.body)); return new Response(JSON.stringify({ ok: true, username: "alex", login: "alexg" }), { status: 200 }); }
+    if (u.pathname.startsWith("/v1/ids/spaces/")) return new Response(JSON.stringify({ data: {} }), { status: 200 });
+    return w.fetch(url, init);
+  };
+  const github = { start: async () => ({ ok: true, session: { ticket: "t", cv: "c" }, user: { id: 7, login: "alexg" } }), assert: async (_s, audience) => `assert:${audience}` };
+  const two = createHost({ store: memoryStore(), directory: w.base, fetch: fetchLink, now: w.now, github });
+  await two.call("onboard.signin", { space: "juniper.vyre.run", username: "alex", password: PASSWORD });
+  const r = await two.call("identity.github.link", {});
+  assert.deepEqual([r.linked, r.login, r.spaces], [true, "alexg", 1]);
+  assert.equal(linkPosts.length, 1);
+  const p = linkPosts[0];
+  assert.equal(p.assertion, "assert:juniper");
+  assert.equal(p.username, "alex");
+  assert.ok(ed25519.verify(Buffer.from(p.sig, "base64url"), githubLinkMessage("juniper", "alex", "7", p.ts), Buffer.from(p.pub, "base64url")), "signed by the identity key over the space, the name, the GitHub id and the time");
+  assert.equal((await two.call("identity.status")).github, "alexg");
+  await two.call("identity.lock");
+  await assert.rejects(() => two.call("identity.github.link", {}), (e) => e.code === "locked");
+});
