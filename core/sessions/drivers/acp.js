@@ -625,8 +625,13 @@ function runAcp(entry, known, o) {
     let r;
     if (prior && (caps.loadSession || (caps.sessionCapabilities && caps.sessionCapabilities.resume))) {
       const method = caps.loadSession ? "session/load" : "session/resume";
-      r = await withAuth(method, { sessionId: prior, cwd, mcpServers: servers });
-      sid = prior; loaded = true;
+      // An agent that no longer has that session (its own store was cleared, a new install) starts a new one under the same Vyre thread: the person's chat goes on, the agent's own memory of it does not.
+      try { r = await withAuth(method, { sessionId: prior, cwd, mcpServers: servers }); sid = prior; loaded = true; }
+      catch (e) {
+        if (/** @type {any} */ (e).code === -32000 || /sign-in|authenticate|waiting for/i.test(String(/** @type {any} */ (e).message))) throw e;
+        r = await withAuth("session/new", { cwd, mcpServers: servers });
+        sid = String(r.sessionId || "");
+      }
     } else {
       r = await withAuth("session/new", { cwd, mcpServers: servers });
       sid = String(r.sessionId || "");

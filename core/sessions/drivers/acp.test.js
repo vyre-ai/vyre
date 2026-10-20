@@ -806,3 +806,18 @@ test("acp: the history an agent replays while it loads a session is not the thre
   assert.equal(again.got.find(m => m.type === "system" && m.subtype === "init").resumed, true, "and it was a resume");
   again.proc.kill && again.proc.kill();
 });
+
+test("acp: a resume whose agent no longer has the session starts a new one under the same thread and answers (Codex, Grok and any other ACP agent)", async t => {
+  const w = world(t);
+  const id = crypto.randomUUID();
+  const first = open(w, { id });
+  assert.match(await first.say("hello"), /./);
+  first.proc.kill && first.proc.kill();
+  await new Promise(r => setTimeout(r, 300));
+  for (const f of fs.readdirSync(w.store)) if (!/\.jsonl?$/.test(f) && !/^detached/.test(f)) fs.rmSync(path.join(w.store, f), { recursive: true, force: true }); // the agent's own sessions are gone
+  const again = open(w, { id, resume: true });
+  const init = await again.until(m => m.type === "system" && m.subtype === "init", "the init of a resume that could not load");
+  assert.equal(init.resumed, false, "it says it started a new session, not that it resumed");
+  assert.match(await again.say("are you there"), /./, "and it answers");
+  again.proc.kill && again.proc.kill();
+});
