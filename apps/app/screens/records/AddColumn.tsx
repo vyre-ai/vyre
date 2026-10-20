@@ -2,7 +2,7 @@ import { useState } from "react";
 import { View } from "react-native";
 import { Banner, Button, Field, IconButton, Select, Sheet, Switch, Text, showToast } from "@vyre/ui";
 import { callT } from "../../src/real/call-tool";
-import { COLUMN_KINDS, columnCall, madeName } from "./add-column.js";
+import { COLUMN_KINDS, columnCall, madeName, promoteCall } from "./add-column.js";
 
 /** "Add a column" on a table: a name and a kind, saved at once, and the column is shown straight away. A link makes its twin on the other type. The box decides who may; its sentence is what shows. */
 export function AddColumn({ type, types, onAdded, compact }: { compact?: boolean; type: string; types: { name: string; label: string }[]; onAdded: (name?: string) => void }) {
@@ -24,6 +24,9 @@ export function AddColumn({ type, types, onAdded, compact }: { compact?: boolean
     showToast(`${label.trim()} added.`);
     setOpen(false); setLabel(""); setOptions(""); setTo(""); setMany(false);
     onAdded(madeName(r.data));
+    // The new column works at once from the record's bag; it becomes a real field of the store in the background, and then it can be filtered and sorted.
+    const p = promoteCall(type, c, r.data);
+    if (p) void callT<any>(p.tool, p.input).then((x) => { if (!x.error) onAdded(); });
   };
   return (
     <>
