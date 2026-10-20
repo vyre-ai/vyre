@@ -137,6 +137,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_OTHER_VPN_BIN` | Not described yet. | `core/network/other-vpn.js` |
 | `VYRE_OVERLAY_BIN` | Not described yet. | `local/hands-mac/index.js` |
 | `VYRE_PACKAGE` | Not described yet. | `harness/lib/vyre.js` |
+| `VYRE_PRESENCE` | Not described yet. | `core/presence/index.js` |
 | `VYRE_PREVIEW_THUMBS` | Not described yet. | `core/previews/index.js` |
 | `VYRE_PROJECT_GIDS` | Not described yet. | `core/spawner/main.js` |
 | `VYRE_PROJECT_GID_MAX` | Not described yet. | `core/spawner/main.js` |
@@ -165,7 +166,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_SSE_HEARTBEAT_MS` | Not described yet. | `core/daemon/index.js` |
 | `VYRE_SSH_BIN` | The `ssh` binary to run. | `core/cli/ssh.js` |
 | `VYRE_STREAM_TEST_HOLD` | Not described yet. | `core/stream/group.js` |
-| `VYRE_SUPERVISOR` | What runs vyred: `docker` inside the box container, which changes how `vyre up` restarts it. | `bin/vyre`, `core/cli/commands/module.js`, `core/cli/commands/up.js`, `core/cli/commands/update.js`, `core/cli/daemonctl.js`, `core/daemon/index.js`, `core/daemon/ownserver-host.js`, `core/switchboard/adopt.js`, `core/switchboard/index.js`, `core/wink/install-pair.js` |
+| `VYRE_SUPERVISOR` | What runs vyred: `docker` inside the box container, which changes how `vyre up` restarts it. | `bin/vyre`, `core/cli/commands/module.js`, `core/cli/commands/up.js`, `core/cli/commands/update.js`, `core/cli/daemonctl.js`, `core/daemon/index.js`, `core/daemon/ownserver-host.js`, `core/signin/index.js`, `core/switchboard/adopt.js`, `core/switchboard/index.js`, `core/wink/install-pair.js` |
 | `VYRE_TAILSCALE_BIN` | The `tailscale` binary to run. A path that does not exist means no tailnet. | `core/link/mac.js`, `core/link/transport.js` |
 | `VYRE_TEST` | Not described yet. | `core/names/directory.js` |
 | `VYRE_TEXT_PRUNE_MS` | How long a thread's streamed text events are kept before they are pruned. | `core/switchboard/index.js` |

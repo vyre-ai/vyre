@@ -92,7 +92,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`sidebar`](#sidebar) | `core/sidebar` | `box`, `local` | 7 | 1 | cli |
 | [`sideview`](#sideview) | `local/sideview` | `local` | 3 | 0 | none |
 | [`sight`](#sight) | `core/sight` | `box`, `local` | 5 | 1 | none |
-| [`signin`](#signin) | `core/signin` | `box`, `local` | 6 | 0 | cli |
+| [`signin`](#signin) | `core/signin` | `box`, `local` | 8 | 0 | cli |
 | [`skills`](#skills) | `core/skills` | `box`, `local` | 19 | 0 | cli |
 | [`spaces`](#spaces) | `core/spaces` | `box`, `local` | 128 | 35 | capsule, cli, deck |
 | [`spend`](#spend) | `core/spend` | `box`, `local` | 4 | 2 | cli |
@@ -997,7 +997,7 @@ The command line's sign-in: `vyre signin` asks the owner's phone to approve, and
 - Folder: `core/signin`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [6](tools.md#signin)
+- Tools: [8](tools.md#signin)
 - Emits: no events
 - Shows on: cli
 - Needs daemon: `cliSigninPayload`, `cliSigninCheck`, `cliSessions`, `devStandIn`

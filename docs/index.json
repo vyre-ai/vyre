@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":360,"tool":1992,"event":556,"config":307,"env":305,"screen":0,"concept":39},
+  "counts": {"command":360,"tool":1994,"event":556,"config":307,"env":306,"screen":0,"concept":39},
   "things": [
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
     {"kind":"event","name":"account.changed","definedIn":"core/sessions/index.js","page":"reference/events.md#models","module":"sessions","mentions":[]},
@@ -1875,6 +1875,8 @@
     {"kind":"tool","name":"signin.dev","definedIn":"core/signin/index.js","page":"reference/tools.md#signindev","module":"signin","mentions":[]},
     {"kind":"tool","name":"signin.end","definedIn":"core/signin/index.js","page":"reference/tools.md#signinend","module":"signin","mentions":[]},
     {"kind":"event","name":"signin.new-device","definedIn":"core/identity/login-start.js","page":"reference/events.md#identity","module":"identity","mentions":[]},
+    {"kind":"tool","name":"signin.password.begin","definedIn":"core/signin/index.js","page":"reference/tools.md#signinpasswordbegin","module":"signin","mentions":[]},
+    {"kind":"tool","name":"signin.password.finish","definedIn":"core/signin/index.js","page":"reference/tools.md#signinpasswordfinish","module":"signin","mentions":[]},
     {"kind":"tool","name":"signin.pending","definedIn":"core/signin/index.js","page":"reference/tools.md#signinpending","module":"signin","mentions":[]},
     {"kind":"event","name":"signin.revoked","definedIn":"core/identity/signins.js","page":"reference/events.md#identity","module":"identity","mentions":[]},
     {"kind":"tool","name":"signin.status","definedIn":"core/signin/index.js","page":"reference/tools.md#signinstatus","module":"signin","mentions":[]},
@@ -3194,6 +3196,7 @@
     {"kind":"env","name":"VYRE_OVERLAY_BIN","definedIn":"local/hands-mac/index.js","page":"reference/config.md#environment-variables","mentions":[]},
     {"kind":"env","name":"VYRE_OWNER_ACCOUNT","definedIn":"core/sessions/drivers/opencode.js","page":"reference/config.md#set-by-vyre","mentions":[]},
     {"kind":"env","name":"VYRE_PACKAGE","definedIn":"harness/lib/vyre.js","page":"reference/config.md#environment-variables","mentions":[{"page":"adr/0020-claude-code-plugin.md","line":48,"anchor":"decision"}]},
+    {"kind":"env","name":"VYRE_PRESENCE","definedIn":"core/presence/index.js","page":"reference/config.md#environment-variables","mentions":[]},
     {"kind":"env","name":"VYRE_PREVIEW_THUMBS","definedIn":"core/previews/index.js","page":"reference/config.md#environment-variables","mentions":[]},
     {"kind":"env","name":"VYRE_PROFILE","definedIn":"scripts/install-mac-server.sh","page":null,"mentions":[]},
     {"kind":"env","name":"VYRE_PROJECT","definedIn":"harness/hooks/hook.js","page":"reference/config.md#set-by-vyre","mentions":[]},

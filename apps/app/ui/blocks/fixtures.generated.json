@@ -4103,6 +4103,39 @@
     }
    }
   },
+  "signin-screen": {
+   "title": "Sign in: a space, a username, a password",
+   "screens": {
+    "full": {
+     "component": "signin-screen"
+    },
+    "compact": {
+     "component": "signin-screen"
+    }
+   }
+  },
+  "signin-github": {
+   "title": "Sign in with GitHub: then the password",
+   "screens": {
+    "full": {
+     "component": "signin-github"
+    },
+    "compact": {
+     "component": "signin-github"
+    }
+   }
+  },
+  "unlock-screen": {
+   "title": "Unlock: your password",
+   "screens": {
+    "full": {
+     "component": "unlock-screen"
+    },
+    "compact": {
+     "component": "unlock-screen"
+    }
+   }
+  },
   "signin-card": {
    "title": "Sign in again",
    "screens": {
