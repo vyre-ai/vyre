@@ -94,7 +94,7 @@ async function story(/** @type {import("node:test").TestContext} */ t) {
   // 1: the person's words reach juno's session
   const S1 = step(1, "the person's words reach juno");
   const words = "@juno get the overdue invoices chased this week";
-  try { await tool("threads.send", { thread: started.id, text: words }); } catch (e) { assert.fail(S1(/** @type {Error} */ (e).message)); }
+  try { await asPerson("threads.send", { thread: started.id, text: words }); } catch (e) { assert.fail(S1(/** @type {Error} */ (e).message)); }
   await until(async () => framesOf(started.id).some(f => f.type === "chat.user-message" && /overdue invoices/.test(String(f.data.text))), S1("the words are not in juno's stream"));
 
   // 2: juno hands it to kit by role. Its team.ask is made through its own bound session, as a model's MCP call is.
