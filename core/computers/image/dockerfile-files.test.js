@@ -79,3 +79,15 @@ test("the chmod line makes every copied python helper readable (root-owned, run 
   assert.ok(chmod, "a chmod 0644 line");
   for (const f of copied) if (f.endsWith(".py")) assert.ok(chmod[1].includes(`/opt/agentd/${f}`), `${f} is not made readable`);
 });
+
+test("a copied file that imports a file of a subfolder (agentd-fs.js and computerd's file routes) finds it copied to the same place, root's and readable", () => {
+  for (const f of copied) {
+    if (!/\.js$/.test(f)) continue;
+    for (const m of read(f).matchAll(/(?:from\s+|import\s*\(\s*)["']\.\/([A-Za-z0-9._-]+\/[A-Za-z0-9._/-]+)["']/g)) {
+      assert.match(dockerfile, new RegExp(`^COPY ${m[1].replace(/[.]/g, "\\.")} /opt/agentd/${m[1].replace(/[.]/g, "\\.")}$`, "m"), `${f} imports ./${m[1]}, which is not copied to /opt/agentd/${m[1]}`);
+      assert.ok(fs.existsSync(path.join(DIR, m[1])), `${m[1]} is in this folder`);
+      assert.match(dockerfile, new RegExp(`chmod 0644 [^\\n]*/opt/agentd/${m[1].replace(/[.]/g, "\\.")}`), `${m[1]} is made readable`);
+    }
+  }
+  assert.match(read("agentd-fs.js"), /from "\.\/computerd\/fs\.js"/, "the file helper uses computerd's own routes");
+});

@@ -43,3 +43,23 @@ test("Quick Look: Space opens the selected file and closes it, folders never ope
   assert.equal(quickLook(s, { type: "close" }, shown, "c").open, null);
   assert.equal(quickLook({ open: "gone" }, { type: "step", by: 1 }, shown, null).open, null, "the open file left the list");
 });
+
+test("an agent's folder: found from its path, opened until its computer answers, and offering only what the person may do there", async () => {
+  const { agentFolderOf, agentAbilities, openStep, OPENING_COMPUTER } = await import("./files-places.js");
+  assert.equal(agentFolderOf("agents/agt_a"), "agents/agt_a");
+  assert.equal(agentFolderOf("agents/agt_a/Work/x.md"), "agents/agt_a");
+  assert.equal(agentFolderOf("agents"), null); assert.equal(agentFolderOf("Projects/p1/files"), null); assert.equal(agentFolderOf("x/agents/agt_a"), null);
+  assert.equal(OPENING_COMPUTER, "Opening this agent's computer…");
+  const space = { upload: true, versions: true, move: false, remove: false, download: true, share: true, edit: false };
+  assert.deepEqual(agentAbilities(space, "edit"), { upload: true, versions: false, move: true, remove: true, download: true, share: false, edit: true }, "no versions or links on a computer; Can edit changes files");
+  assert.deepEqual(agentAbilities(space, "use"), { upload: false, versions: false, move: false, remove: false, download: true, share: false, edit: false }, "Can use reads and downloads only");
+  assert.deepEqual(openStep({ state: "waking", note: "n", can: "edit" }), { ready: false, retryMs: 3000, note: "n", can: "edit" });
+  assert.deepEqual(openStep({ state: "open", note: "Kept on this agent's computer", can: "use" }), { ready: true, retryMs: 0, note: "Kept on this agent's computer", can: "use" });
+});
+
+test("the right-click menu in an agent's folder: no link or versions, and no change without Can edit", async () => {
+  const { agentMenu } = await import("./files-places.js");
+  const groups = [[{ id: "open" }, { id: "look" }], [{ id: "share" }, { id: "download" }, { id: "versions" }], [{ id: "move" }, { id: "rename" }, { id: "duplicate" }], [{ id: "delete" }]];
+  assert.deepEqual(agentMenu(groups, "edit").map((g) => g.map((i) => i.id)), [["open", "look"], ["download"], ["move", "rename", "duplicate"], ["delete"]]);
+  assert.deepEqual(agentMenu(groups, "use").map((g) => g.map((i) => i.id)), [["open", "look"], ["download"]]);
+});

@@ -148,7 +148,9 @@ RUN for n in $(seq 20000 20063); do \
       && chown "$b:$n" "/var/lib/vyre/downloads/ag$n" && chmod 2750 "/var/lib/vyre/downloads/ag$n"; \
     done \
     && chown vyre:vyre /var/lib/vyre/agents /var/lib/vyre/browsers /var/lib/vyre/x /var/lib/vyre/downloads && chmod 0711 /var/lib/vyre/agents /var/lib/vyre/browsers /var/lib/vyre/x /var/lib/vyre/downloads
-COPY agentd.js agentd-server.js agentd-main.js agentd-client.js agentd-relay.js agentd-pipe.py agentd-term.py agentd-run.py agentd-chrome.py agentd-dock.py /opt/agentd/
+COPY agentd.js agentd-server.js agentd-main.js agentd-client.js agentd-relay.js agentd-fs.js agentd-pipe.py agentd-term.py agentd-run.py agentd-chrome.py agentd-dock.py /opt/agentd/
+# agentd-fs.js (one file operation as the agent, for Vyre Files) uses computerd's own file routes, so the agent's folder is checked by the same code as Glass Files: the one file, beside it.
+COPY computerd/fs.js /opt/agentd/computerd/fs.js
 RUN printf '{"type":"module"}\n' > /opt/agentd/package.json \
     && printf '#!/usr/bin/node\nimport { main } from "/opt/agentd/agentd-client.js";\nawait main();\n' > /opt/agentd/client && chmod 0755 /opt/agentd/client \
     && groupadd -g 1004 agentctl && useradd -M -u 1004 -g 1004 -s /usr/sbin/nologin -d /var/lib/vyre/agentd agentctl \
@@ -157,7 +159,7 @@ COPY agentd-vncpass.sh /usr/local/bin/agentd-vncpass
 # agentd's code is root's: neither agentctl nor an agent can write a file it runs.
 RUN chmod 0755 /usr/local/bin/agentd-vncpass \
     && chown -R root:root /opt/agentd /usr/local/bin/agentd-vncpass \
-    && chmod 0755 /opt/agentd && chmod 0644 /opt/agentd/*.js /opt/agentd/agentd-pipe.py /opt/agentd/agentd-term.py /opt/agentd/agentd-run.py /opt/agentd/agentd-chrome.py /opt/agentd/agentd-dock.py /opt/agentd/package.json
+    && chmod 0755 /opt/agentd /opt/agentd/computerd && chmod 0644 /opt/agentd/*.js /opt/agentd/computerd/fs.js /opt/agentd/agentd-pipe.py /opt/agentd/agentd-term.py /opt/agentd/agentd-run.py /opt/agentd/agentd-chrome.py /opt/agentd/agentd-dock.py /opt/agentd/package.json
 # The agent's desk (owner, 20 Oct 2026): the window manager's settings for each agent's screen (no toolbar, no desktop menu, no key that starts a program; agentd.js starts fluxbox with -rc on
 # this file) and the Vyre mark the wallpaper is drawn from (a copy of site/icon-192.png; dockerfile-files.test.js keeps the two the same). Root's and read-only, like everything here.
 COPY desk/fluxbox /etc/vyre-desk/fluxbox

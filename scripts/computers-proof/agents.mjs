@@ -13,6 +13,7 @@ import { execFileSync } from "node:child_process";
 import { DockerDriver } from "../../core/computers/driver/docker.js";
 import { agentdCtl, execTransport, RELAY_PORT } from "../../core/computers/agentd-ctl.js";
 import { createCdpAdapter } from "../../core/computers/cdp-adapter.js";
+import { makeAgentFiles } from "../../core/computers/agent-files.js";
 import { Cdp } from "../../lib/cdp.js";
 
 const DIR = process.env.PROOF_DIR, PROXY = process.env.PROXY_URL, BEARER = process.env.BEARER_FILE;
@@ -321,6 +322,32 @@ try {
   check(typeof tabsBefore === "number" && typeof tabsAfter === "number" && tabsAfter === tabsBefore + 1, "Chrome brings Chrome to the front with a new tab (the holder opens it; the agent never reaches Chrome's pipe)", `${tabsBefore} -> ${tabsAfter}`);
   await sleep(1000);
   check((await shoot("agent-desk-open.png")) > 1000, "a picture of the desk with Terminal, Files and Chrome open is saved (agent-desk-open.png)");
+
+  // (6) the agent's folder in Files (owner, 20 Oct 2026: the folder on the computer is the one real copy). Files reaches it the way vyred does: a file ticket through agentd, the relay, and the
+  // helper running as the agent with computerd's path guard. A file written in the agent's terminal is seen in Files, and a file written from Files is seen in the terminal, owned by the agent.
+  const files = makeAgentFiles({ ready: async () => {}, ticket: (agent, hello, spec) => ctl.fsTicket(agent === "a" ? A : B, hello, spec), where: async () => ({ host: ip, port: RELAY_PORT }) });
+  const tmux = (/** @type {string} */ keys) => shOk(["exec", "-u", "20000", CONTAINER, "/usr/bin/tmux", "-S", "/var/lib/vyre/agents/ag20000/tmux.sock", "send-keys", "-t", "desk", keys, "Enter"]);
+  tmux(`cd ${AH} && echo made-in-the-terminal > Work/from-terminal.txt`); await sleep(1500);
+  const work = await files.list("a", "Work").catch(e => ({ error: e.message }));
+  check(Array.isArray(work.entries) && work.entries.some(e => e.name === "from-terminal.txt" && e.kind === "file"), "a file written in the agent's terminal is listed in Files", work);
+  const seen = await files.read("a", "Work/from-terminal.txt").then(b => b.toString()).catch(e => `ERR ${e.message}`);
+  check(seen === "made-in-the-terminal\n", "and Files reads what the terminal wrote", seen);
+  const wrote = await files.write("a", "Inbox/from-files.txt", Buffer.from("made-in-files\n")).catch(e => ({ error: e.message }));
+  check(wrote && wrote.size === 14, "Files writes a file into the agent's folder", wrote);
+  tmux(`cd ${AH} && { cat Inbox/from-files.txt; stat -c %u Inbox/from-files.txt; } > Work/terminal-saw.txt`); await sleep(1500);
+  const saw = shOk(["exec", "-u", "20000", CONTAINER, "cat", `${AH}/Work/terminal-saw.txt`]);
+  check(saw === "made-in-files\n20000", "the terminal sees the file Files wrote, owned by the agent's own uid", saw);
+  const top = await files.list("a", "").catch(e => ({ error: e.message }));
+  const names = Array.isArray(top.entries) ? top.entries.map(e => e.name) : [];
+  check(["Inbox", "Work", "Done", "Downloads", "Scripts", "Notes"].every(n => names.includes(n)) && top.entries.find(e => e.name === "Downloads").readOnly === true, "Files lists the agent's tidy folder, with Downloads read-only", names);
+  const refusedAs = async (/** @type {Promise<any>} */ p) => p.then(() => "allowed", e => e.code);
+  check(await refusedAs(files.read("a", "../ag20001/home/x")) === "bad_input", "Files cannot climb out of the agent's folder with ..");
+  check(await refusedAs(files.read("a", "/etc/passwd")) === "bad_input", "nor name an absolute path");
+  check(await refusedAs(files.read("a", "to-etc/passwd")) === "denied" && await refusedAs(files.list("a", "to-other")) === "denied", "nor follow a link out of the home (to /etc, to another agent's home)");
+  check(await refusedAs(files.write("a", "Downloads/planted.txt", Buffer.from("x"))) === "denied", "Downloads is read-only through Files");
+  check(await refusedAs(files.read("b", "Inbox/from-files.txt")) === "not_found", "agent B's folder is its own: A's file is not there");
+  const owner = shOk(["exec", "-u", "0", CONTAINER, "stat", "-c", "%u %a", `${AH}/Inbox/from-files.txt`]);
+  check(/^20000 /.test(owner), "the file Files wrote belongs to the agent", owner);
 
   await b.close(); await a2.close(); await adapter.close();
   fs.writeFileSync(path.join(OUT, "agents-proof.txt"), "all agent computer checks passed\n");

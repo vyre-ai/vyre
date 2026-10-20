@@ -15,7 +15,7 @@ import { driveSource, linkedFileSource } from "./file-source";
 import { MenuRow } from "../../ui/blocks/RowMenu";
 import { type Place, rootLabel, abilities, bulkActions, crumbsFor, moveFocus, nextSort, parentPlace, parsePlace, prune, selectAll, selectOnly, selectRange, selectToggle, sortRows, type FileRow, type Selection, type Sort } from "./files-model.ts";
 import { folderNames, linkedNames, loader } from "./files-real";
-import { detailLines, quickLook } from "./files-places.js";
+import { agentAbilities, agentFolderOf, agentMenu, detailLines, openStep, quickLook, OPENING_COMPUTER } from "./files-places.js";
 import { SitePage } from "./SitePage";
 import { startThread } from "./new-thread";
 import { ComputerPage } from "./ComputerPage";
@@ -75,13 +75,20 @@ function Manager({ wide }: { wide: boolean }) {
   const [bgMenu, setBgMenu] = useState<{ x: number; y: number } | null>(null);
   const selectAfter = useRef<string | null>(null);
   const [found, setFound] = useState<FileRow[] | null>(null);
+  // an agent's folder is kept on its computer: files.agent.open starts the computer (a quiet note while it does) and says what the person may do there
+  const [agentOpen, setAgentOpen] = useState<{ folder: string; note: string; can: string } | null>(null);
+  const [waking, setWaking] = useState(false);
+  const placeNow = useRef(place);
+  placeNow.current = place;
 
   // the roots (linked folders and box shares) and the open place are shared with the sidebar tree (files-nav.ts)
   useEffect(loadRoots, [loadRoots]);
 
   const parsed = parsePlace(place);
   const root = parsed?.root ?? "space";
-  const ability = abilities(root);
+  const inAgent = root === "space" && parsed ? agentFolderOf(parsed.path) : null;
+  const agentCan = inAgent && agentOpen?.folder === inAgent ? agentOpen.can : "use";
+  const ability = inAgent ? agentAbilities(abilities(root), agentCan) : abilities(root);
 
   // the open folder
   const load = useCallback((p: string) => {
@@ -91,7 +98,17 @@ function Manager({ wide }: { wide: boolean }) {
     if (!pp) { setRows([]); return; }
     if (pp.root === "linked" && !pp.link) { setRows(folders.map((f) => ({ key: `linked:${f.id}`, place: `linked:${f.id}`, root: "linked" as const, name: f.name, dir: true, kind: "folder" as const, size: 0, modified: f.at, link: f.id, path: "" }))); return; }
     if (pp.root === "box" && !pp.share) { setRows((status?.shares ?? []).map((s) => ({ key: `box:${s.name}`, place: `box:${s.name}`, root: "box" as const, name: s.name, dir: true, kind: "folder" as const, size: 0, modified: 0, share: s.name, path: "" }))); return; }
-    loader.rows(p).then((r) => { setRows(r); setKids(p, r.filter((x) => x.dir).map((x) => ({ id: x.place, label: x.name, root: x.root, kids: [] }))); }).catch((e) => { setErr(say(e)); setRows([]); });
+    const rowsOf = () => loader.rows(p).then((r) => { setRows(r); setKids(p, r.filter((x) => x.dir).map((x) => ({ id: x.place, label: x.name, root: x.root, kids: [] }))); }).catch((e) => { setErr(say(e)); setRows([]); });
+    const folder = pp.root === "space" ? agentFolderOf(pp.path) : null;
+    if (!folder) { setWaking(false); rowsOf(); return; }
+    const open = () => driveTool<{ state?: string; note?: string; can?: string }>("files.agent.open", { path: folder }).then((r) => {
+      if (placeNow.current !== p) return;
+      const step = openStep(r);
+      if (!step.ready) { setWaking(true); setTimeout(() => { if (placeNow.current === p) void open(); }, step.retryMs); return; }
+      setWaking(false); setAgentOpen({ folder, note: step.note, can: step.can });
+      return rowsOf();
+    }).catch((e) => { setWaking(false); setErr(say(e)); setRows([]); });
+    void open();
   }, [folders, status]);
   useEffect(() => { load(place); setSel({ set: new Set(), anchor: null }); setFocus(-1); }, [place, load, tick]);
   useEffect(() => { setQ(""); setChips([]); }, [place]);
@@ -190,18 +207,18 @@ function Manager({ wide }: { wide: boolean }) {
 
   const crumbs = parsed ? crumbsFor(parsed, { linked: linkedNames, space: folderNames }) : [];
   // The bar is for several at once; one row has its "..." and the detail panel, and a bar that appears on the first click would push the rows down before the second click of a double click.
-  const bar = picked.length > 1 ? bulkActions(root, picked.length) : [];   // (the right-click menu offers the same and more)
+  const bar = picked.length > 1 ? bulkActions(root, picked.length).filter((b) => !inAgent || (b.id === "move" ? ability.move : b.id === "delete" ? ability.remove : b.id === "share" ? ability.share : ability.download)) : [];   // (the right-click menu offers the same and more)
   /** The "..." of a row: only what its source really does. */
   const menuFor = (r: FileRow) => {
-    const a = abilities(r.root);
+    const a = r.root === "space" && agentFolderOf(r.path) ? ability : abilities(r.root);
     const items: { label: string; onPress: () => void; danger?: boolean }[] = [{ label: r.dir ? "Open" : "Details", onPress: () => { setSel(selectOnly(r.key)); if (r.dir) go(r.place); } }];
     if (!r.dir && a.download && (r.root === "space" || r.root === "linked")) items.push({ label: "Download", onPress: () => { download(r).catch((e) => showToast(say(e))); } });
     if (!r.dir && a.share && r.root === "space") items.push({ label: "Share a link", onPress: () => { linkCreate(undefined, r.path).then(() => showToast("Link made. It is under Shared.")).catch((e) => showToast(say(e))); } });
-    if (r.dir && r.root === "space") items.push({ label: "Publish as a site", onPress: () => setPublishing({ row: r, name: r.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) }) });
+    if (r.dir && r.root === "space" && !agentFolderOf(r.path)) items.push({ label: "Publish as a site", onPress: () => setPublishing({ row: r, name: r.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) }) });
     if (!r.dir && r.root === "box" && r.share) items.push({ label: "Send to another computer", onPress: () => { tool<{ devices?: { id: string; name: string; ready?: boolean }[] }>("files.drop.targets", {}).then((t) => { const d = (t?.devices ?? []).find((x) => x.ready); if (!d) { showToast("No other computer is set up to receive. Turn receiving on there first."); return; } return tool("files.deliver", { path: r.path, device: d.id }).then(() => showToast(`Sent to ${d.name}. It arrives when that computer is on.`)); }).catch((e) => showToast(say(e))); } });
-    if (a.edit && r.root === "linked") items.push({ label: "Rename", onPress: () => setDialog({ kind: "rename", rows: [r] }) });
+    if (a.edit && (r.root === "linked" || (r.root === "space" && agentFolderOf(r.path)))) items.push({ label: "Rename", onPress: () => setDialog({ kind: "rename", rows: [r] }) });
     if (a.move) items.push({ label: "Move", onPress: () => setDialog({ kind: "move", rows: [r] }) });
-    if (a.remove && r.root === "linked") items.push({ label: "Delete", danger: true, onPress: () => setDialog({ kind: "delete", rows: [r] }) });
+    if (a.remove && (r.root === "linked" || (r.root === "space" && agentFolderOf(r.path)))) items.push({ label: "Delete", danger: true, onPress: () => setDialog({ kind: "delete", rows: [r] }) });
     return items;
   };
   const runBulk = (id: string) => {
@@ -363,6 +380,7 @@ function Manager({ wide }: { wide: boolean }) {
   const main = place.startsWith("site:") ? <SitePage name={place.slice(5)} onBack={() => go("space")} />
     : root === "shared" ? <View className="gap-s3"><SharedLinks refresh={0} /></View>
     : root === "computer" ? <ComputerPage status={status} reload={loadRoots} />
+    : waking ? <Card flush><EmptyState title={OPENING_COMPUTER} body="Its folder opens as soon as the computer answers." /></Card>
     : err ? <Card flush><ErrorState title="This folder did not open" reason={err} retry={() => load(place)} /></Card>
     : rows === null ? <LoadingState rows={4} />
     : !shown.length ? emptyState
@@ -407,6 +425,7 @@ function Manager({ wide }: { wide: boolean }) {
                 <IconButton icon="grid" label="Show as a grid" kind={view === "grid" ? "secondary" : "ghost"} onPress={() => setView("grid")} />
               </View>
             </View>
+            {inAgent && agentOpen?.folder === inAgent && agentOpen.note ? <Text size="caption" tone="faint">{agentOpen.note}</Text> : null}
             {root === "space" || place === "recent" ? <View className="flex-row"><Segmented label="Search in" value={scopeAll ? "all" : "here"} onChange={(v: string) => setScopeAll(v === "all")} options={[["here", "This folder"], ["all", "All files"]]} /></View> : null}
             {newName !== null ? (
               <div onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void makeFolder(); } else if (e.key === "Escape") { e.stopPropagation(); setNewName(null); } }}>
@@ -443,7 +462,7 @@ function Manager({ wide }: { wide: boolean }) {
         ) : null}
       </Sheet>
       {bgMenu ? <FileContextMenu groups={[[{ id: "newfolder", label: "New folder" }]]} at={bgMenu} onPick={() => setNewName("")} onClose={() => setBgMenu(null)} /> : null}
-      {menu ? <FileContextMenu groups={fileMenu(menuRows)} at={menu.at} onPick={(id) => doAction(id, menuRows)} onClose={() => setMenu(null)} /> : null}
+      {menu ? <FileContextMenu groups={inAgent ? agentMenu(fileMenu(menuRows), agentCan) : fileMenu(menuRows)} at={menu.at} onPick={(id) => doAction(id, menuRows)} onClose={() => setMenu(null)} /> : null}
       {box ? <div style={{ position: "fixed", left: Math.min(box.x1, box.x2), top: Math.min(box.y1, box.y2), width: Math.abs(box.x2 - box.x1), height: Math.abs(box.y2 - box.y1), border: "1px solid var(--edge-strong)", background: "var(--surface-3)", opacity: 0.5, pointerEvents: "none", zIndex: 50, borderRadius: 4 }} /> : null}
       <QuickLookSheet row={shown.find((r) => r.key === look.open) ?? null} shown={shown} onClose={() => setLook({ open: null })} />
       <MoveDelete dialog={dialog} onClose={() => setDialog(null)} onDone={(line, undos) => { setDialog(null); invalidate(); showToast(line, undos.length ? { label: "Undo", run: () => { void Promise.all(undos.map((u) => driveTool(u.tool, u.input))).then(() => { showToast("Put back."); invalidate(); }).catch((e) => showToast(say(e))); } } : undefined); }} />

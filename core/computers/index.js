@@ -26,6 +26,7 @@ import { ComputerUpdater, assertOwner, trackTurns, sleepAgentsWhenStopped, MIGRA
 import fs from "node:fs";
 import { makeAgentEndpoint } from "./agent-endpoint.js";
 import { makeAgentRun } from "./agent-run.js";
+import { makeAgentFiles } from "./agent-files.js";
 import { createCdpAdapter } from "./cdp-adapter.js";
 import { Keyboard, isSurface, idleMsOf, IDLE_CHOICES, IDLE_WARN_MS } from "./keyboard.js";
 import { FakeDriver } from "./driver/fake.js";
@@ -293,7 +294,7 @@ export default {
       emit: (type, payload, where) => { if (/^computer\.agent-(asleep|reset|removed)$/.test(type)) cdpAdapter.drop(payload.agent); emit(type, payload, where); },
       ctl: { createUser: lazy("createUser"), removeUser: lazy("removeUser"), startScreen: lazy("startScreen"), stopScreen: lazy("stopScreen"), wipeAgentHome: lazy("wipeAgentHome"),
         // the screen relay's tickets, the Chrome link, a harness session, a command and the terminals: every action agentd answers, or AgentUsers says "this computer cannot" and the agent has no Chrome of its own
-        screenTicket: lazy("screenTicket"), cdpTicket: lazy("cdpTicket"), runTicket: lazy("runTicket"), terminalTicket: lazy("terminalTicket"), exec: lazy("exec"), terminals: lazy("terminals") } });
+        screenTicket: lazy("screenTicket"), cdpTicket: lazy("cdpTicket"), runTicket: lazy("runTicket"), terminalTicket: lazy("terminalTicket"), exec: lazy("exec"), terminals: lazy("terminals"), fsTicket: lazy("fsTicket") } });
     // Pool.reconcile has just made the table agree with the runtime: when the space's computer is gone or stopped, no agent's screen is up, whatever the rows said last time.
     { const box = pool.row(SHARED_COMPUTER_ID); if (!box || (box.state !== "running" && box.state !== "frozen")) agentUsers.asleepAll(); }
     const tool = (name, description, input, run, extra = {}) => ctx.tool(name, { description, input, run, ...extra });
@@ -506,6 +507,51 @@ export default {
       } });
     tool("computers.run.open", "Start a command as an agent's own Linux user inside its computer, as a stream: answers { host, port, hello } for agentd's relay. Connect, send hello, then use frames (stdin down; stdout, stderr and exit up). For a harness session; the caller is the agent's own session, or needs the right to edit the agent.",
       obj({ agent: str, argv: { type: "array", items: str }, cwd: str, env: { type: "object" } }, ["argv"]), async (i, { caller }) => agentRun(i, caller), { internal: true });
+
+    // ---- the agent's folder on its computer: the one real copy, which Files reads and writes (owner decision, 20 Oct 2026; agent-files.js) ------------------------------------
+    //
+    // Only the files module calls this: it has already decided that the person behind the call may see (Can use) or change (Can edit) this agent, and refused every agent and model caller
+    // (core/files/agent-folder.js, AGENT_FOLDER_RULE). The operation runs as the agent's own Linux user inside the computer, through computerd's own path guard (image/agentd-fs.js).
+    // The agent's screen need not be up and is not woken. When the Space's computer itself is not running, `open` starts it in the background and every operation answers `waking`
+    // ("Opening this agent's computer…") until it answers; when this server has no agent computers at all, the answer says so plainly.
+    const FILES_NOT_SET = "Agent computers are not set up on this server, and an agent's files are kept on its computer, so this folder cannot open here. Ask the Space's owner to set up agent computers.";
+    const canHaveFolders = () => Boolean(pool.driver && typeof /** @type {any} */ (pool.driver).execIn === "function" && ctx.config && ctx.config.computers && ctx.config.computers.agentUsers === true);
+    /** @type {Promise<any> | null} */ let opening = null;
+    // the smallest touch on the computer's wiring: the same ensure update.js runs, once at a time, in the background
+    const openComputer = () => { if (!opening) opening = pool.serial(SHARED_COMPUTER_ID, () => pool.ensure(SHARED_COMPUTER_ID)).catch(e => ctx.log(`agent computer: could not open it for Files (${/** @type {Error} */ (e).message})`)).finally(() => { opening = null; }); return opening; };
+    const folderReady = async (/** @type {string} */ agent, /** @type {boolean} */ wake) => {
+      if (!canHaveFolders()) throw Object.assign(new Error(FILES_NOT_SET), { code: "unavailable" });
+      if (!agentdReady()) {
+        if (wake) void openComputer();
+        throw Object.assign(new Error("Opening this agent's computer… Wait a few seconds, then try again."), { code: "waking" });
+      }
+      await agentTools.place(agent);
+    };
+    const agentFiles = makeAgentFiles({ ready: a => folderReady(a, false), ticket: (a, hello, spec) => agentUsers.fsTicket(a, hello, spec),
+      where: async () => { const h = pool.hosts.get(SHARED_COMPUTER_ID); if (!h) throw Object.assign(new Error("Opening this agent's computer… Wait a few seconds, then try again."), { code: "waking" }); await pool.pin(SHARED_COMPUTER_ID); return { host: h.host, port: RELAY_PORT }; } });
+    tool("computers.agent.files", "One operation on an agent's folder on its computer: open (start the computer if it is not running), list, stat, read, write, mkdir, move or trash. Only the files module calls it, after it has checked the person's access to the agent.",
+      obj({ agent: str, op: { type: "string", enum: ["open", "list", "stat", "read", "write", "mkdir", "move", "trash"] }, path: str, from: str, to: str, base64: str, overwrite: { type: "boolean" }, max: { type: "number" } }, ["agent", "op"]),
+      async (i, { caller }) => {
+        if (String(caller || "") !== "module:files") throw Object.assign(new Error("only Files opens an agent's folder, after checking who is asking"), { code: "denied" });
+        const agent = String(i.agent || "");
+        if (!AGENT.test(agent)) throw Object.assign(new Error(`"${agent}" is not an agent name: files.places lists the agents`), { code: "bad_input" });
+        const p = typeof i.path === "string" ? i.path : "";
+        switch (i.op) {
+          case "open": await folderReady(agent, true); return { state: "open" };
+          case "list": return agentFiles.list(agent, p);
+          case "stat": return agentFiles.stat(agent, p);
+          case "read": { const b = await agentFiles.read(agent, p, typeof i.max === "number" ? { max: i.max } : {}); return { size: b.length, base64: b.toString("base64") }; }
+          case "write": {
+            const text = String(i.base64 ?? "");
+            if (!/^[A-Za-z0-9+/]*={0,2}$/.test(text) || text.length % 4 === 1) throw Object.assign(new Error("send base64: the file's bytes, standard base64"), { code: "bad_input" });
+            return agentFiles.write(agent, p, Buffer.from(text, "base64"), { overwrite: i.overwrite === true });
+          }
+          case "mkdir": return agentFiles.mkdir(agent, p);
+          case "move": return agentFiles.move(agent, String(i.from || ""), String(i.to || ""));
+          case "trash": return agentFiles.trash(agent, p);
+          default: throw Object.assign(new Error("name the op: open, list, stat, read, write, mkdir, move or trash"), { code: "bad_input" });
+        }
+      }, { internal: true });
 
     tool("computers.may-act", "May the agent's hands act now? Refused while paused or taken over, with who has the keyboard; while shielded, refused for reads too.",
       obj({ agent: str, tool: str, read: { type: "boolean" } }), async (i, { caller }) => {
