@@ -42,6 +42,16 @@ test("signin.ask needs a terminal login and is rate limited; a second ask from t
   await assert.rejects(() => m.tools["signin.ask"]({}, { terminal: OTHER }), { code: "rate_limited" });
 });
 
+test("in a container the refusal tells the person to use the app, never to open a terminal", async () => {
+  const m = await mod(); const was = process.env.VYRE_SUPERVISOR;
+  try {
+    process.env.VYRE_SUPERVISOR = "docker";
+    await assert.rejects(() => m.tools["signin.ask"]({}, {}), (/** @type {any} */ e) => e.code === "no_terminal" && /container/.test(e.message) && /Vyre app/.test(e.message));
+    delete process.env.VYRE_SUPERVISOR;
+    await assert.rejects(() => m.tools["signin.ask"]({}, {}), (/** @type {any} */ e) => e.code === "no_terminal" && /terminal you are logged in on/.test(e.message));
+  } finally { if (was === undefined) delete process.env.VYRE_SUPERVISOR; else process.env.VYRE_SUPERVISOR = was; }
+});
+
 test("pending shows the card to sign; a yes with a good proof makes the session for that terminal; only that terminal reads the credential, once", async () => {
   const m = await mod();
   const a = await m.tools["signin.ask"]({}, { terminal: T });

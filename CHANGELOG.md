@@ -2,6 +2,11 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## 0.6.5
+
+- fix(identity): a computer paired to a server that holds no identity of its own no longer reads "Choose your Vyre name first." Settings, Devices, Spaces (spaces.devices.list) and the role names (spaces.roles.names, read) take the person from what the daemon proved about the paired device (the home's own device record and kernel, never anything the caller sends); every write still needs the server's own identity and signed approval. assistant.welcome answers the home owner's own paired device the same way.
+- fix(signin): on a server that runs in a container, `vyre signin` and `vyre signout` say in plain words that a terminal cannot be checked from inside the container and point to the Vyre app, instead of "Run this in a terminal you are logged in on".
+
 ## 0.6.4
 
 - fix(computers): one docker events stream for the module's life. The watcher was opened inside the sweep timer, so every tick added a stream; the proxy allows four and answered 429, and the server ran hot retrying. Reconnects now close the old request first, run one at a time, back off with jitter to a minute, and log only when the reason changes.

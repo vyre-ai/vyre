@@ -244,7 +244,14 @@ export default {
       description: "The first chat message after setup: {text, cards:[{id, title, body, href?}]}. A card appears only while its step is open.",
       input: { type: "object", properties: {} },
       run: async (_, meta = {}) => {
-        await gate(meta);
+        // The owner's own paired device (the Mac or phone app reaching this server) is the person: the daemon proved that from its device record (meta.kernelFacts), and the kernel's chain for it
+        // must be the home's owner alone. Nothing a caller sends counts, and no other device (a member's) gets the owner's first-run steps.
+        let ownDevice = false;
+        const f = meta && meta.kernelFacts;
+        if (f && f.kind === "device" && String(meta.caller || "").startsWith("device:") && ctx.kernel && ctx.kernel.id && ctx.kernel.id.owner && typeof ctx.kernel.chain === "function") {
+          try { const c = await ctx.kernel.chain({ kernelFacts: f }); const a = c && c.hops && c.hops.length === 1 ? c.hops[0].actor : null; ownDevice = Boolean(a && a.kind === "person" && a.id === ctx.kernel.id.owner && c.viewer !== true); } catch { ownDevice = false; }
+        }
+        if (!ownDevice) await gate(meta);
         const r = await ctx.call("onboard.status", {}).catch(() => null);
         return welcomeOf(r && !r.error ? r.data : null);
       },

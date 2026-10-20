@@ -20,6 +20,10 @@ const ASK_MS = 5 * 60_000;
 /** One new ask per this long, so a terminal cannot nag the owner's phone. */
 const NEW_ASK_MS = 30_000;
 const NEEDS_TERMINAL = "Run this in a terminal you are logged in on, not from a program.";
+// A server runs in a container: the daemon reads a terminal from the processes above the caller and the login records of the machine it runs on, and from inside a container neither can be read for a
+// terminal on the host (another process space). It cannot be told from a program, so it is refused, and the person is told what works instead.
+const NEEDS_TERMINAL_IN_CONTAINER = "This server runs in a container, so it cannot tell your terminal from a program and signing in here is not available. Use the Vyre app on your computer: it is already signed in as you and does what the terminal would.";
+const needsTerminal = () => (process.env.VYRE_SUPERVISOR === "docker" ? NEEDS_TERMINAL_IN_CONTAINER : NEEDS_TERMINAL);
 const obj = (/** @type {Record<string, any>} */ properties = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties, required, additionalProperties: false });
 const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
 const PERSON_SURFACES = ["cli", "local", "deck", "capsule", "device"];
@@ -53,7 +57,7 @@ export default {
       run: async (/** @type {any} */ _i, /** @type {any} */ meta) => {
         need();
         const key = loginKey(meta && meta.terminal);
-        if (!key) throw refuse(NEEDS_TERMINAL, "no_terminal");
+        if (!key) throw refuse(needsTerminal(), "no_terminal");
         const a = live();
         if (a && a.state === "waiting" && a.key === key) return { id: a.id, expires_in_s: card(a).expires_in_s };
         if (now() - lastAskAt < NEW_ASK_MS) throw refuse("a sign-in was asked for a moment ago: wait a little before asking again", "rate_limited");
@@ -112,7 +116,7 @@ export default {
       run: async (/** @type {any} */ _i, /** @type {any} */ meta) => {
         need();
         const key = loginKey(meta && meta.terminal);
-        if (!key) throw refuse(NEEDS_TERMINAL, "no_terminal");
+        if (!key) throw refuse(needsTerminal(), "no_terminal");
         return { ended: ctx.cliSessions.end(key) };
       },
     });

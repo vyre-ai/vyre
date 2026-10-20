@@ -172,6 +172,19 @@ export default {
       if (!s.exists || s.pending) throw refuse("Choose your Vyre name first.", "no_identity");
       return s;
     };
+    /**
+     * Who is asking, for a READ only. This home's own identity when it has one; else, for a call from a paired device the daemon has proven is the owner's (meta.kernelFacts is built by the daemon from the
+     * home's own device record and kernel, never from anything the caller sends), that owner's person id and that device's id. A server that holds no identity of its own is that case: the person's devices
+     * hold the keys, the server only knows whose they are. It signs nothing and gives no write: every write keeps `me()`.
+     * @param {any} meta
+     */
+    const whoRead = meta => {
+      let s = null; try { s = identity.status(); } catch { s = null; }
+      if (s && s.exists && !s.pending) return s;
+      const f = meta && meta.kernelFacts;
+      if (f && f.kind === "device" && typeof f.person === "string" && f.person && typeof f.device_key_id === "string" && f.device_key_id && K && typeof K.space === "string") return { exists: true, id: f.person, eid: f.device_key_id, name: null, viaDevice: true };
+      return me();
+    };
     /** This person, as an owner of a space: the person id, acting through this device's entry on their list. */
     const ownerSigner = async () => { const s = me(); return { by: /** @type {string} */ (s.id), via: /** @type {string} */ (s.eid), pos: await C.viaOf(identity.ops()), sign: (/** @type {Uint8Array} */ m) => identity.sign(Buffer.from(m)) }; };
     /** This device's own entry, for acts of the person's own list. */
@@ -211,8 +224,8 @@ export default {
       const dev = meta && meta.kernelFacts && meta.kernelFacts.kind === "device" ? String(meta.kernelFacts.device_key_id || "") : "";
       if (dev && !(await isEnrolled(dev, spaceId))) throw refuse("This device is not enrolled in this space.", "device_removed");
     };
-    const gate = async (spaceId, action = "views.read", meta) => {
-      const s = me();
+    const gate = async (spaceId, action = "views.read", meta, who = null) => {
+      const s = who || me();
       await notRemoved(spaceId, meta);
       if (kernelHandle(spaceId)) {
         // The kernel's answer: a member (and, for temp, one whose time has not run out) is let in; what they may DO is the kernel's to decide on each call.
@@ -937,16 +950,18 @@ export default {
 
     // ---- a device's spaces (the Access screen): which spaces a device of the person's reaches, and removing it from one without touching the others ----
     const ownDeviceEid = (/** @type {any} */ meta) => (meta && meta.kernelFacts && meta.kernelFacts.kind === "device" && meta.kernelFacts.device_key_id) || String(me().eid);
-    const deviceOf = async (/** @type {any} */ id, /** @type {any} */ meta) => {
-      const eid = String(id || ownDeviceEid(meta));
-      const e = (await idops.entries()).find((/** @type {any} */ x) => x.eid === eid && x.kind === "device");
+    const deviceOf = async (/** @type {any} */ id, /** @type {any} */ meta, /** @type {any} */ who = null) => {
+      const eid = String(id || (who && who.viaDevice ? who.eid : ownDeviceEid(meta)));
+      let e = null; try { e = (await idops.entries()).find((/** @type {any} */ x) => x.eid === eid && x.kind === "device"); } catch { e = null; }
+      // A server with no identity list: the paired device asking about ITSELF is known by the id the daemon proved; it names no other device.
+      if (!e && who && who.viaDevice && eid === who.eid) e = { eid, kind: "device", label: null };
       if (!e) throw refuse("That is not one of your devices (spaces.identity.entries lists yours).", "not_found");
       return e;
     };
     /** The ids of every space this person is in (finished or not), for the default list of a device. @param {any} s @param {any} meta */
     /** The kernel's HOME space as a row like any other (by its spc_ id): a device paired to the identity that owns the home is enrolled in it, or the daemon (which treats "not enrolled" as no chain) would give a paired phone nothing there. Not stored, not in spaces.list. */
     const homeRow = (/** @type {any} */ s) => (K && typeof K.space === "string" ? { id: K.space, name: "home", label: "home", displayName: null, status: "done", createdBy: /** @type {string} */ (s.id), home: true } : null);
-    const spaceOrHome = (/** @type {any} */ ref) => { try { return spaceOf(ref); } catch (e) { const h = homeRow(me()); if (h && String(ref) === h.id) return h; throw e; } };
+    const spaceOrHome = (/** @type {any} */ ref, /** @type {any} */ who = null) => { try { return spaceOf(ref); } catch (e) { const h = homeRow(who || me()); if (h && String(ref) === h.id) return h; throw e; } };
     const personSpaceIds = async (s, meta) => {
       const ids = [];
       const h = homeRow(s);
@@ -956,8 +971,8 @@ export default {
     };
     tool("spaces.devices.spaces", "The spaces a device of yours can reach, each with your role there and whether this device is enrolled in it (`enrolled: false` is the space's \"Add to this device\"). Leave device out for the device you are on.",
       obj({ device: str }), async (i, meta) => {
-        const s = me();
-        const dev = await deviceOf(i.device, meta);
+        const s = whoRead(meta);
+        const dev = await deviceOf(i.device, meta, s);
         const out2 = [];
         const hr = homeRow(s);
         if (hr) { const m = await membershipOf(hr.id, /** @type {string} */ (s.id), meta).catch(() => null); if (m) { const enrolled = await isEnrolled(dev.eid, hr.id); out2.push({ space: hr.id, name: hr.name, label: hr.label, displayName: null, role: m.role, enrolled, removed: !enrolled, home: true }); } }
@@ -1996,9 +2011,11 @@ export default {
         return r;
       }, { presence: { summary: (/** @type {any} */ i) => `Transfer ${i && i.space} to ${i && i.to}` } });
     tool("spaces.roles.names", "Read the display names of the five roles, or rename one (owner or admin). The ids never change.",
-      obj({ space: str, role: { type: "string", enum: ROLE_IDS }, name: str }, ["space"]), async i => {
-        const row = spaceOf(i.space);
-        const s = await gate(row.id);
+      obj({ space: str, role: { type: "string", enum: ROLE_IDS }, name: str }, ["space"]), async (i, meta) => {
+        const renaming = Boolean(i.role && i.name !== undefined);
+        const who = renaming ? null : whoRead(meta);
+        const row = who && who.viaDevice ? spaceOrHome(i.space, who) : spaceOf(i.space);
+        const s = await gate(row.id, "views.read", meta, who);
         const m = membersFor(row.id);
         if (i.role && i.name !== undefined) {
           const r = await m.setDisplayName({ actor: s.id, role: i.role, name: i.name });

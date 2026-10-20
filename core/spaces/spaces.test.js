@@ -2071,3 +2071,10 @@ test("spaces.names: the Space's own host reads this Space's name and a member's 
   assert.equal((await d.ok("spaces.names", { space, person: casey.id }, "module:vyred")).person, "casey", "a member whose Vyre name the directory confirmed");
   assert.equal((await d.ok("spaces.names", { space, person: "per_nobodyatall000000000000000" }, "module:vyred")).person, null, "a stranger has no name: the run says a team member");
 });
+
+test("a home with no identity of its own refuses the reads that name a person, unless the daemon proved a paired device (no facts, no person)", async t => {
+  const d = await device(t);
+  assert.equal((await d.call("spaces.devices.list", {}, "cli")).error?.code, "no_identity");
+  assert.equal((await d.call("spaces.devices.list", {}, "cli", { kernelFacts: { kind: "socket", surface: "cli" } })).error?.code, "no_identity", "a socket's facts are not a paired device's");
+  assert.equal((await d.call("spaces.roles.names", { space: "spc_aaaaaaaaaaaa" }, "cli")).error?.code, "no_identity");
+});
