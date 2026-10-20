@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { Button, Card, EmptyState, Row, Tabs, Text, allowsMock } from "@vyre/ui";
+import { Button, Card, EmptyState, Row, Tabs, Text, allowsMock, registerWhoPane } from "@vyre/ui";
 import { ThreadsTab } from "../../src/chat/ThreadsTab";
 import { ComputerTab } from "../../src/chat/ComputerTab";
 import { Face } from "../../src/chat/Face";
@@ -18,13 +18,14 @@ const AGENT_TABS: [AgentTab, string][] = [["threads", "Threads"], ["computer", "
 
 /**
  * The side pane for one who: what the shell mounts in its right pane when the name or avatar in a chat's title is pressed (or an avatar is right-clicked anywhere).
- *  - assistant, agent: their threads with you (newest first, New thread), their computer (screen, Files, Terminal), Routines and Watchers, and the files they share.
+ *  - agent (the person's assistant too): their threads with you (newest first, New thread), their computer (screen, Files, Terminal), Routines and Watchers, and the files they share.
  *  - person: their profile and role.
  *  - group: its members, and its own threads.
  * Picking a thread opens it in the main chat view (/u/chats/<id>); New thread opens an empty chat with that agent (/u/chats/new-thread?agent=<name>), where the first message creates it.
- * `id` is the agent's name, the person's id (with or without "person:") or the group's chat id. `onOpen` runs before the main view navigates, so a pane on a phone can close itself.
+ * `id` is the agent's name, the person's id (with or without "person:") or the group's chat id. `onClose` (the shell's) runs before the main view navigates, so a pane on a phone closes itself.
  */
-export function WhoPane({ kind, id, onOpen }: { kind: WhoKind; id: string; onOpen?: () => void }) {
+export function WhoPane({ kind, id, onClose }: { kind: WhoKind; id: string; onClose?: () => void }) {
+  const onOpen = onClose; // on a phone the pane closes itself before the main view navigates
   const router = useRouter();
   const go = (path: string) => { onOpen?.(); router.push(path as never); };
   if (kind === "person") return <PersonPane id={id} />;
@@ -96,3 +97,6 @@ function GroupPane({ id, go }: { id: string; go: (p: string) => void }) {
     </View>
   );
 }
+
+// The shell mounts the one registered component in its right pane (ui/shell/who.ts); loading this file registers it.
+registerWhoPane(WhoPane as never);

@@ -70,7 +70,8 @@ import { tool } from "../real/box";
 import { secureSecrets } from "./secure-paste.js";
 import { whoOfChat } from "../../screens/chats/who-model.js";
 import type { WhoKind } from "../../screens/chats/who-model.js";
-import { openWho } from "../../screens/chats/who-open";
+import { openWho } from "@vyre/ui";
+import "../../screens/chats/WhoPane";
 import { GIVE_UP_MS, idle as idleAwaiting, moved as movedAwaiting, refused as refusedAwaiting, sent as sentAwaiting, workingLine, type Awaiting } from "./working-model.js";
 import { useAttachments } from "./useAttachments";
 import { useAttachDrop } from "./useAttachDrop";
@@ -536,7 +537,7 @@ export function ChatScreen(p: ChatScreenProps) {
   );
   const body = (
     <View onLayout={(e) => { const w = Math.round(e.nativeEvent.layout.width); setThreadW((o) => (Math.abs(o - w) > 8 ? w : o)); }} style={{ flex: 1, backgroundColor: color["surface-1"], paddingTop: insets.top }}>
-      <ChatHeader title={agentTitle || head.title} sub={agentTitle ? threadSub(head.title, agentNames[0]) : undefined} onOpenWho={who ? () => (p.onOpenWho ?? ((k: WhoKind, i: string) => openWho(k, i, (path) => router.push(path as never))))(who.kind, who.id) : undefined} participants={faces} viewer={viewerId} phone={phone} onBack={p.onBack} onOpen={togglePanel} project={chatProject.current && chatProject.current.slug !== "general" ? chatProject.current : null}
+      <ChatHeader title={agentTitle || head.title} sub={agentTitle ? threadSub(head.title, agentNames[0]) : undefined} onOpenWho={who ? () => (p.onOpenWho ?? openWho)(who.kind, who.id) : undefined} participants={faces} viewer={viewerId} phone={phone} onBack={p.onBack} onOpen={togglePanel} project={chatProject.current && chatProject.current.slug !== "general" ? chatProject.current : null}
         place={<PlacementSwitch placement={placed.placement} onMove={(to) => void placed.move(to)} />}
         menu={[
           { label: "Details", onPress: () => { setPanelTab("details"); setPanel("root"); } },

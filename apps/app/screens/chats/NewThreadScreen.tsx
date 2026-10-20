@@ -14,7 +14,8 @@ import { ChatComposer } from "../../src/chat/ChatComposer";
 import { Face } from "../../src/chat/Face";
 import { writeDraft } from "../../src/chat/drafts";
 import { sendFirst } from "./new-thread-model.js";
-import { openWho } from "./who-open";
+import { openWho } from "@vyre/ui";
+import "./WhoPane";
 
 const DRAFT = "new-thread";
 
@@ -75,7 +76,7 @@ export default function NewThreadScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: color["surface-1"], paddingTop: insets.top }}>
       <ChatHeader title={title} participants={faces} viewer="person:me" phone={phone} onBack={() => router.replace("/u/chats?list=1" as never)} onOpen={() => {}}
-        onOpenWho={name ? () => openWho("assistant", name, (path) => router.push(path as never)) : undefined} />
+        onOpenWho={name ? () => openWho("agent", name) : undefined} />
       <View style={{ flex: 1, minHeight: 0, width: "100%", maxWidth: 760, alignSelf: "center", paddingHorizontal: phone ? 16 : 24 }}>
         {sending === null ? (
           <View style={{ alignItems: "center", gap: 8, paddingTop: 48 }}>

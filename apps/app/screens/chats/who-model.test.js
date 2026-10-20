@@ -15,6 +15,6 @@ test("a one-to-one chat opens the other one's pane, a group opens the group's", 
 test("nobody else, or only a model, opens nothing; labels are plain words", () => {
   assert.equal(whoOfChat([{ id: me, name: "You", family: "person" }], me, "c1"), null);
   assert.equal(whoOfChat([{ id: "model:x", name: "Claude", family: "model" }], me, "c1"), null);
-  assert.equal(whoLabel("assistant"), "Your assistant");
+  assert.equal(whoLabel("agent"), "Agent");
   assert.equal(whoLabel("group"), "Group");
 });
