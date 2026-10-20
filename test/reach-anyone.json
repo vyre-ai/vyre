@@ -2425,6 +2425,10 @@
    "module": "work",
    "reason": "read-only: the templates of this Space, read under the caller's own kernel chain"
   },
+  "work.template.stage-flow": {
+   "module": "work",
+   "reason": "person check: personOf() needs a person's chain and only the Playbook's owner or an admin opens its stage; it makes that version's stage Flow (the one a record entering the stage would make) as that person, which only makes the stage's to-dos when a record enters it; starting it by hand is refused"
+  },
   "work.template.test": {
    "module": "work",
    "reason": "read-only: tries a template version with nothing created, sent or changed, read under the caller's own kernel chain"

@@ -412,6 +412,7 @@ export const DECLARED_SINCE = Object.freeze({
   "work.template.library": "5d02ed44b@9 Oct 2026",
   "work.template.list": "5d02ed44b@9 Oct 2026",
   "work.template.test": "5d02ed44b@9 Oct 2026",
+  "work.template.stage-flow": "cfadc8060@20 Oct 2026",
   "work.timeline": "021a571ef@10 Oct 2026",
   "vault.space.use": "0.5.3@15 Oct 2026",
   "releases.info": "510141976@15 Oct 2026",
