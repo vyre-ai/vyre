@@ -148,10 +148,11 @@ export function createRecords(cfg) {
   function attrsOf(/** @type {string} */ u) {
     const disk = kattrs.get(u);
     if (!store.meta || log.durable !== true) return disk;
-    if (verified.has(u)) { const v = verified.get(u); verified.delete(u); verified.set(u, v); return v; }
+    // A cached null means the log has no attrs for this record: the disk copy answers without another scan.
+    if (verified.has(u)) { const v = verified.get(u); verified.delete(u); verified.set(u, v); return v === null ? disk : v; }
     const first = log.read({ subject_prefix: u, limit: 1 })[0];
     const a = first && first.data && typeof first.data.attrs === "object" && first.data.attrs ? first.data.attrs : undefined;
-    if (!a) return disk;
+    if (!a) { verified.set(u, null); if (verified.size > 10_000) verified.delete(verified.keys().next().value); return disk; }
     if (JSON.stringify(disk) !== JSON.stringify(a)) kattrs.set(u, a);
     verified.set(u, a); if (verified.size > 10_000) verified.delete(verified.keys().next().value);
     return a;
@@ -627,7 +628,7 @@ export function createRecords(cfg) {
       if (tx) { tx.rollback(); try { await store.undo(type, id, before); } catch { /* reloaded from disk at the next start */ } intent.state = "compensated"; retire(intent); }
       throw e;
     }
-    if (attrs) kattrs.set(u, attrs);
+    if (attrs) { kattrs.set(u, attrs); verified.delete(u); }
     // The stage was entered: one event says so (Flow triggers `enters-stage` read it), then the tasks side is told (below).
     if (/** @type {any} */ (stage).entered) { try { log.append(chain, { type: "record.stage-entered", sv: 1, subject: u, data: { type, id, stage: /** @type {any} */ (stage).entered.stage }, vis: "subject", red: "internal" }, { decision: d.decision }); } catch { /* the write stands; the entry is also reported to onStageEnter */ } }
     await finishTx();

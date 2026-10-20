@@ -2,6 +2,11 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## 0.6.4
+
+- fix(computers): one docker events stream for the module's life. The watcher was opened inside the sweep timer, so every tick added a stream; the proxy allows four and answered 429, and the server ran hot retrying. Reconnects now close the old request first, run one at a time, back off with jitter to a minute, and log only when the reason changes.
+- fix(records): attrsOf remembers a record whose log has no attrs, so Records reads stop scanning the event log once per row (calls took about 9 s on a large database). A create clears the entry.
+
 ## 0.6.3
 
 - feat(vault): an item's page has Used with, the hosts its secrets may go to (read with vault.use.find, changed with vault.use.set; the hosts written on the item stay, the ones you allow can be removed), next to its plain fields and Allowed in scripts. No second store. Merged the train's placeholder review fixes with the simple Vault; the four reds of run 39350707365 fixed in place: vault.templates and vault.template.suggest in the presence list, hooks.flow tools in the door's owner list, the web-address bind in kernel/flows/runner.js back to its size, the web-address approver check reads roleAtLeast, and read-tools.generated.js named as a tool-name list.

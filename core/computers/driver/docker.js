@@ -91,6 +91,8 @@ export class DockerDriver {
         // An answer that is not a stream (an older proxy, an error): nothing is being heard, so look at every computer once now.
         if (res.statusCode !== 200) { res.resume(); if (o.onGap) o.onGap(); retry(`status ${res.statusCode}`); return; }
         delay = 1000;
+        if (told && o.log) o.log("docker events: listening again");
+        told = "";
         if (!first && o.onGap) o.onGap();
         first = false;
         let buf = "";
@@ -114,12 +116,19 @@ export class DockerDriver {
       req.on("error", e => retry(e.message));
       req.end();
     };
+    // One reconnect at a time: the response's end, its error and the request's error can all fire for one failure.
+    // The old request is closed before the next opens, the wait doubles to a minute with jitter, and the log says
+    // only when the reason changes, so a proxy that keeps refusing is one line, not one a second.
+    let told = "";
     const retry = why => {
-      if (stopped) return;
-      if (o.log) o.log(`docker events: ${why}; trying again in ${Math.round(delay / 1000)} s`);
-      timer = setTimeout(open, delay);
+      if (stopped || timer) return;
+      if (req) { try { req.destroy(); } catch { /* already closed */ } req = null; }
+      if (o.log && why !== told) o.log(`docker events: ${why}; trying again with backoff up to 60 s`);
+      told = why;
+      const wait = Math.round(delay / 2 + Math.random() * delay / 2);
+      timer = setTimeout(() => { timer = null; open(); }, wait);
       if (timer.unref) timer.unref();
-      delay = Math.min(delay * 2, 30_000);
+      delay = Math.min(delay * 2, 60_000);
     };
     open();
     return { stop() { stopped = true; if (timer) clearTimeout(timer); if (req) req.destroy(); } };

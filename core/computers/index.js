@@ -227,12 +227,13 @@ export default {
           sweeping = false;
         }
         schedule();
-    // The runtime tells us when a computer dies (docker events through the proxy); the sweep is only the backstop.
-    const stopDeaths = pool.watchDeaths();
       }, busy() ? sweepMs : idleSweepMs);
       timer.unref();
     };
     schedule();
+    // The runtime tells us when a computer dies (docker events through the proxy); the sweep is only the backstop.
+    // One stream for the module's life: opened here once, never per sweep tick.
+    const stopDeaths = pool.watchDeaths();
 
     /** The agents module's view of one agent, or null when it cannot say. */
     const kindOf = async name => {
