@@ -353,7 +353,7 @@ export async function openRecords(o) {
       }
       const type = typeOf(r);
       // Only the fields that changed: an edit made in the app meanwhile to any other field stays.
-      const full = toData(r), named = Object.keys(fields).map(k => (k === "source_name" ? "added_by" : k === "deleted_at" ? "removed_at" : k));
+      const full = toData(r), named = Object.keys(fields).map(k => (k === "source_name" ? "added_by" : k === "deleted_at" ? "removed_at" : k === "by" ? "person" : k));   // the row's `by` is the record's `person`
       const patch = Object.fromEntries(Object.entries(full).filter(([k]) => named.includes(k)));
       if (!Object.keys(patch).length) return;
       busy(r.id, 1);
