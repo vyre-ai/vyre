@@ -36,6 +36,7 @@ import https from "node:https";
 import http from "node:http";
 import { forwardFile, sendFile } from "./forward-file.js";
 import { registerService } from "./service.js";
+import { lentToAgent } from "./lent.js";
 import { defaultField } from "../../lib/vault-kinds/kinds.js";
 import { buildRequest } from "../../records/connectors/format.js";
 import { rowMac, same } from "./crypto.js";
@@ -649,9 +650,9 @@ export class ApiRequests {
     if (mod && !watcher) {
       try { reader = (((await this.vault.apiCredential(name)).config.readers) || []).some(x => x.module === mod); } catch { reader = false; }
     }
-    // An agent's own watcher uses what is lent to its agent (vault.lentToAgent); only the watchers module names the agent, for a named watcher.
+    // An agent's own watcher uses what is lent to its agent (lent.js lentToAgent); only the watchers module names the agent, for a named watcher.
     const lentTo = mod === "watchers" && watcher && isStr(input.agent) && input.agent ? String(input.agent) : "";
-    if (mod && !reader && !(lentTo && (await this.vault.lentToAgent(name, mod, watcher, lentTo)))) this.granted(name, mod, watcher, audit);
+    if (mod && !reader && !(lentTo && (await lentToAgent(this.vault, name, mod, watcher, lentTo)))) this.granted(name, mod, watcher, audit);
     let plan;
     try { plan = await this.plan(input, name); }
     catch (e) { audit(false, printable(/** @type {Error} */ (e).message, 160)); throw e; }
