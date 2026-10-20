@@ -2,6 +2,10 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## 0.6.5
+
+- perf(records): the Twenty store reads every object's columns once for all types that ask together at start (each type read them alone, 3 to 5 s apiece, one after another), keeps that read 20 s and drops it on a define; the health check keeps an ok answer 10 s. A record page that is still loading after 20 s says so with Try again instead of loading rows for ever.
+
 ## 0.6.4
 
 - fix(computers): one docker events stream for the module's life. The watcher was opened inside the sweep timer, so every tick added a stream; the proxy allows four and answered 429, and the server ran hot retrying. Reconnects now close the old request first, run one at a time, back off with jitter to a minute, and log only when the reason changes.

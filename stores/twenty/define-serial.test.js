@@ -140,3 +140,22 @@ test("a Records call slower than the limit leaves a log line naming the call (a 
   assert.ok(!lines.some(l => l.startsWith("quiet:slow Records call")), "a fast call says nothing");
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test("a restart's first reads share one read of the columns, and health is kept for a few seconds (the first Records load paid a 3 to 5 s read per type)", async () => {
+  fake.reset();
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "ds-"));
+  const mk = () => createTwentyStore({ client: new TwentyClient({ url: fake.url, key: () => fake.key, sleep: async () => {} }), space: "spc_cccccccccccc", dir, webhookSecret: crypto.randomBytes(16).toString("hex"), graceMs: 0 });
+  const first = mk();
+  await first.define({ add_types: [type("eta"), type("theta"), type("iota")] });
+  await first.prepare();
+  const later = mk();   // a restarted server: no column is known yet
+  await later.define({ add_types: [type("eta"), type("theta"), type("iota")] });
+  const gql = later.client.gql.bind(later.client);
+  let cols = 0, health = 0;
+  later.client.gql = async (/** @type {string} */ api, /** @type {string} */ q, /** @type {any} */ v) => { if (/query Cols\b/.test(q)) cols++; if (/query Health\b/.test(q)) health++; return gql(api, q, v); };
+  await later.prepare();
+  assert.equal(cols, 1, "three types, one read of the columns");
+  await later.health(); await later.health();
+  assert.equal(health, 1, "the second health answer comes from the kept one");
+  fs.rmSync(dir, { recursive: true, force: true });
+});

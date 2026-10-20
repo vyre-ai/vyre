@@ -71,8 +71,16 @@ export function RecordScreen({ id, onClose, onOpen }: { id: string; onClose?: ()
   }, [isContact]);
   const email = emailOf(rec?.data);
   const back = () => (onClose ? onClose() : router.canGoBack() ? router.back() : router.replace(`/u/records/${rec?.type ?? "contact"}` as never));
-  if (error && !world) return <ErrorState title="This record did not load" reason={plainError(error, "Records did not answer.")} retry={reload} />;
-  if ((loading && !world) || (waiting && !rec)) return <View className="min-h-0 flex-1"><PageHeader title="Record" onBack={back} /><View className="p-s4"><SkeletonRows rows={4} /></View></View>;
+  // Every wait has a limit: loading rows that have not turned into a record after 20 s become a plain error with Try again.
+  const stillWaiting = Boolean((loading && !world) || (waiting && !rec));
+  const [tired, setTired] = useState(false);
+  useEffect(() => {
+    if (!stillWaiting) { setTired(false); return; }
+    const t = setTimeout(() => setTired(true), 20_000);
+    return () => clearTimeout(t);
+  }, [stillWaiting]);
+  if ((error && !world) || (tired && stillWaiting)) return <ErrorState title="This record did not load" reason={error ? plainError(error, "Records did not answer.") : "Records is taking too long to answer."} retry={() => { setTired(false); reload(); }} />;
+  if (stillWaiting) return <View className="min-h-0 flex-1"><PageHeader title="Record" onBack={back} /><View className="p-s4"><SkeletonRows rows={4} /></View></View>;
   const def = rec && world?.types.find((t) => t.name === rec.type);
   if (!world || !rec || !def) return <EmptyState title="That record is not here" body="It may have been removed, or it lives in a space you cannot see." action={{ label: "Go back", onPress: back }} />;
   const title = titleOf(def, rec);
