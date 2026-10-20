@@ -25,7 +25,8 @@
       "codex",
       "grok",
       "openrouter",
-      "openai-compatible"
+      "openai-compatible",
+      "opencode"
     ],
     "tools": [
       {

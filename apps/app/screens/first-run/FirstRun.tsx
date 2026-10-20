@@ -547,7 +547,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
           const prob = labelProblem(name, taken);
           return (
             <View style={{ gap: 12 }}>
-              <Field label={ACCOUNTS_COPY.keyLabel} kind="password" value={apiKey} onChangeText={setApiKey} help={seen ? `Looks like ${seen.label.replace(" key", "")}.` : ACCOUNTS_COPY.keyHelp} error={apiKey.trim() && !seen ? ACCOUNTS_COPY.keyUnknown : undefined} />
+              <Field label={ACCOUNTS_COPY.keyLabel} kind="password" value={apiKey} onChangeText={setApiKey} help={seen ? (seen.kind === "opencode" ? "Sign in to the OpenCode Console, add billing, and copy the API key." : `Looks like ${seen.label.replace(" key", "")}.`) : ACCOUNTS_COPY.keyHelp} error={apiKey.trim() && !seen ? ACCOUNTS_COPY.keyUnknown : undefined} />
               <Field label={ACCOUNTS_COPY.nameLabel} value={name} onChangeText={setAcctLabel} error={name && prob ? prob : undefined} />
               {needPw ? <PasswordField label={ACCOUNTS_COPY.keyPassword} value={keyPassword} onChangeText={setKeyPassword} /> : null}
               <Button kind="secondary" size="lg" label={ACCOUNTS_COPY.add} loading={busy} disabled={!seen || !keyShapeOk(apiKey) || Boolean(prob) || busy || (needPw && !keyPassword)} onPress={() => void run(async () => {

@@ -34,6 +34,12 @@ export const ACCOUNTS_PENDING_MIGRATION = `ALTER TABLE sessions_accounts ADD COL
 /** Whether the provider keeps and may train on this account's sessions (1: privacy mode on, it does not; 0: off). Only Grok has such a setting, held by xAI for the account; this is Vyre's record of the person's choice. */
 export const ACCOUNTS_PRIVACY_MIGRATION = `ALTER TABLE sessions_accounts ADD COLUMN privacy INTEGER NOT NULL DEFAULT 1`;
 
+/** OpenCode only. 1 uses only OpenCode Go. 0 uses the regular inference catalogue. The two are never mixed. */
+export const ACCOUNTS_GO_ONLY_MIGRATION = `ALTER TABLE sessions_accounts ADD COLUMN go_only INTEGER NOT NULL DEFAULT 0`;
+
+/** OpenCode only. 1 when the last key check listed at least one Go model. Not a secret. */
+export const ACCOUNTS_GO_OK_MIGRATION = `ALTER TABLE sessions_accounts ADD COLUMN go_ok INTEGER NOT NULL DEFAULT 0`;
+
 /** An API-key account's own endpoint and default model (the setup screen's OpenAI-compatible and Anthropic-compatible keys). Both are plain text, never a secret. */
 export const ACCOUNTS_ENDPOINT_MIGRATION = `ALTER TABLE sessions_accounts ADD COLUMN base_url TEXT;
 ALTER TABLE sessions_accounts ADD COLUMN model TEXT`;
@@ -109,7 +115,7 @@ export class Accounts {
   fromRow(r) {
     return { id: r.id, provider: r.provider, label: r.label, kind: r.kind || "api-key", vault_item: r.vault_item == null ? null : r.vault_item, uid: r.uid == null ? null : Number(r.uid), signed_in_at: r.signed_in_at == null ? null : Number(r.signed_in_at),
       scope: { projects: JSON.parse(r.scope_projects), agents: JSON.parse(r.scope_agents) },
-      is_default: Boolean(r.is_default), pending: Boolean(r.pending), privacy: r.provider === "grok" ? Boolean(r.privacy ?? 1) : null, base_url: r.base_url == null ? null : String(r.base_url), person: r.person == null ? null : String(r.person), own_vault: Boolean(r.own_vault), model: r.model == null ? null : String(r.model), needs: (r.kind || "api-key") === "login" && r.signed_in_at == null ? "sign-in" : (r.pending ? "confirm" : null), added: r.added, updated: r.updated };
+      is_default: Boolean(r.is_default), pending: Boolean(r.pending), privacy: r.provider === "grok" ? Boolean(r.privacy ?? 1) : null, base_url: r.base_url == null ? null : String(r.base_url), person: r.person == null ? null : String(r.person), own_vault: Boolean(r.own_vault), model: r.model == null ? null : String(r.model), ...(r.provider === "opencode" ? { go_only: Boolean(r.go_only), go_ok: Boolean(r.go_ok) } : {}), needs: (r.kind || "api-key") === "login" && r.signed_in_at == null ? "sign-in" : (r.pending ? "confirm" : null), added: r.added, updated: r.updated };
   }
 
   /**
@@ -193,6 +199,7 @@ export class Accounts {
     this.db.prepare(`INSERT INTO sessions_accounts (id, provider, label, kind, vault_item, scope_projects, scope_agents, is_default, uid, added, updated, pending, base_url, model, person, own_vault)
       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(id, provider, label, kind, vaultItem, JSON.stringify(scope.projects), JSON.stringify(scope.agents), i.is_default || (first && !i.pending) ? 1 : 0, uid, now, now, i.pending ? 1 : 0,
       i.base_url == null ? null : endpointOk(i.base_url), i.model == null || i.model === "" ? null : String(i.model).slice(0, 100), person, person && kind !== "login" && i.own_vault === true ? 1 : 0);
+    if (provider === "opencode") this.db.prepare("UPDATE sessions_accounts SET go_ok = ? WHERE id = ?").run(i.go_ok ? 1 : 0, id);
     return this.row(id);
   }
 
@@ -202,6 +209,21 @@ export class Accounts {
     if (!r || r.synthetic) throw Object.assign(new Error(`no account ${id} (sessions.accounts.list shows them)`), { code: "not_found" });
     if (r.provider !== "grok") throw Object.assign(new Error(`${r.provider} has no privacy setting`), { code: "bad_input" });
     this.db.prepare("UPDATE sessions_accounts SET privacy = ?, updated = ? WHERE id = ?").run(on ? 1 : 0, Date.now(), String(id));
+    return this.row(id);
+  }
+
+  /**
+   * OpenCode only. on uses Go models only when this key listed them. Off uses the regular catalogue and keeps go_ok.
+   * A boolean third argument is a fresh probe of go_ok. Without it the stored go_ok is kept.
+   * @param {string} id @param {boolean} on @param {boolean} [ok]
+   */
+  setGo(id, on, ok) {
+    const r = this.row(id);
+    if (!r || r.synthetic) throw Object.assign(new Error(`no account ${id} (sessions.accounts.list shows them)`), { code: "not_found" });
+    if (r.provider !== "opencode") throw Object.assign(new Error("Only an OpenCode account can use OpenCode Go."), { code: "bad_input" });
+    const goOk = typeof ok === "boolean" ? ok : Boolean(r.go_ok);
+    if (on && !goOk) throw Object.assign(new Error("OpenCode Go is not on this key."), { code: "bad_input" });
+    this.db.prepare("UPDATE sessions_accounts SET go_only = ?, go_ok = ?, updated = ? WHERE id = ?").run(on ? 1 : 0, goOk ? 1 : 0, Date.now(), String(id));
     return this.row(id);
   }
 

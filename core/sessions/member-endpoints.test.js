@@ -12,7 +12,7 @@ test("a member may name no address, or the kind's own, or xAI's one for an OpenA
   assert.equal(ok("openai-compatible", "https://api.x.ai/v1"), true);
   assert.equal(ok("anthropic-compatible", "https://api.anthropic.com"), true);
   assert.equal(ok("anthropic-compatible", "https://api.x.ai/v1"), false, "xAI's address is only for an OpenAI-style key");
-  for (const kind of ["openai-compatible", "anthropic-compatible", "openrouter"]) {
+  for (const kind of ["openai-compatible", "anthropic-compatible", "openrouter", "opencode"]) {
     for (const bad of ["http://127.0.0.1:8080/v1", "http://localhost/v1", "https://evil.example/v1", "https://api.openai.com.evil.example/v1", "http://[::1]/v1", "https://10.0.0.1/v1"]) assert.equal(ok(kind, bad), false, `${kind} ${bad}`);
   }
   assert.equal(ok("openrouter", "https://api.x.ai/v1"), false);
@@ -26,4 +26,8 @@ test("a member's account may name only the addresses of its provider", () => {
   assert.equal(memberBaseOk("http://127.0.0.1:9/v1", memberAccountBases("openai-compatible")), false);
   assert.equal(memberBaseOk("https://anything.example", memberAccountBases("grok")), false);
   assert.equal(memberBaseOk(undefined, memberAccountBases("grok")), true);
+  assert.equal(memberBaseOk(undefined, memberAccountBases("opencode")), true);
+  assert.equal(memberBaseOk("https://opencode.ai", memberAccountBases("opencode")), true);
+  assert.equal(memberBaseOk("https://opencode.ai/inference", memberAccountBases("opencode")), false);
+  assert.deepEqual(memberAccountBases("grok"), []);
 });

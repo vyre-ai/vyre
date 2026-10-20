@@ -16,6 +16,10 @@ test("every provider's mark is in the app's icon set; an unknown one has a monog
   }
   assert.deepEqual(["claude", "codex", "grok", "openrouter", "openai-compatible"].map(providerVendor), ["Anthropic", "OpenAI", "xAI", "OpenRouter", "Any key"]);
   assert.equal(providerName("openai-compatible"), "OpenAI-compatible");
+  assert.equal(providerIcon("opencode"), "spark");
+  assert.ok(family.has("spark"));
+  assert.equal(providerName("opencode"), "OpenCode");
+  assert.equal(providerVendor("opencode"), "OpenCode");
   assert.equal(providerIcon("mistral"), null);
   assert.equal(providerIcon(null), null);
   assert.equal(providerMono("mistral"), "Mi");

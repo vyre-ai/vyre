@@ -20,7 +20,7 @@ import { accountModel } from "./account-model.js";
 import { timeLine, zoneFrom } from "../../lib/time/index.js";
 import { OPEN as AGENT_OPEN } from "../modules/agent-reach.js";
 import { sessionsConfig, sdkDir, claudeBin, configModel, PURPOSES } from "./config.js";
-import { Accounts, ACCOUNTS_MIGRATION, ACCOUNTS_PENDING_MIGRATION, ACCOUNTS_PRIVACY_MIGRATION, ACCOUNTS_ENDPOINT_MIGRATION, ACCOUNTS_PERSON_MIGRATION, ACCOUNTS_OWN_VAULT_MIGRATION, endpointOk, KINDS as ACCOUNT_KINDS } from "./accounts.js";
+import { Accounts, ACCOUNTS_MIGRATION, ACCOUNTS_PENDING_MIGRATION, ACCOUNTS_PRIVACY_MIGRATION, ACCOUNTS_GO_ONLY_MIGRATION, ACCOUNTS_GO_OK_MIGRATION, ACCOUNTS_ENDPOINT_MIGRATION, ACCOUNTS_PERSON_MIGRATION, ACCOUNTS_OWN_VAULT_MIGRATION, endpointOk, KINDS as ACCOUNT_KINDS } from "./accounts.js";
 import { Signins, LOGINS } from "./signin.js";
 import { spawnSession } from "./spawn.js";
 import { readIdentity } from "./identity.js";
@@ -36,6 +36,8 @@ import { usesSpawner } from "./spawn.js";
 import { grokProvider } from "./drivers/grok.js";
 import { codexProvider } from "./drivers/codex.js";
 import { openrouterProvider } from "./drivers/openrouter.js";
+import { opencodeProvider } from "./drivers/opencode.js";
+import { probeOpenCode } from "../../lib/opencode.js";
 import { loginDirect } from "../../lib/door-bridge.js";
 import { wipeAccount } from "../spawner/client.js";
 
@@ -108,6 +110,8 @@ export default {
     const db = ctx.store.db;
     // The privacy column is added by checking for it, not by a numbered migration, so a store that ran an earlier order of migrations still gets it.
     try { db.prepare("SELECT privacy FROM sessions_accounts LIMIT 0").get(); } catch { db.exec(ACCOUNTS_PRIVACY_MIGRATION); }
+    try { db.prepare("SELECT go_only FROM sessions_accounts LIMIT 0").get(); } catch { db.exec(ACCOUNTS_GO_ONLY_MIGRATION); }
+    try { db.prepare("SELECT go_ok FROM sessions_accounts LIMIT 0").get(); } catch { db.exec(ACCOUNTS_GO_OK_MIGRATION); }
     try { db.prepare("SELECT base_url, model FROM sessions_accounts LIMIT 0").get(); } catch { db.exec(ACCOUNTS_ENDPOINT_MIGRATION); }
     try { db.prepare("SELECT person FROM sessions_accounts LIMIT 0").get(); } catch { db.exec(ACCOUNTS_PERSON_MIGRATION); }
     try { db.prepare("SELECT own_vault FROM sessions_accounts LIMIT 0").get(); } catch { db.exec(ACCOUNTS_OWN_VAULT_MIGRATION); }
@@ -274,7 +278,7 @@ export default {
     // the tiny core/providers module since a tool name must start with its own module's name
     // (core/modules/index.js's validation) and "providers" is not this module's name; this is the
     // internal snapshot that module calls through ctx.call.
-    const PROVIDERS = [{ id: "claude", label: "Claude" }, { id: "codex", label: "Codex" }, { id: "grok", label: "Grok" }, { id: "openrouter", label: "OpenRouter" }, { id: "openai-compatible", label: "OpenAI-compatible" }];
+    const PROVIDERS = [{ id: "claude", label: "Claude" }, { id: "codex", label: "Codex" }, { id: "grok", label: "Grok" }, { id: "openrouter", label: "OpenRouter" }, { id: "openai-compatible", label: "OpenAI-compatible" }, { id: "opencode", label: "OpenCode" }];
     // Codex (through codex-acp) and Grok (its own ACP mode) run on the one generic ACP driver, each
     // with strictest-approval flags at every start and its own sign-in in the account's HOME.
     const acpSessions = provider => ({
@@ -294,7 +298,8 @@ export default {
     const drivers = { codex: loginDirect(codexProvider({ sessions: acpSessions("codex") }), doorCfg, ["OPENAI_API_KEY", "CODEX_API_KEY"]), grok: loginDirect(grokProvider({ sessions: acpSessions("grok") }), doorCfg, ["XAI_API_KEY"]),
       // The last rung: a plain API-key driver.
       openrouter: openrouterProvider({ ...doorCfg, ...apiDoor, ...(testBase(process.env.VYRE_OPENROUTER_URL) ? { baseUrl: process.env.VYRE_OPENROUTER_URL } : {}), store: chatStore }),
-      "openai-compatible": openrouterProvider({ ...doorCfg, ...apiDoor, id: "openai-compatible", keyEnv: "OPENAI_COMPAT_API_KEY", baseUrl: "https://api.openai.com/v1", store: chatStore }) };
+      "openai-compatible": openrouterProvider({ ...doorCfg, ...apiDoor, id: "openai-compatible", keyEnv: "OPENAI_COMPAT_API_KEY", baseUrl: "https://api.openai.com/v1", store: chatStore }),
+      opencode: opencodeProvider({ ...doorCfg, ...apiDoor, id: "opencode", keyEnv: "OPENCODE_API_KEY", store: chatStore }) };
     for (const [name, driver] of Object.entries(drivers)) ctx.provider(name, driver);
     /** The models a provider's accounts last reported (most recent first wins), and the plan one account reported. */
     const providerModels = provider => {
@@ -506,15 +511,17 @@ export default {
       const acctHome = usesSpawner() ? path.join(process.env.VYRE_ACCOUNTS_HOME || "/home/acct", String(account.uid)) : /** @type {string} */ (home);
       return spawnSession(bin, args, { cwd: acctHome, env: { PATH: process.env.PATH, ...(home ? { HOME: home } : {}), TERM: "dumb", NO_COLOR: "1", BROWSER: "none" }, ...(usesSpawner() && account.uid != null ? { account: { uid: account.uid, shared: false } } : {}) });
     } });
-    // ---- an API key instead of a login: "Sign in to your AI" on the setup screen takes one of three kinds. The key goes into the Vault (never shown again), is checked with
+    // ---- an API key instead of a login: "Sign in to your AI" on the setup screen takes one of four kinds. The key goes into the Vault (never shown again), is checked with
     // one cheap read-only call to the address it will be used with, and becomes an api-key account bound to that address.
     const KEY_KINDS = /** @type {Record<string, { provider: string, label: string, base: string|null, custom: boolean }>} */ ({
       "openai-compatible": { provider: "openai-compatible", label: "OpenAI-compatible", base: "https://api.openai.com/v1", custom: true },
       "anthropic-compatible": { provider: "claude", label: "Anthropic-compatible", base: "https://api.anthropic.com", custom: true },
       openrouter: { provider: "openrouter", label: "OpenRouter", base: "https://openrouter.ai/api/v1", custom: false },
+      opencode: { provider: "opencode", label: "OpenCode", base: "https://opencode.ai", custom: false },
     });
-    /** One cheap, read-only call that proves the key works at the address (no model is run, nothing is spent). Redirects are refused so the key never follows one elsewhere. */
+    /** One cheap, read-only call that proves the key works at the address (no model is run, nothing is spent). Redirects are refused so the key never follows one elsewhere. OpenCode is checked on its own models list. */
     const checkKey = async (/** @type {string} */ kind, /** @type {string} */ base, /** @type {string} */ key) => {
+      if (kind === "opencode") return probeOpenCode(key);
       const url = kind === "anthropic-compatible" ? `${base.replace(/\/v1$/, "")}/v1/models` : kind === "openrouter" ? "https://openrouter.ai/api/v1/auth/key" : `${base}/models`;
       const headers = kind === "anthropic-compatible" ? { "x-api-key": key, "anthropic-version": "2023-06-01" } : { authorization: `Bearer ${key}` };
       const ac = new AbortController(), timer = setTimeout(() => ac.abort(), 15_000);
@@ -532,11 +539,11 @@ export default {
       } finally { clearTimeout(timer); }
     };
     tool("sessions.accounts.key", "Add an AI account from an API key. The key is checked, stored in the Vault, never returned, and sent only to that host.",
-      { type: "object", required: ["kind", "key"], properties: { kind: { type: "string", enum: Object.keys(KEY_KINDS) }, key: str, base_url: str, model: str, label: str, check_only: { type: "boolean", description: "Only check the key with its provider and keep nothing: { checked: true }. A member uses it before putting the key in their own Vault." }, name: { type: "string", description: "The name of the Vault item that holds the key (findable there by it), kept as letters, digits, dot, dash and underscore (\"Work Claude\" is \"Work-Claude\"). Taken as it is when free, else with -2, -3 after it; never an existing item. Default ai-key-<provider>-<id>." } } },
+      { type: "object", required: ["kind", "key"], properties: { kind: { type: "string", enum: Object.keys(KEY_KINDS) }, key: str, base_url: str, model: str, label: str, account: { type: "string", description: "With check_only, the OpenCode account whose key is being replaced, so Go availability is recorded again." }, check_only: { type: "boolean", description: "Only check the key with its provider and keep nothing: { checked: true }. A member uses it before putting the key in their own Vault." }, name: { type: "string", description: "The name of the Vault item that holds the key (findable there by it), kept as letters, digits, dot, dash and underscore (\"Work Claude\" is \"Work-Claude\"). Taken as it is when free, else with -2, -3 after it; never an existing item. Default ai-key-<provider>-<id>." } } },
       async (i, meta) => {
         askedOnly(meta, "Adding an API key");
         const k = KEY_KINDS[String(i.kind)];
-        if (!k) throw Object.assign(new Error("kind is openai-compatible, anthropic-compatible or openrouter"), { code: "bad_input" });
+        if (!k) throw Object.assign(new Error("kind is openai-compatible, anthropic-compatible, openrouter or opencode"), { code: "bad_input" });
         // The convenience stores the key in the home's own vault. A member keeps theirs in their own: they put it in their Vault, then add the account naming that item (sessions.accounts.add).
         if (!i.check_only && (await ownerOfAccount(meta))) throw Object.assign(new Error("put the key in your own Vault, then add the account naming that item: this shortcut keeps keys in the owner's Vault"), { code: "denied" });
         const key = String(i.key || "").trim();
@@ -544,9 +551,20 @@ export default {
         // A member (a check only: they cannot store through this tool) may not name an address of their own: the kind's own, or xAI's, and nothing else, so the check cannot probe this machine or another host.
         if (i.check_only && (await ownerOfAccount(meta)) && !memberBaseOk(i.base_url, memberBases(String(i.kind)))) throw Object.assign(new Error("that address is not one a key can be checked at: use the kind's own address"), { code: "denied" });
         const base = k.custom ? endpointOk(i.base_url || k.base) : /** @type {string} */ (k.base);
-        if (!k.custom && i.base_url) throw Object.assign(new Error("OpenRouter has one address; leave base_url out"), { code: "bad_input" });
-        await checkKey(String(i.kind), base, key);
-        if (i.check_only === true) return { checked: true, host: new URL(base).host };
+        if (!k.custom && i.base_url) throw Object.assign(new Error(`${k.label} has one address; leave base_url out`), { code: "bad_input" });
+        const probed = await checkKey(String(i.kind), base, key);
+        if (i.check_only === true) {
+          const out = { checked: true, host: new URL(base).host };
+          if (String(i.kind) === "opencode") out.go_ok = Boolean(probed && probed.go_ok);
+          if (String(i.kind) === "opencode" && i.account) {
+            const row = await mine(accounts.row(String(i.account)), meta);
+            if (row && row.provider === "opencode") {
+              const next = accounts.setGo(row.id, Boolean(probed && probed.go_ok) && Boolean(row.go_only), Boolean(probed && probed.go_ok));
+              accountChanged(next, true, "go");
+            }
+          }
+          return out;
+        }
         const id = crypto.randomBytes(6).toString("hex");
         let item = `ai-key-${k.provider}-${id}`;
         if (i.name !== undefined && String(i.name).trim()) {
@@ -564,9 +582,9 @@ export default {
         const put = await ctx.call("vault.put", { name: item, kind: "api-key", description: `${k.label} API key for ${new URL(base).host}`, value: key, hosts: [new URL(base).origin], grants: ["threads", "agents"] });
         if (put.error) throw Object.assign(new Error(put.error.code === "no_such_tool" ? "the Vault is not running on this machine" : "the Vault would not take the key"), { code: "bad_input" });
         const label = String(i.label || "").trim().slice(0, 60) || `${k.label} (${new URL(base).host})`;
-        const row = await accounts.add({ provider: k.provider, label, kind: "api-key", vault_item: item, person: await ownerOfAccount(meta), ...(k.custom ? { base_url: base } : {}), ...(accountModel(k.provider, i.model) ? { model: accountModel(k.provider, i.model) } : {}) });
+        const row = await accounts.add({ provider: k.provider, label, kind: "api-key", vault_item: item, person: await ownerOfAccount(meta), ...(k.custom ? { base_url: base } : {}), ...(accountModel(k.provider, i.model) ? { model: accountModel(k.provider, i.model) } : {}), ...(k.provider === "opencode" ? { go_ok: Boolean(probed && probed.go_ok) } : {}) });
         accountChanged(row, true, "key");
-        return { account: row.id, provider: row.provider, label: row.label, item, checked: true, host: new URL(base).host, ...(row.model ? { model: row.model } : {}) };
+        return { account: row.id, provider: row.provider, label: row.label, item, checked: true, host: new URL(base).host, ...(row.model ? { model: row.model } : {}), ...(row.provider === "opencode" ? { go_ok: Boolean(row.go_ok) } : {}) };
       });
     tool("sessions.accounts.signin", "Sign an account in through its provider's own login, no token pasted. Start with provider and label (or account), then poll with flow.",
       { type: "object", properties: { provider: str, label: str, account: str, flow: { type: "string", description: "From the start answer; alone it says waiting, done or failed." }, code: { type: "string", description: "With flow: the code a login asks back (step url, paste true)." } } },
@@ -650,9 +668,14 @@ export default {
     });
     // The person's choice about whether xAI keeps this Grok account's sessions (and so whether Grok can make video). The setting itself lives on xAI's side for the
     // account and is changed there (in Grok's own /privacy settings); this records what the person chose so Vyre says it plainly and a surface can offer the choice.
-    tool("sessions.accounts.set", "Set an account's privacy choice (Grok only): privacy true is privacy mode on, xAI does not keep the account's sessions and Grok cannot make video; false is off, xAI keeps them and may train on them, and Grok can make video. Records the choice; the setting itself is changed on xAI's side, in Grok's /privacy settings.",
-      { type: "object", required: ["account", "privacy"], properties: { account: str, privacy: { type: "boolean" } } },
-      async (i, meta) => { await mine(accounts.row(String(i.account)), meta); return accounts.setPrivacy(String(i.account), Boolean(i.privacy)); });
+    tool("sessions.accounts.set", "Set an account's privacy choice (Grok only): privacy true is privacy mode on, xAI does not keep the account's sessions and Grok cannot make video; false is off, xAI keeps them and may train on them, and Grok can make video. Records the choice; the setting itself is changed on xAI's side, in Grok's /privacy settings. For an OpenCode account, go_only true uses only OpenCode Go when that key lists Go models, and false uses the regular models.",
+      { type: "object", required: ["account"], properties: { account: str, go_only: { type: "boolean", description: "OpenCode only. True uses only OpenCode Go when this key lists Go models. False uses the regular models." }, privacy: { type: "boolean" } } },
+      async (i, meta) => {
+        await mine(accounts.row(String(i.account)), meta);
+        if (typeof i.go_only === "boolean") { const next = accounts.setGo(String(i.account), i.go_only); accountChanged(next, true, "go"); return next; }
+        if (typeof i.privacy === "boolean") return accounts.setPrivacy(String(i.account), i.privacy);
+        throw Object.assign(new Error("name privacy or go_only"), { code: "bad_input" });
+      });
     // A team member's own sign-in, from the Space's kernel (core/sessions/accounts-service.js). The daemon's door says which person; the account is theirs alone (serves() lets no one else's turn use it).
     ctx.tool("sessions.accounts.serve", {
       description: "A team member's own AI sign-in call on the team's server: list, signin, remove or default, as that member. Only the daemon's own door runs it.", internal: true,
@@ -664,7 +687,7 @@ export default {
         if (!run || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(String(i.person))) throw Object.assign(new Error(`call is ${Object.keys(MEMBER_ACCOUNTS).join(", ")}`), { code: "bad_input" });
         const input = i.input && typeof i.input === "object" ? { ...i.input } : {};
         // a check is the key tool in its check-only form and nothing else: only the kind, the key and the address are taken from the member's input
-        const picked = i.call === "default" ? { id: input.id, is_default: true } : i.call === "check" ? { kind: input.kind, key: input.key, ...(input.base_url !== undefined ? { base_url: input.base_url } : {}), check_only: true } : input;   // a default is the only binding a member sets: the Space's projects and agents are the owner's to scope
+        const picked = i.call === "default" ? { id: input.id, is_default: true } : i.call === "check" ? { kind: input.kind, key: input.key, ...(input.base_url !== undefined ? { base_url: input.base_url } : {}), ...(input.account !== undefined ? { account: input.account } : {}), check_only: true } : input;   // a default is the only binding a member sets: the Space's projects and agents are the owner's to scope
         return run(picked, { caller: "local", [MEMBER]: String(i.person) });
       },
     });

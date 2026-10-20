@@ -23,6 +23,7 @@ export function sampleAccounts(): AccountsApi {
     makeDefault: async (id: string) => { const p = rows.find((a) => a.id === id)?.provider; rows = rows.map((a) => (a.provider === p ? { ...a, isDefault: a.id === id } : a)); return {}; },
     remove: async (id: string) => { rows = rows.filter((a) => a.id !== id); return {}; },
     setPrivacy: async () => ({}),
+    setGo: async () => ({}),
     assistant: async () => ({ name: "juno", entries }),
     setAssistant: async (_name: string, next: RouteEntry[]) => { entries = next; return {}; },
   };

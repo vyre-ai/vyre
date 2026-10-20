@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Platform, View } from "react-native";
 import { openExternal } from "../../src/shell/open-external";
-import { Button, Card, Chip, CodeBlock, Divider, ErrorState, Field, LoadingState, ProviderLogo, Text, showToast, useUiTheme } from "@vyre/ui";
+import { Button, Card, Chip, CodeBlock, Divider, ErrorState, Field, LoadingState, ProviderLogo, Switch, Text, showToast, useUiTheme } from "@vyre/ui";
 import { accountTitle, canMakeDefault, canReplaceKey, canSignIn, keepFollowing, providerBlocks, providerName, safeUrl, serverCannotWords, stateWord, usable, usesMachineLogin, assistantAccount, withFirst, type Account, type Flow, type ProviderBlock, type RouteEntry } from "./accounts-model";
 import { accounts as realAccounts } from "./accounts";
 import { ACCOUNTS_COPY } from "../first-run/ai-accounts-model.js";
@@ -133,6 +133,7 @@ export function AiAccountsList({ source = realAccounts }: { source?: AccountsApi
               <View className="flex-row flex-wrap items-center gap-s2"><Text>{a.synthetic ? "This computer's sign-in" : a.label}</Text>{a.isDefault && p.accounts.length > 1 ? <Chip>Default</Chip> : null}</View>
               <Text size="caption" tone="label">{stateWord(a)}</Text>
               {a.provider === "grok" && a.privacyLabel ? <Text size="caption" tone="muted">{`${a.privacyLabel} ${a.privacyNote}`.trim()}</Text> : null}
+              {a.provider === "opencode" ? (<View className="gap-s1"><Switch on={Boolean(a.goOnly)} disabled={(!a.goOk && !a.goOnly) || busy === a.id} label="Only use OpenCode Go" onChange={(on) => void act(a.id, () => source.setGo(a.id, on))} /><Text size="caption" tone="muted">{a.goOk ? "For coding agents, per OpenCode's terms." : "OpenCode Go is not on this key."}</Text></View>) : null}
               {confirming === a.id ? (
                 <View className="gap-s2">
                   <Text size="caption">{a.synthetic ? `Remove the ${p.name} sign-in this computer keeps? ${DISCONNECT_NOTE}` : `Remove ${a.label}? Sessions already on it keep running; the next one asks for another account.`}</Text>
@@ -177,7 +178,7 @@ export function AiAccountsList({ source = realAccounts }: { source?: AccountsApi
             const saveKey = () => void act("key", () => (keyOpen.mode === "replace" ? source.replaceKey(keyOpen.account, key) : source.addKey(p.id, key, label, base, member ? { password: pw } : null)).then(clear).catch((e) => { if ((e as { code?: string })?.code === "need_password") setNeedPw(true); throw e; }), keyOpen.mode === "replace" ? "The key is replaced." : `${p.name} is connected.`);
             return (
             <View className="gap-s2">
-              <Field label={keyOpen.mode === "replace" ? `New key for ${keyOpen.account.label}` : `${p.name} API key`} value={key} onChangeText={setKey} kind="password" help={ACCOUNTS_COPY.keyHelp} autoFocus onSubmit={() => { if (key.trim() && busy !== "key") saveKey(); }} onKey={(k) => { if (k === "Escape") cancel(); }} />
+              <Field label={p.id === "opencode" ? "Paste your OpenCode API key" : (keyOpen.mode === "replace" ? `New key for ${keyOpen.account.label}` : `${p.name} API key`)} value={key} onChangeText={setKey} kind="password" help={p.id === "opencode" ? "Sign in to the OpenCode Console, add billing, and copy the API key." : ACCOUNTS_COPY.keyHelp} autoFocus onSubmit={() => { if (key.trim() && busy !== "key") saveKey(); }} onKey={(k) => { if (k === "Escape") cancel(); }} />
               {keyOpen.mode === "key" ? <Field name="A name for it" value={label} onChangeText={setLabel} placeholder="A name, like work (optional)" /> : null}
               {member && needPw ? <Field label="Your Vault password" value={pw} onChangeText={setPw} kind="password" help="The key goes to your own Vault, and only your own chats and Flows use it." /> : null}
               {keyOpen.mode === "key" && p.key === "openai-compatible" ? <Field name="Address (optional)" value={base} onChangeText={setBase} placeholder="https://api.openai.com/v1" help="Where the key is sent. Leave it empty for OpenAI. An xAI key goes to xAI by itself." /> : null}

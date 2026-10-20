@@ -147,4 +147,5 @@ test("a key's own list says which account gives a model; the capabilities of two
   assert.deepEqual(entriesForAccount({ id: "login_2", provider: "codex", kind: "login" }, all).map((x) => x.id), ["c"], "a sign-in whose CLI reported its models lists those");
   assert.deepEqual(entriesForAccount({ id: "srv_2", provider: "openai-compatible", kind: "api-key" }, all).map((x) => x.id), [], "another server's list is not this one's");
   assert.deepEqual(entriesForAccount({ id: "srv_1", provider: "openai-compatible", kind: "api-key" }, all).map((x) => x.id), ["e"]);
+  assert.deepEqual(entriesForAccount({ id: "oc_2", provider: "opencode", kind: "api-key" }, [...all, { id: "g", provider: "opencode", sources: ["api"], accounts: ["oc_1"] }]).map((x) => x.id), [], "another OpenCode account's list is not this one's");
 });

@@ -1,12 +1,12 @@
 // @ts-check
-// Which model vendors a chat may run on: one check for every provider the Switchboard starts (Claude, Codex, Grok, OpenRouter, an OpenAI-compatible endpoint), on the direct path (a subscription login that
+// Which model vendors a chat may run on: one check for every provider the Switchboard starts (Claude, Codex, Grok, OpenRouter, an OpenAI-compatible endpoint, OpenCode), on the direct path (a subscription login that
 // talks to its own vendor) and the door path alike. The person's setting `threads.vendors.allow` is the policy: empty means every vendor; a list means only those. A refused run starts nothing and says
 // which vendor, in words. A policy that cannot be read is not guessed: a settings module that is there and fails refuses; one that is not there is no policy.
 
 export const SETTING = "threads.vendors.allow";
 
 /** The vendor behind each provider, as the person reads it. */
-export const VENDORS = Object.freeze({ claude: "Anthropic (Claude)", codex: "OpenAI (Codex)", grok: "xAI (Grok)", openrouter: "OpenRouter", "openai-compatible": "an OpenAI-compatible endpoint" });
+export const VENDORS = Object.freeze({ claude: "Anthropic (Claude)", codex: "OpenAI (Codex)", grok: "xAI (Grok)", openrouter: "OpenRouter", "openai-compatible": "an OpenAI-compatible endpoint", opencode: "OpenCode" });
 
 /** @param {any} value the setting @returns {Set<string> | null} the provider ids allowed, or null for no limit */
 export function allowedSet(value) {
