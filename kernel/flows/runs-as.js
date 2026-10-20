@@ -1,5 +1,3 @@
-    // the step's own model (provider/model, the one picker's key), else the Space's
-    const m = typeof o.model === "string" && /^[a-z][a-z0-9-]{0,39}\/[A-Za-z0-9][A-Za-z0-9._:\/\[\]-]{0,119}$/.test(o.model) ? { provider: o.model.slice(0, o.model.indexOf("/")), model: o.model.slice(o.model.indexOf("/") + 1) } : o.ports.model || { provider: "default", model: "default" };// @ts-check
 // Whose AI account a Flow's AI steps run on ("Runs on"). Every AI turn runs on the account of the PERSON it is for: a Flow runs as its maker (the person who wrote its first version), or as the person its
 // Runs on names, and on the account that person picked there (else their default key account). The definition holds it as `runs_on: { person, account?, provider? }`, part of the version the approver reads.
 //
