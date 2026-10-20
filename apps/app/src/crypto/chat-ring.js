@@ -4,6 +4,18 @@
 import { b64, createRing, openRing, unb64, fingerprint, addHolders, removeHolders } from "../../../../lib/keywrap.js";
 import { bundleFor } from "../../../../lib/chat-keys.js";
 
+/**
+ * Open a ring with the person's chat key, or, where the chat was made before v0.6.5 and wrapped to a key this device used to keep, with that old key (`me.legacy`, read only: it opens, it never wraps).
+ * @param {any} ring @param {{ holder: string, ecdh: any, legacy?: { holder: string, ecdh: any }[] }} me
+ */
+export async function openRingAs(ring, me) {
+  try { return await openRing(ring, me.holder, me.ecdh); }
+  catch (first) {
+    for (const l of me.legacy || []) { try { return await openRing(ring, l.holder, l.ecdh); } catch { /* the next one */ } }
+    throw first;
+  }
+}
+
 /** The P-256 public JWK of a raw uncompressed point (an identity entry's `agree`, base64url). @param {string} agree @returns {{ kty: "EC", crv: "P-256", x: string, y: string } | null} */
 export function jwkOfAgree(agree) {
   let pt;
@@ -51,14 +63,14 @@ export async function newChatRing(id, holders) {
 /**
  * Lend the chat's key to the server for this session: work.chat.keys.begin gives a one-use session key, the ring (work.chat.get .ring) is opened with this device's key, and the keys go back wrapped to the session
  * key (work.chat.keys.finish). The server holds them in memory for agents it allows, and a rotation makes them stale.
- * @param {(tool: string, input?: Record<string, unknown>) => Promise<any>} call @param {string} chat @param {{ holder: string, ecdh: any }} me
+ * @param {(tool: string, input?: Record<string, unknown>) => Promise<any>} call @param {string} chat @param {{ holder: string, ecdh: any, legacy?: any[] }} me
  */
 export async function lendChatKey(call, chat, me) {
   const begun = await call("work.chat.keys.begin", { chat });
   const got = await call("work.chat.get", { chat });
   const ring = got?.ring;
   if (!ring) throw Object.assign(new Error("This chat has no key to lend."), { code: "no_ring" });
-  const keys = await openRing(ring, me.holder, me.ecdh);
+  const keys = await openRingAs(ring, me);
   try {
     const bundle = await bundleFor(keys, begun.session_pub);
     await call("work.chat.keys.finish", { request: begun.request, bundle });
@@ -71,7 +83,7 @@ export async function lendChatKey(call, chat, me) {
  * them (history kept). The server never sees a key. @param {any} ring the chat's ring (work.chat.get .ring) @param {{ holder: string, ecdh: any }} me @param {Record<string, any>} holders the devices to add
  */
 export async function ringWithHolders(ring, me, holders) {
-  const keys = await openRing(ring, me.holder, me.ecdh);
+  const keys = await openRingAs(ring, me);
   try { return addHolders(ring, keys, { add: holders }); } finally { keys.lock(); }
 }
 
@@ -94,7 +106,7 @@ export async function ringWithPeople(call, chat, people, me) {
  * read nothing new). @param {any} ring @param {{ holder: string, ecdh: any }} me @param {Record<string, any>} keep the devices that stay @param {string[]} drop the removed devices' holder names
  */
 export async function ringWithoutHolders(ring, me, keep, drop) {
-  const keys = await openRing(ring, me.holder, me.ecdh);
+  const keys = await openRingAs(ring, me);
   try { return removeHolders(ring, keys, { keep, drop }); } finally { keys.lock(); }
 }
 

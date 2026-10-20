@@ -31,8 +31,11 @@ export async function answerUnlock(ask, agree, granted) {
   const server = ask?.server && granted.get(String(ask.server.fp));
   if (!server) throw fail("needs_yes", "this server has not been given your memory: say yes on this phone first");
   if (!askSignedBy(ask, server)) throw fail("bad_signature", "that request is not signed by the server you granted");
-  const mine = Array.isArray(ask.wraps) ? ask.wraps.find((/** @type {any} */ w) => w && w.kind === "device" && w.fp === agree.holder) : null;
-  if (!mine) throw fail("unknown_key", "this device holds no key for that identity memory");
-  const key = await unwrapWithDevice(mine.wrapped, agree.ecdh, aadOf(ask.home, `wrap:${mine.fp}`));
+  // the person's chat key first, then (read only) a key an older build kept on this device
+  const keys = [agree, ...(Array.isArray(/** @type {any} */ (agree).legacy) ? /** @type {any} */ (agree).legacy : [])];
+  const hit = keys.map((k) => ({ k, w: Array.isArray(ask.wraps) ? ask.wraps.find((/** @type {any} */ w) => w && w.kind === "device" && w.fp === k.holder) : null })).find((x) => x.w);
+  if (!hit) throw fail("unknown_key", "this device holds no key for that identity memory");
+  const mine = hit.w;
+  const key = await unwrapWithDevice(mine.wrapped, hit.k.ecdh, aadOf(ask.home, `wrap:${mine.fp}`));
   try { return wrapForDevice(key, ask.sessionPub, aadOf(ask.home, `unlock:${ask.request}`)); } finally { key.fill(0); }
 }

@@ -411,7 +411,8 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
   }
 
   if (screen === "id.signin") {
-    const addr = spaceAddressOf(signSpace);
+    // a bare name (tess) is as good as the whole address (tess.vyre.run)
+    const addr = spaceAddressOf(signSpace.includes(".") ? signSpace : `${signSpace.trim()}.vyre.run`);
     return (
       <FlowStep steps={steps} onBack={back} backLabel={backLabel} title={SIGNIN_COPY.title} lead={SIGNIN_COPY.lead} failure={failure}
         primary={{ label: busy ? "Unlocking..." : "Sign in", disabled: !addr || !usernameOf(username) || !password || busy, loading: busy, onPress: () => void run(async () => {
@@ -422,7 +423,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
           if (addr) try { rememberSpace(typeof localStorage === "undefined" ? null : localStorage, addr.space); } catch { /* nothing remembered */ }
           go("ready");
         }) }}>
-        <Field label="Space address" name="Space address" value={signSpace} onChangeText={setSignSpace} placeholder="juniper.vyre.run" error={signSpace && !addr ? "Use the address of a space, like juniper.vyre.run." : undefined} />
+        <Field label="Space address" name="Space address" value={signSpace} onChangeText={setSignSpace} placeholder="tess or tess.vyre.run" error={signSpace && !addr ? "Use the name of a space, like tess or tess.vyre.run." : undefined} />
         <Field label="Username" value={username} onChangeText={setUsername} />
         <PasswordField label="Password" value={password} onChangeText={setPassword} />
         <ProviderSignInButton disabled={busy} onPress={() => void githubSignIn(addr ? addr.space : undefined)} />

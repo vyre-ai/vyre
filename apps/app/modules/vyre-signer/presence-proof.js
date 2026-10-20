@@ -109,7 +109,7 @@ export function lowS(raw) {
  * payload_hash: that is what makes what you see what you sign.
  * A space on a server asks for the yes with a one-use challenge (kernel/remote/server.js): the proof then names that home and that challenge in its signed body (`home`, `challenge`), or the home refuses it.
  * @param {{ op: string, space: string, fields: Record<string, any>, payload_hash: string, person: string, home?: string, challenge?: string }} req
- * @param {{ keyId: string, now: number, nonce: string, lifeMs?: number, signer?: "secure_enclave" | "strongbox" | "tpm" }} o
+ * @param {{ keyId: string, now: number, nonce: string, lifeMs?: number, signer?: "secure_enclave" | "strongbox" | "tpm" | "session" }} o
  */
 export function proofBody(req, o) {
   if (!req.person) throw Object.assign(new Error("no person id for this proof"), { code: "ERR_NO_PERSON" });

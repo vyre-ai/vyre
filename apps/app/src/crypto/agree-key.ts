@@ -18,6 +18,8 @@ export type AgreeKey = {
   jwk: { kty: "EC"; crv: "P-256"; x: string; y: string };
   /** The one thing the private key does: the shared secret with an ephemeral public point. */
   ecdh: Ecdh;
+  /** Chat keys an older build left on this device, for opening older chats ONLY: they are never used to make a wrap and never sent anywhere. */
+  legacy?: { holder: string; ecdh: Ecdh }[];
 };
 
 /** Where the key came from: the person's master record (the only source now; the others are what older builds kept on a device). */
@@ -48,6 +50,50 @@ export async function agreeKeyOfPoint(point: string, ecdh: Ecdh): Promise<AgreeK
 
 const ALG = { name: "ECDH", namedCurve: "P-256" } as const;
 
+// ---- Keys older builds kept on this device: read only ----
+// Before v0.6.5 each device made its own chat key (the Mac's login Keychain or Secure Enclave, or the page's IndexedDB). Chats wrapped to such a key still open with it, so it is READ here (never made, never
+// written) and handed out only as a second way to open a ring: `legacy` on the person's key. Nothing wraps to it and nothing sends it anywhere. Signing out wipes the page's database (identity/wipe-web.js).
+const DB = "vyre-agree";
+const STORE = "keys";
+const idb = (): Promise<IDBDatabase | null> => {
+  if (typeof indexedDB === "undefined") return Promise.resolve(null);
+  return new Promise((resolve) => { try { const r = indexedDB.open(DB, 1); r.onupgradeneeded = () => r.result.createObjectStore(STORE); r.onsuccess = () => resolve(r.result); r.onerror = () => resolve(null); } catch { resolve(null); } });
+};
+const row = (db: IDBDatabase, slot: string): Promise<unknown> => new Promise((resolve) => { try { const q = db.transaction(STORE).objectStore(STORE).get(slot); q.onsuccess = () => resolve(q.result ?? null); q.onerror = () => resolve(null); } catch { resolve(null); } });
+/** The key a stored row holds (a CryptoKeyPair, or { v: 1, jwk } a private JWK), or null. */
+async function legacyOfRow(r: unknown): Promise<AgreeKey | null> {
+  if (!r || typeof r !== "object") return null;
+  const x = r as { privateKey?: CryptoKey; publicKey?: CryptoKey; v?: number; jwk?: JsonWebKey };
+  try {
+    if (x.privateKey && x.publicKey) return await agreeKeyOf(x as CryptoKeyPair);
+    if (x.v === 1 && x.jwk && typeof x.jwk.d === "string") {
+      const privateKey = await crypto.subtle.importKey("jwk", { ...x.jwk, key_ops: ["deriveBits"] }, ALG, false, ["deriveBits"]);
+      const publicKey = await crypto.subtle.importKey("jwk", { kty: "EC", crv: "P-256", x: x.jwk.x, y: x.jwk.y }, ALG, true, []);
+      return await agreeKeyOf({ privateKey, publicKey });
+    }
+  } catch { /* not a key this page can use */ }
+  return null;
+}
+/** Every old per-device chat key this device still holds, without making one. @returns {Promise<{ holder: string, ecdh: Ecdh }[]>} */
+async function readLegacy(): Promise<{ holder: string; ecdh: Ecdh }[]> {
+  const out: { holder: string; ecdh: Ecdh }[] = [];
+  try {
+    const db = await idb();
+    if (db) for (const slot of ["self", "mac-fallback"]) { const k = await legacyOfRow(await row(db, slot)); if (k) out.push({ holder: k.holder, ecdh: k.ecdh }); }
+  } catch { /* none */ }
+  try {
+    const { shellIdentity, shellKind } = await import("../shell/shell.ts");
+    const id = shellKind() === "mac" ? shellIdentity() : null;
+    if (id?.agreePublic && id.agree) {
+      const agree = id.agree;
+      const point = await id.agreePublic(false); // never create
+      const k = await agreeKeyOfPoint(point, async (epk) => { const s = unb64(await agree(b64(epk))); if (s.length !== 32) throw new Error("bad answer"); return s; });
+      out.push({ holder: k.holder, ecdh: k.ecdh });
+    }
+  } catch { /* no old Mac key */ }
+  return out;
+}
+
 // ---- The person's one chat key: the master record's agreePrivate (v0.6.5, password only) ----
 // The record (kernel/identity/master.js, apps/app/src/host/master-web.js) holds the chat key, wrapped under the password's key. Once it is opened, every device of the person uses that one key, so no device
 // makes its own (no Keychain, no Secure Enclave, no IndexedDB key) and "this device is not ready for private chats" has nothing left to say. It lives in memory only: locking drops it.
@@ -68,7 +114,8 @@ export async function useRecordAgreeKey(priv: string | null): Promise<string | n
   if (jwk.kty !== "EC" || jwk.crv !== "P-256" || typeof jwk.d !== "string" || typeof jwk.x !== "string" || typeof jwk.y !== "string") throw new Error("the chat key in your record is not a P-256 key");
   const privateKey = await crypto.subtle.importKey("jwk", { kty: "EC", crv: "P-256", x: jwk.x, y: jwk.y, d: jwk.d, key_ops: ["deriveBits"] }, ALG, false, ["deriveBits"]);
   const publicKey = await crypto.subtle.importKey("jwk", { kty: "EC", crv: "P-256", x: jwk.x, y: jwk.y }, ALG, true, []);
-  recordKey = await agreeKeyOf({ privateKey, publicKey });
+  const made = await agreeKeyOf({ privateKey, publicKey });
+  recordKey = { ...made, legacy: (await readLegacy()).filter((l) => l.holder !== made.holder) };
   return recordKey.point;
 }
 

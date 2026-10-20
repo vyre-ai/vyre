@@ -30,9 +30,11 @@ export async function identityKey(transport, identity, agree) {
   if (!raw) throw fail("not_found", "no identity memory is kept on this server");
   /** @type {any} */ let m;
   try { m = JSON.parse(new TextDecoder().decode(raw)); } catch { throw fail("corrupt", "the identity memory's manifest cannot be read"); }
-  const w = Array.isArray(m?.wraps) ? m.wraps.find((/** @type {any} */ x) => x && x.kind === "device" && x.fp === agree.holder) : null;
-  if (!w) throw fail("unknown_key", "this device holds no key for the identity memory yet");
-  return unwrapWithDevice(w.wrapped, agree.ecdh, aadOf(identity, `wrap:${w.fp}`));
+  // the person's chat key first, then (read only) a key an older build kept on this device, for memory wrapped before v0.6.5
+  const keys = [agree, ...(Array.isArray(/** @type {any} */ (agree).legacy) ? /** @type {any} */ (agree).legacy : [])];
+  const hit = keys.map((k) => ({ k, w: Array.isArray(m?.wraps) ? m.wraps.find((/** @type {any} */ x) => x && x.kind === "device" && x.fp === k.holder) : null })).find((x) => x.w);
+  if (!hit) throw fail("unknown_key", "this device holds no key for the identity memory yet");
+  return unwrapWithDevice(hit.w.wrapped, hit.k.ecdh, aadOf(identity, `wrap:${hit.w.fp}`));
 }
 
 /**

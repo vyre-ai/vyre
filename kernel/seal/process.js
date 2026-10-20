@@ -41,8 +41,8 @@ const need = (c, m) => { if (!c) throw err(m); };
 
 export class Sealer {
   /** @param {{ dir: string, master: Buffer, sinks?: Record<string,string>, now?: () => number }} o */
-  constructor({ dir, master, sinks = {}, now = Date.now, verifiers = {}, allowUnattested = false, allowSoftware = false, appattest = null }) {
-    this.store = new SealStore(dir, master); this.sinks = sinks; this.now = now; this.presence = new Presence(now, { verifiers, allowUnattested, allowSoftware, appattest, file: path.join(dir, "presence.json"), custody: this.store }); this.allowUnattested = allowUnattested;
+  constructor({ dir, master, sinks = {}, now = Date.now, verifiers = {}, allowUnattested = false, allowSoftware = false, appattest = null, sessionOk = false }) {
+    this.store = new SealStore(dir, master); this.sinks = sinks; this.now = now; this.presence = new Presence(now, { verifiers, allowUnattested, allowSoftware, appattest, sessionOk, file: path.join(dir, "presence.json"), custody: this.store }); this.allowUnattested = allowUnattested;
     this.sessions = new Map(); this.lookups = new Map(); this.leases = new Leases(this.store, now);
     // Filled text does not last: swept at start and every hour (a day at most, ten minutes after a delivery), so a restart loses no deadline.
     const sweep = () => { this.store.sweep("derived", 86_400_000); this.store.sweepDelivered(600_000); };
@@ -432,8 +432,8 @@ export function hostCheck({ profile = process.env.VYRE_SEAL_PROFILE || "desktop"
 export const unattestedAllowed = (env, root) => devSwitch(env.VYRE_SEAL_UNATTESTED, root);
 
 /** Serve requests on stdin and stdout. Anything unexpected is a generic code: the message of an exception may hold input, so it is never sent. */
-export function serve({ dir, master = (hostCheck(), fileMaster(dir)), sinks = {}, input = process.stdin, output = process.stdout, verifiers = {}, allowUnattested = false, allowSoftware = false, appattest = null } = {}) {
-  const sealer = new Sealer({ dir, master, sinks, verifiers, allowUnattested, allowSoftware, appattest });
+export function serve({ dir, master = (hostCheck(), fileMaster(dir)), sinks = {}, input = process.stdin, output = process.stdout, verifiers = {}, allowUnattested = false, allowSoftware = false, appattest = null, sessionOk = false } = {}) {
+  const sealer = new Sealer({ dir, master, sinks, verifiers, allowUnattested, allowSoftware, appattest, sessionOk });
   if (allowSoftware) process.stderr.write("seal: software presence keys are accepted (development build); every use is method software\n");
   const rl = readline.createInterface({ input });
   rl.on("line", async line => {
@@ -452,7 +452,7 @@ if (process.argv[1] && process.argv[1].endsWith("kernel/seal/process.js") && pro
   process.stdin.on("end", () => process.exit(0)); process.stdin.on("close", () => process.exit(0));
   let verifiers = {};
   if (process.env.VYRE_SEAL_VERIFIERS) verifiers = (await import(process.env.VYRE_SEAL_VERIFIERS)).default;
-  try { serve({ dir: process.env.VYRE_SEAL_DIR, sinks: JSON.parse(process.env.VYRE_SEAL_SINKS || "{}"), verifiers, allowUnattested: devSwitch(process.env.VYRE_SEAL_UNATTESTED), allowSoftware: devSwitch(process.env.VYRE_SEAL_SOFTWARE), appattest: (() => {
+  try { serve({ dir: process.env.VYRE_SEAL_DIR, sinks: JSON.parse(process.env.VYRE_SEAL_SINKS || "{}"), verifiers, allowUnattested: devSwitch(process.env.VYRE_SEAL_UNATTESTED), allowSoftware: devSwitch(process.env.VYRE_SEAL_SOFTWARE), sessionOk: process.env.VYRE_PRESENCE !== "prompt", appattest: (() => {
     // App Attest: the test root, the development environment and extra app ids exist only under the process's own devSwitch (AA-1, AA-2); a release-kind build ignores all three variables.
     const dev = devSwitch(process.env.VYRE_SEAL_APPATTEST_DEV);
     return appAttestVerifier({ dev, testRootPem: dev && process.env.VYRE_SEAL_APPATTEST_ROOT ? fs.readFileSync(process.env.VYRE_SEAL_APPATTEST_ROOT, "utf8") : null, extraAppIds: dev && process.env.VYRE_SEAL_APPATTEST_APPS ? process.env.VYRE_SEAL_APPATTEST_APPS.split(",") : [] });

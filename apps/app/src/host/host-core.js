@@ -17,6 +17,7 @@ import { resolveInviteLink } from "../../../../lib/invite-link.js";
 import { createAddServer } from "../real/add-server.js";
 import { trail } from "./trail.js";
 import { modelOf } from "../models/model-choice.js";
+import { proofBody, proofBytes } from "../../modules/vyre-signer/presence-proof.js";
 import { createMasterRecord, openMasterRecord, rewrapIdentity } from "./master-web.js";
 import { makeDeviceKey } from "./device-key.js";
 import * as C from "../../../../kernel/identity/chain.js";
@@ -1326,6 +1327,24 @@ export function createHost(o) {
     },
     /** The unlocked key for the identity's own signing (the next stage's pair code), or null while locked. */
     signer: () => (held ? { seed: held } : null),
+    /**
+     * The person's yes, with no prompt (v0.6.5, password only): while the person is unlocked, this signs a presence proof of the `session` class with the identity key the opened record holds
+     * (kernel/seal/proof.js SESSION: the same bytes and checks as every other proof, accepted by a server whose `presence` setting is silent). Locked, there is no key and nothing signs (null). The card's fields are
+     * checked against its hash first, so a proof is only ever for the act the card shows. @returns {{ signPresence: (card: any) => Promise<any> } | null}
+     */
+    sessionSigner: () => {
+      const seed = held;
+      if (!seed) return null;
+      return { signPresence: async (/** @type {any} */ card) => {
+        if (held !== seed) throw bad("Unlock with your password first.", "locked");
+        const k = await o.store.load();
+        if (!k) throw bad("Make your username first.", "no_identity");
+        const key = await fromSeed(seed);
+        const rand = (o.random || ((/** @type {number} */ n) => crypto.getRandomValues(new Uint8Array(n))))(8);
+        const body = proofBody({ ...card, person: card.person || k.id }, { keyId: key.eid, now: o.now ? o.now() : Date.now(), nonce: b64u(rand), signer: "session" });
+        return { ...body, signature: b64u(await key.sign(proofBytes(body))) };
+      } };
+    },
   };
   return api;
 }

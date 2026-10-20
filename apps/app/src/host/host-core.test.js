@@ -792,3 +792,22 @@ test("link GitHub from Settings: each of the person's spaces gets a signed link-
   await two.call("identity.lock");
   await assert.rejects(() => two.call("identity.github.link", {}), (e) => e.code === "locked");
 });
+
+test("the unlocked identity key says the person's yes with no prompt (class session); locked, nothing signs; a card whose fields do not match its hash is refused", async (t) => {
+  const { proofBytes, payloadHash } = await import("../../modules/vyre-signer/presence-proof.js");
+  const d = directory(t);
+  const host = createHost({ store: memoryStore(), directory: d.base, fetch: d.fetch, now: d.now, kdf: FAST });
+  await host.call("onboard.person.create", { username: "sofia", password: PASSWORD, confirm: PASSWORD });
+  const signer = host.sessionSigner();
+  assert.ok(signer, "unlocked: there is a key");
+  const fields = { ref: "seal_x", purpose: "p" };
+  const card = { op: "seal.reveal", space: "spc_testspace0001", fields, payload_hash: payloadHash("seal.reveal", "spc_testspace0001", fields) };
+  const proof = await signer.signPresence(card);
+  const key = await fromSeed(host.signer().seed);
+  assert.deepEqual([proof.signer, proof.key_id, proof.decision, proof.payload_hash], ["session", key.eid, "seal.reveal", card.payload_hash]);
+  assert.ok(ed25519.verify(Buffer.from(proof.signature, "base64url"), proofBytes(proof), Buffer.from(key.publicKey, "base64url")), "signed by the identity key over the proof's bytes");
+  await assert.rejects(() => signer.signPresence({ ...card, fields: { ref: "seal_y", purpose: "p" } }), (e) => e.code === "ERR_PAYLOAD_MISMATCH");
+  await host.call("identity.lock");
+  assert.equal(host.sessionSigner(), null, "locked: nothing signs");
+  await assert.rejects(() => signer.signPresence(card), (e) => e.code === "locked", "a signer taken before locking stops signing too");
+});
