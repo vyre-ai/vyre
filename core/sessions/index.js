@@ -481,7 +481,9 @@ export default {
         const wanted = i.kind || (i.vault_item ? "api-key" : "login");
         if (who && wanted !== "login") {
           if (!["api-key", "setup-token"].includes(String(wanted)) || !i.vault_item) throw Object.assign(new Error("add your own key or setup token as an item of your own vault first, then add the account naming that item"), { code: "bad_input" });
-          const has = await ctx.call("vault.me.has", { person: who, name: String(i.vault_item) });
+          // asked as the SAME person who is adding the account: the call's own proof is relayed (core/modules relay-allowed.js: sessions to vault.me.has only), since a nested call does not carry it by itself
+          const proven = Boolean(meta && (typeof meta.token === "string" || meta.kernelFacts));
+          const has = proven ? await ctx.call("vault.me.has", { person: who, name: String(i.vault_item) }, { relay: true }) : await ctx.call("vault.me.has", { person: who, name: String(i.vault_item) });
           if (has.error) throw Object.assign(new Error(String(has.error.message || "your vault could not be checked")), { code: "denied" });
           if (!has.data || has.data.has !== true) throw Object.assign(new Error(`your own vault has no key or token named ${String(i.vault_item).slice(0, 60)}; add it there first`), { code: "bad_input" });
           i = { ...i, scope: { projects: "*", agents: "*" } };
@@ -676,9 +678,9 @@ export default {
       },
     });
     ctx.tool("sessions.accounts.resolve", {
-      description: "Which account a session on this provider uses, for a project/agent/explicit choice, scope-checked either way.", internal: true,
-      input: { type: "object", required: ["provider"], properties: { provider: str, account: str, project: str, agent: str, person: str, job: { type: "boolean" } } },
-      run: async i => accounts.resolve(i),
+      description: "Which account a session on this provider uses, for a project/agent/explicit choice, scope-checked either way. any: the person's own account on any provider, this one first.", internal: true,
+      input: { type: "object", required: ["provider"], properties: { provider: str, account: str, project: str, agent: str, person: str, job: { type: "boolean" }, any: { type: "boolean" } } },
+      run: async i => (i.any === true && !i.account ? accounts.own(i) : accounts.resolve(i)),
     });
 
     // ------------------------------------------------------------ concurrency slots

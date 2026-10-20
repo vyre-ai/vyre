@@ -115,6 +115,8 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
         holder.addSubview(cover)
         splashView = cover; splashShownAt = Date(); pageLoaded = false
         w.contentView = holder
+        // The page takes the keys from the first moment (the unlock's password, the welcome's field): no click into the window first.
+        w.initialFirstResponder = view
         w.setFrameAutosaveName("VyreApp")
         if w.frame.origin == .zero { w.center() }
         window = w

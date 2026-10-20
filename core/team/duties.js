@@ -20,6 +20,8 @@ export const DUTIES_SEEN_MIGRATION = `ALTER TABLE team_duties ADD COLUMN seen_at
 /** A short label a person names a duty by ("the inbox duty"); a longer one is cut. */
 export const TITLE_MAX = 60;
 export const DUTIES_TITLE_MIGRATION = `ALTER TABLE team_duties ADD COLUMN title TEXT`;
+/** The person a duty runs as: who made it running, or who turned it on or changed what it does. Its requests are queued as them and run on their own AI account; none (an older duty, a call with no person) is the owner's setting. */
+export const DUTIES_RUNAS_MIGRATION = `ALTER TABLE team_duties ADD COLUMN run_as TEXT`;
 
 /**
  * A short fingerprint of what a duty will run: its trigger, instruction and whether it acts, as stored. The approval for a
@@ -35,7 +37,7 @@ const bad = (message, code = "bad_input") => Object.assign(new Error(message), {
 const row = r => { if (!r) return r; const d = { id: String(r.id), teammate: String(r.teammate), project: String(r.project), role: String(r.role),
   watcher: String(r.watcher), trigger: String(r.trigger), instruction: String(r.instruction), act: Boolean(r.act),
   enabled: Boolean(r.enabled), started: Boolean(r.started), created_by: String(r.created_by), at: Number(r.at) };
-  return { ...d, title: r.title ? String(r.title) : d.instruction.length > TITLE_MAX ? d.instruction.slice(0, TITLE_MAX) : d.instruction, hash: dutyHash(d) }; };
+  return { ...d, title: r.title ? String(r.title) : d.instruction.length > TITLE_MAX ? d.instruction.slice(0, TITLE_MAX) : d.instruction, hash: dutyHash(d), run_as: r.run_as ? String(r.run_as) : null }; };
 
 /** @param {{ db: any, call: (tool: string, input: any) => Promise<any>, emit: (event: string, payload: any) => void, slugOf: (project: string) => Promise<string> }} deps slugOf: a project's short name for its record id, which the watchers module still keys by */
 export function duties({ db, call, emit, slugOf }) {
@@ -61,13 +63,14 @@ export function duties({ db, call, emit, slugOf }) {
   };
 
   return {
-    /** propose: a teammate's own suggestion, kept off with no watcher until it is turned on. */
-    async create(tm, { when, instruction, act, by, propose, title }) {
+    /** propose: a teammate's own suggestion, kept off with no watcher until it is turned on. run_as: the person a duty started at once runs as. */
+    async create(tm, { when, instruction, act, by, propose, title, run_as }) {
       const d = { id: crypto.randomBytes(4).toString("hex"), teammate: tm.agent, project: tm.project, role: tm.role, trigger: clean(when, TRIGGER_MAX, "a trigger (an event, or a schedule like daily 07:00)"),
         instruction: clean(instruction, INSTRUCTION_MAX, "an instruction: what to do when it fires"), act: Boolean(act), enabled: !propose, started: false, created_by: by, at: Date.now() };
       d.watcher = `duty-${tm.role}-${d.id}`;
       db.prepare(`INSERT INTO team_duties (id, teammate, project, role, watcher, trigger, instruction, act, enabled, started, created_by, at, title) VALUES (?,?,?,?,?,?,?,?,?,0,?,?,?)`)
         .run(d.id, d.teammate, d.project, d.role, d.watcher, d.trigger, d.instruction, d.act ? 1 : 0, d.enabled ? 1 : 0, d.created_by, d.at, title ? String(title).trim().slice(0, TITLE_MAX) || null : null);
+      if (run_as && d.enabled) db.prepare("UPDATE team_duties SET run_as = ? WHERE id = ?").run(String(run_as), d.id);
       if (d.enabled) {
         try { await start(d); } catch (e) { db.prepare("DELETE FROM team_duties WHERE id = ?").run(d.id); throw e; }
       }
@@ -88,6 +91,8 @@ export function duties({ db, call, emit, slugOf }) {
       const edited = next.trigger !== d.trigger || next.instruction !== d.instruction || next.act !== d.act;
       if (d.started && edited) await watchers("watchers.duty.update", { name: d.watcher, when: next.trigger, instruction: next.instruction, act: next.act });
       db.prepare("UPDATE team_duties SET trigger = ?, instruction = ?, act = ? WHERE id = ?").run(next.trigger, next.instruction, next.act ? 1 : 0, id);
+      // whoever turns it on or changes what a running one does is who it runs as from now on (null: the owner's own setting)
+      if (patch.run_as !== undefined) db.prepare("UPDATE team_duties SET run_as = ? WHERE id = ?").run(patch.run_as ? String(patch.run_as) : null, id);
       if (next.enabled !== d.enabled) {
         const after = { ...d, ...next };
         if (next.enabled) { if (d.started) await watchers("watchers.duty.resume", { name: d.watcher }); else await start(after); }
@@ -144,7 +149,9 @@ export function duties({ db, call, emit, slugOf }) {
  * @returns {(e: any) => boolean} true when it queued a request
  */
 export function makeWake({ dutyApi, live, waiting, queue }) {
-  return e => {
+  return ev => {
+    // the bus hands a listener the event's envelope ({ type, source, payload }); the watcher's own words are its payload (a bare payload is taken as it is)
+    const e = ev && ev.payload && typeof ev.payload === "object" && typeof ev.name !== "string" ? ev.payload : ev;
     if (!e || typeof e.name !== "string" || !(Number(e.items) > 0)) return false;
     const d = dutyApi.byWatcher(e.name);
     if (!d || !d.act || !d.enabled || !d.started || !live(d.teammate)) return false;

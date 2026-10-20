@@ -53,6 +53,11 @@ async function walk(name, fn) {
     sees: async (text) => { await p.getByText(text, { exact: false }).first().waitFor({ timeout: 6000 }); },
     absent: async (text) => { if (await p.getByText(text, { exact: false }).count()) throw new Error(`this screen still says "${text}"`); },
     body: async () => p.locator("body").innerText(),
+    focused: async (label) => {
+      const ok = await p.waitForFunction((l) => document.activeElement?.getAttribute("aria-label") === l, label, { timeout: 6000 }).then(() => true, () => false);
+      if (!ok) throw new Error(`expected the caret in "${label}", found "${await p.evaluate(() => document.activeElement?.getAttribute("aria-label") || document.activeElement?.tagName)}"`);
+    },
+    keys: async (text) => { await p.keyboard.type(text); await p.keyboard.press("Enter"); },
     start: async () => { await p.goto(URL0, { waitUntil: "domcontentloaded" }); await t.sees("New here? Get started"); await t.press("New here? Get started"); await t.at("What should we call you?"); await t.type("First name", "Walk"); await t.type("Last name", "Er"); await t.press("Continue"); await t.at("Pick a username."); },
   };
   try {
@@ -198,6 +203,39 @@ await walk("sign in with GitHub shows the spaces it found, then asks the passwor
   await t.type("Password", PASS);
   await t.press("Unlock");
   await t.at("You're all set");
+});
+
+await walk("by keyboard alone: each step has the caret in its first empty field, Enter goes field to field and on", async (t) => {
+  await t.p.goto(URL0, { waitUntil: "domcontentloaded" });
+  await t.sees("New here? Get started");
+  await t.focused("Space name");
+  await t.keys("juniper");
+  await t.at("Sign in");
+  await t.focused("Username");
+  await t.keys("alex");
+  await t.focused("Password");
+  await t.keys(PASS);
+  await t.at("You're all set");
+});
+
+await walk("a new person by keyboard: name, username and password with Enter", async (t) => {
+  await t.p.goto(URL0, { waitUntil: "domcontentloaded" });
+  await t.sees("New here? Get started");
+  await t.press("New here? Get started");
+  await t.at("What should we call you?");
+  await t.focused("First name");
+  await t.keys("Walk");
+  await t.focused("Last name");
+  await t.keys("Er");
+  await t.at("Pick a username.");
+  await t.focused("Username");
+  await t.keys("alex");
+  await t.at("Make your password.");
+  await t.focused("Password");
+  await t.keys(PASS);
+  await t.focused("Confirm password");
+  await t.keys(PASS);
+  await t.at("Save your recovery key");
 });
 
 await browser.close();

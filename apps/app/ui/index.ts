@@ -149,6 +149,7 @@ export { PasswordStrength } from "./components/PasswordStrength";
 export { ProviderSignInButton } from "./components/ProviderSignInButton";
 export { NeedsYouCard, publicFacts } from "./components/NeedsYouCard";
 export { formatCode, codeComplete } from "./lib/code.js";
+export { focusFirst, selectField, wireFormKeys } from "./lib/form-keys.js";
 
 // The design language: a resolved screen drawn from blocks (lib/views/blocks.js).
 export { BlockScreen, ChatCard, DRAWN_TYPES, registerBlock } from "./blocks";
