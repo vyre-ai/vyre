@@ -84,12 +84,14 @@ export const TRIGGER_REGISTRY = Object.freeze({
     source: t => (t.on === "stage" ? `record:${t.type} enters ${t.stage}` : `record:${eventPatterns(t).join("|")}`),
   },
   form: {
-    kind: "form", on: ["web"], label: "Form or hook", icon: "inbox", armed: "runner.handleWeb(path, { body, trust })",
-    scope: ["trigger"], keys: ["on", "path"],
-    words: t => `When something calls /${t.path}`,
+    kind: "form", on: ["web"], label: "Form or hook", icon: "inbox", armed: "runner.handleWeb(path, { body, trust }), or by the Flow's id for its own web address",
+    scope: ["trigger"], keys: ["on", "path", "address"],
+    // `address: true`: the Flow has its own webhook address, which the server opens when the Flow is turned on and closes when it is turned off (core/hooks); the card says so, so the yes covers it.
+    words: t => (t.address === true ? "When something posts to this Flow's own webhook address (opened while the Flow is on)" : `When something calls /${t.path}`),
     check(t, out, h) {
-      h.onlyKeys(t, ["on", "path"], "trigger", out);
+      h.onlyKeys(t, ["on", "path", "address"], "trigger", out);
       if (typeof t.path !== "string" || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(t.path)) out.push({ path: "trigger.path", message: "a web trigger path is lowercase letters, digits and hyphens" });
+      if (t.address !== undefined && t.address !== true) out.push({ path: "trigger.address", message: "address is true (the Flow gets its own webhook address) or left out" });
     },
     source: t => `web:/${t.path}`,
   },

@@ -436,7 +436,8 @@ export function createFlowsHost(o) {
     });
     for (const name of ["flows.approve", "flows.pause", "flows.resume", "flows.disable", "flows.rollback", "flows.remove", "flows.delete"]) {
       const orig = flows.tools[name];
-      if (typeof orig === "function") flows.tools[name] = async (/** @type {any} */ c, /** @type {any} */ i) => { const r = await orig(c, i); if (i && i.id) await reconcileStanding(String(i.id), name !== "flows.pause" && name !== "flows.disable" && name !== "flows.remove" && name !== "flows.delete").catch((/** @type {any} */ e) => log(`flows ${space}: standing grant ${e && e.message}`)); return r; };
+      // flow.switched { flow, space }: the Flow was turned on, off or changed version. It carries no authority: the hooks module reads the Flow's state back from the store and opens or closes its webhook address.
+      if (typeof orig === "function") flows.tools[name] = async (/** @type {any} */ c, /** @type {any} */ i) => { const r = await orig(c, i); if (i && i.id) { await reconcileStanding(String(i.id), name !== "flows.pause" && name !== "flows.disable" && name !== "flows.remove" && name !== "flows.delete").catch((/** @type {any} */ e) => log(`flows ${space}: standing grant ${e && e.message}`)); if (o.publish) { try { o.publish("flow.switched", { flow: String(i.id), space }); } catch { /* a notice, never a stop */ } } } return r; };
     }
     guardUntilReady(flows.tools, () => typesReady, () => exhausted, () => upgradeOf(k.store));
     // A Kit's assistants (its `teammates` part): made and removed as the person who approved, on their own session (core/daemon/kit-teammates.js).

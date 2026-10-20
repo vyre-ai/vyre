@@ -34,7 +34,7 @@ import { useSpaces } from "../shell/state";
 import { tableFromRecords } from "../../ui/views/records-table.js";
 import { Platform, Pressable, View } from "react-native";
 import { useRouter } from "expo-router";
-import { allowsMock, BlockScreen, BoardView, GalleryView, SidePanel, ListHeader, chipsToFilters, listRows, Button, CalendarView, tableToCsv, Card, Chip, DashboardView, EmptyState, Icon, IconButton, Menu, ErrorState, LargeTitleScreen, LoadingState, Segmented, Tabs, Text, filterWords, showToast, storedViewsOf, useFieldEnv, useStore, useUiTheme, viewDefOf, viewRows, viewsOf, MINE, personalViewsOf, withPersonalViews } from "@vyre/ui";
+import { allowsMock, BlockScreen, BoardView, GalleryView, SidePanel, ListHeader, chipsToFilters, listRows, Button, CalendarView, tableToCsv, Card, Chip, DashboardView, EmptyState, Icon, IconButton, Menu, ErrorState, LargeTitleScreen, LoadingState, Segmented, Tabs, Text, filterWords, isInternalField, showToast, storedViewsOf, useFieldEnv, useStore, useUiTheme, viewDefOf, viewRows, viewsOf, MINE, personalViewsOf, withPersonalViews } from "@vyre/ui";
 import { usePlaceText } from "../../src/real/PlaceTag";
 import { tagFor, spaceOfUrn } from "../../src/real/place-tag.js";
 import { useMembers } from "../spaces/state";
@@ -172,6 +172,10 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
     showToast(`${table.content.rows.length} ${vd.plural.toLowerCase()} exported.`);
   };
   const tableColumns = (table.content.columns as any[]).filter((c) => c.id !== "_title" && c.id !== "_roles" && c.role !== "sortOnly" && c.role !== "endDate").map((c) => String(c.id));
+  // The layout of a table (My layout, Space default, Columns..., Reset), on desktop and phone: it holds the columns sheet that "Columns N" opens, so it is drawn wherever a table is.
+  const layoutControls = shown === "list" && def.name !== "note"
+    ? <LayoutControls fields={def.fields.filter((f: any) => f.kind !== "sealed" && !isInternalField(f, def.name)).map((f: any) => ({ name: f.name, label: String(f.label ?? f.name) }))} columns={tableColumns} scope={lay.scope} onScope={lay.setScope} mine={lay.mine} onColumns={(c) => void lay.save("columns", c)} onReset={() => void lay.reset()} sheetOpen={colsOpen} onSheet={setColsOpen} />
+    : null;
   const addColumn = (compact: boolean) => <AddColumn compact={compact} type={type} types={world.types.map((t: any) => ({ name: t.name, label: String(t.label ?? t.name) }))} onAdded={(n) => { reload(); if (n) void lay.save("columns", [...tableColumns, n]); }} />;
   const listScreen = { v: 2 as const, id: "records-list", layout: { block: "t" }, blocks: { t: { type: "table", ...tagged } } };
   // Every type is a tab with its count, in a strip that scrolls sideways (the approved Records design). A type the Space keeps out of Records (Files, Templates, Playbooks) is not a tab; a "+" at the end makes a new one.
@@ -194,6 +198,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
             <Button kind="ghost" size="sm" label="Import" onPress={() => setImporting(true)} />
             <Button kind="ghost" size="sm" label="Settings" onPress={() => setPane(pane === "records" ? "fields" : "records")} />
             <ViewControls compact type={type} viewName={viewName} label={viewName ? (named.find((n) => n.name === viewName)?.label ?? vd.plural) : vd.plural} personal={!!viewName?.startsWith(MINE)} space={space} size="sm" />
+            {pane === "records" ? layoutControls : null}
             <Menu trigger={<IconButton icon="more" label="More" />} items={[
               ...(Platform.OS === "web" ? [{ label: "Export CSV", onPress: exportCsv }] : []),
               { label: "New view", onPress: () => setMaking(true) },
@@ -242,27 +247,15 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
       ) : null) : null}
       {phone ? (
       <View className="flex-row gap-s2">
-        <Button kind="primary" size={phone ? "md" : "sm"} icon="plus" label={`New ${def.label.toLowerCase()}`} onPress={() => router.push(`/u/record/new?type=${type}` as never)} />
-        {phone ? (
-          <>
-            <ViewControls compact type={type} viewName={viewName} label={viewName ? (named.find((n) => n.name === viewName)?.label ?? vd.plural) : vd.plural} personal={!!viewName?.startsWith(MINE)} space={space} size="md" />
-            <Menu trigger={<IconButton icon="more" label="More" />} items={[
-              { label: "New view", onPress: () => setMaking(true) },
-              { label: "New type", onPress: () => setAddingType(true) },
-              { label: "Reminders", onPress: () => router.push("/u/records/reminder" as never) },
-              { label: "Notes", onPress: () => router.push("/u/records/note" as never) },
-            ]} />
-          </>
-        ) : (
-          <>
-        <Button kind="secondary" size={phone ? "md" : "sm"} icon="plus" label="New view" onPress={() => setMaking(true)} />
-        {shown === "list" ? addColumn(false) : null}
-        <LayoutControls fields={def.fields.filter((f: any) => f.kind !== "sealed").map((f: any) => ({ name: f.name, label: String(f.label ?? f.name) }))} columns={tableColumns} scope={lay.scope} onScope={lay.setScope} mine={lay.mine} onColumns={(c) => void lay.save("columns", c)} onReset={() => void lay.reset()} sheetOpen={colsOpen} onSheet={setColsOpen} />
-        <ViewControls type={type} viewName={viewName} label={viewName ? (named.find((n) => n.name === viewName)?.label ?? vd.plural) : vd.plural} personal={!!viewName?.startsWith(MINE)} space={space} size={phone ? "md" : "sm"} />
-        <Button kind="ghost" size={phone ? "md" : "sm"} icon="alarm" label="Reminders" onPress={() => router.push("/u/records/reminder" as never)} />
-        <Button kind="ghost" size={phone ? "md" : "sm"} icon="edit" label="Notes" onPress={() => router.push("/u/records/note" as never)} />
-          </>
-        )}
+        <Button kind="primary" size="md" icon="plus" label={`New ${def.label.toLowerCase()}`} onPress={() => router.push(`/u/record/new?type=${type}` as never)} />
+        <ViewControls compact type={type} viewName={viewName} label={viewName ? (named.find((n) => n.name === viewName)?.label ?? vd.plural) : vd.plural} personal={!!viewName?.startsWith(MINE)} space={space} size="md" />
+        {layoutControls}
+        <Menu trigger={<IconButton icon="more" label="More" />} items={[
+          { label: "New view", onPress: () => setMaking(true) },
+          { label: "New type", onPress: () => setAddingType(true) },
+          { label: "Reminders", onPress: () => router.push("/u/records/reminder" as never) },
+          { label: "Notes", onPress: () => router.push("/u/records/note" as never) },
+        ]} />
       </View>
       ) : null}
       {phone ? <FirstVisit show={!world.partial && isDayOne(world)} samples={sampleCount(world)} reload={reload} /> : null}

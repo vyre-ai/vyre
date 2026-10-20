@@ -1,1 +1,4 @@
-# No per-window rules.
+# Chrome opens filling the screen (the dock floats above it, as a Mac's does); nothing else has a rule. A pattern that matches nothing costs nothing.
+[app] (class=[Cc]hrom.*)
+  [Maximized] {yes}
+[end]

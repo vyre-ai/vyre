@@ -45,6 +45,8 @@ import { beginPrivateMemberBrowser, sealMemberBrowserOnHandback } from "./member
 import * as config from "../config/index.js";
 import { ensure as ensureBearer } from "../../lib/bearer/index.js";
 import { agentClaim } from "../modules/index.js";
+import { effectiveComputers } from "../../lib/computers-env.js";
+import { plainError, plainComputerError, NO_EXEC_WORDS } from "./plain.js";
 import { AGENT_NAME_RE, modelSessionMustClaimAgent, resolveComputerAgent } from "../../lib/computer-agent.js";
 
 const str = { type: "string" };
@@ -67,16 +69,19 @@ const MEMBER_TOKEN_ITEM = "vyre-shared-computer-member-key";
 const DEFAULT_BEARER_FILE = "/var/lib/vyre-secrets/docker-api-bearer";
 
 /**
- * The driver config asks for: the Docker proxy when `computers.docker` is set, the fake when
- * `computers.driver` is "fake", else none. There is deliberately no fallback to the raw socket.
- * vyred owns the bearer file (bearer.ensure): it generates one on first boot if the box's setup
- * has not already, so a fresh install still gets the file before docker-api needs it to answer.
+ * The driver the settings in effect ask for (lib/computers-env.js effectiveComputers): the Docker proxy when `computers.docker` is set,
+ * which on a box (VYRE_SUPERVISOR=docker) is the docker-api service by default, with the image, network and label prefix its create policy
+ * pins; the fake when `computers.driver` is "fake"; else none (`computers.enabled: false` turns a box's off). There is deliberately no
+ * fallback to the raw socket. vyred owns the bearer file (bearer.ensure): it generates one here, and docker-api reads it again on the
+ * first request that carries it, whichever container started first.
+ * @param {any} cfg the computers section of config.json @param {string} key @param {Record<string, string | undefined>} [env]
  * @returns {import("./driver/index.js").Driver|null}
  */
-export function pickDriver(cfg, key) {
-  if (cfg.docker) return new DockerDriver({ url: String(cfg.docker), bearer: ensureBearer(cfg.dockerBearerFile || DEFAULT_BEARER_FILE),
-    labelPrefix: cfg.labelPrefix, network: cfg.network, capAdd: cfg.capAdd });
-  if (cfg.driver === "fake") return FakeDriver.for(key, cfg.local ? { local: cfg.local } : {});
+export function pickDriver(cfg, key, env = process.env) {
+  const c = effectiveComputers(cfg, env);
+  if (c.docker) return new DockerDriver({ url: String(c.docker), bearer: ensureBearer(c.dockerBearerFile || DEFAULT_BEARER_FILE),
+    labelPrefix: c.labelPrefix, network: c.network, capAdd: c.capAdd });
+  if (c.driver === "fake") return FakeDriver.for(key, c.local ? { local: c.local } : {});
   return null;
 }
 
@@ -84,7 +89,9 @@ export function pickDriver(cfg, key) {
 export default {
   async start(ctx) {
     ctx.store.migrate([...MIGRATIONS, ...AGENT_USER_MIGRATIONS, ...UPDATE_MIGRATIONS]);
-    const cfg = (ctx.config && ctx.config.computers) || {};
+    // The settings in effect, read live (config can change while vyred runs): config.json's own over what a box implies (lib/computers-env.js).
+    const liveCfg = () => effectiveComputers((ctx.config && ctx.config.computers) || {});
+    const cfg = liveCfg();
     const driver = pickDriver(cfg, ctx.paths ? ctx.paths.root : "default");
     const emit = (type, payload, where) => ctx.events.emit(type, payload, where);
     // The key every shared-computer member token and every agent's VNC password is derived from: a Space vault item only this module reads. Nothing else provisions it, so the first use makes it (random, 32 bytes),
@@ -107,9 +114,9 @@ export default {
       log: ctx.log,
     });
     // Live too: computers.handback.set changes the idle hand-back for a take-over already running.
-    const idleMin = () => ctx.config && ctx.config.computers ? ctx.config.computers.handbackIdleMin : undefined;
-    const shared = new SharedBrowser({ pool, call: ctx.call, cfg: () => (ctx.config && ctx.config.computers) || {}, log: ctx.log });
-    const agentBrowser = new AgentBrowser({ pool, shared, cfg: () => (ctx.config && ctx.config.computers) || {} });
+    const idleMin = () => liveCfg().handbackIdleMin;
+    const shared = new SharedBrowser({ pool, call: ctx.call, cfg: liveCfg, log: ctx.log });
+    const agentBrowser = new AgentBrowser({ pool, shared, cfg: liveCfg });
     const handbackDeps = { agentBrowser, shared, browserProfiles: pool.browserProfiles, log: ctx.log };
     const keyboard = new Keyboard({
       pool, shared, call: ctx.call, emit, on: ctx.events.on, log: ctx.log, idleMs: () => idleMsOf(idleMin()),
@@ -125,8 +132,9 @@ export default {
       { ...o, computerRow: agentBrowser.computerRow(agent) }, a => helperFor(a)) });
     const fills = new Fills({ pool, shield, keyboard, emit, on: ctx.events.on, log: ctx.log, helper: helperFor, register: (agent, values) => cdpAdapter.register(agent, values) });
 
-    if (!driver) ctx.log("no computer driver configured (computers.docker is not set); computers cannot start");
+    if (!driver) ctx.log(`no computer driver configured (computers.docker is not set${cfg.enabled === false || cfg.driver === "none" ? ", and config.json turns computers off" : " and this is not a box"}); computers cannot start`);
     else {
+      if (!(ctx.config && ctx.config.computers && ctx.config.computers.docker) && cfg.docker) ctx.log(`computers: this box's docker-api at ${cfg.docker}, image ${cfg.image}, network ${cfg.network}, label prefix ${cfg.labelPrefix}${cfg.agentUsers === true ? ", an agent user each" : ""}`);
       try { await pool.reconcile(); }
       catch (e) { ctx.log(`could not reconcile computers with the ${driver.name} driver: ${/** @type {Error} */ (e).message}`); }
     }
@@ -145,7 +153,7 @@ export default {
       open: async (/** @type {string} */ agent) => {
         await agentUsers.wake(agent);
         const h = pool.hosts.get(SHARED_COMPUTER_ID);
-        if (!h) throw new Error(NOT_SET);
+        if (!h) throw notSet();
         // the relay lets in vyred's address only: have the computer pin this vyred's address (it can change when vyred is recreated) before the ticket
         await pool.pin(SHARED_COMPUTER_ID);
         const hello = crypto.randomBytes(24).toString("base64url");
@@ -159,7 +167,7 @@ export default {
     /** The agent's Chrome for the code that drives it (hands, fill): a ticket with the relay for its debugging pipe, held as one link per agent in the adapter (cdp-adapter.js). */
     const cdpAdapter = createCdpAdapter({ log: ctx.log, open: async (/** @type {string} */ agent) => {
       const h = pool.hosts.get(SHARED_COMPUTER_ID);
-      if (!h) throw new Error(NOT_SET);
+      if (!h) throw notSet();
       await pool.pin(SHARED_COMPUTER_ID);
       const hello = crypto.randomBytes(24).toString("base64url");
       await agentUsers.cdpTicket(agent, hello);
@@ -171,7 +179,7 @@ export default {
     const agentTerminal = {
       openTerminal: async (/** @type {string} */ agent, /** @type {string} */ session) => {
         const h = pool.hosts.get(SHARED_COMPUTER_ID);
-        if (!h) throw new Error(NOT_SET);
+        if (!h) throw notSet();
         await pool.pin(SHARED_COMPUTER_ID);
         const hello = crypto.randomBytes(24).toString("base64url");
         await agentUsers.terminalTicket(agent, hello, session);
@@ -278,12 +286,55 @@ export default {
 
     // The agents of the space's one computer: a Linux user each, a screen woken on demand and closed after 5 idle minutes (agent-users.js).
     // agentd inside the computer does the work, on a root-only unix socket. vyred reaches it only through the driver running agentd-client.js in the computer
-    // (`execIn`, the one exec shape policy.js allows); a driver that cannot do that (none configured, the fake) leaves the Computer tab saying so.
-    const NOT_SET = "the agent computer is not set up on this machine: its container is not running, or this machine's driver cannot run commands in it";
+    // (`execIn`, the one exec shape policy.js allows); a driver that cannot do that (none configured, the fake) leaves the Computer tab saying so, in plain words (plain.js).
+    // What starts work there (a new agent user, a screen, a command, a session, a terminal) first brings the Space's computer up when it is not running: it is made
+    // from the current image the first time an agent needs it, so waking an agent works on a fresh server. A failure to bring it up is kept, in plain words, for
+    // computers.agent.status to show until the computer runs.
+    // Said to a person in the Computer tab, so in plain words with the next step; the code lets the app add the button (computer_unavailable in lib/error-catalogue.js).
+    const NOT_SET = "This agent's computer isn't running on your server yet. An owner can set it up in Settings, This computer.";
+    const BRINGS_UP = new Set(["createUser", "startScreen", "exec", "runTicket", "terminalTicket"]);
+    /** @type {{ code: string, message: string } | null} */
+    let spaceProblem = null;
+    /** The bring-up in flight (callers join it), and whether it is the computer's first (no container yet). @type {Promise<void> | null} */
+    let spaceStarting = null;
+    let spaceFirst = false;
+    const spaceUp = () => {
+      const box = pool.row(SHARED_COMPUTER_ID);
+      if (box && box.container && box.state === "running" && pool.hosts.has(SHARED_COMPUTER_ID)) return Promise.resolve();
+      if (spaceStarting) return spaceStarting;
+      spaceFirst = !(box && box.container);
+      if (spaceFirst) ctx.log("starting the Space's agent computer for the first time");
+      spaceStarting = (async () => {
+        try { await pool.ensureSpace(SHARED_COMPUTER_ID); spaceProblem = null; }
+        catch (e) {
+          ctx.log(`the Space's agent computer could not start: ${/** @type {Error} */ (e).message}`);
+          const p = plainComputerError(e);
+          if (p) spaceProblem = p;
+          throw plainError(e);
+        }
+      })().finally(() => { spaceStarting = null; spaceFirst = false; });
+      return spaceStarting;
+    };
+    /** Is the Space's computer being brought up now, and has it never been made? Read by computers.agent.status. */
+    const spaceNow = () => {
+      const canRun = Boolean(pool.driver && typeof /** @type {any} */ (pool.driver).execIn === "function");
+      const box = pool.row(SHARED_COMPUTER_ID);
+      return { starting: Boolean(spaceStarting), first: spaceStarting ? spaceFirst : canRun && !(box && box.container) };
+    };
+    /** Why an agent's computer cannot run here, in plain words, or null. Read by computers.agent.status. */
+    const problemNow = () => {
+      if (!pool.driver) return plainComputerError(NO_DRIVER);
+      if (typeof /** @type {any} */ (pool.driver).execIn !== "function") return { code: "unavailable", message: NO_EXEC_WORDS };
+      const box = pool.row(SHARED_COMPUTER_ID);
+      return box && box.container && box.state === "running" ? null : spaceProblem;
+    };
     const lazy = name => async (/** @type {any[]} */ ...args) => {
       const driver = pool.driver;
+      if (!driver) throw plainError(new Error(NO_DRIVER));
+      if (typeof /** @type {any} */ (driver).execIn !== "function") throw Object.assign(new Error(NO_EXEC_WORDS), { code: "unavailable" });
+      if (BRINGS_UP.has(name)) await spaceUp();
       const box = pool.row(SHARED_COMPUTER_ID);
-      if (!driver || typeof /** @type {any} */ (driver).execIn !== "function" || !box || !box.container) throw new Error(NOT_SET);
+      if (!box || !box.container) throw Object.assign(new Error(NOT_SET), { code: "computer_unavailable" });
       const exec = (/** @type {string} */ input) => /** @type {any} */ (driver).execIn(String(box.container), input);
       const ctl = agentdCtl({ transport: execTransport(exec), vncKey: () => memberKey() });
       return /** @type {any} */ (ctl)[name](...args);
@@ -297,7 +348,7 @@ export default {
     // Pool.reconcile has just made the table agree with the runtime: when the space's computer is gone or stopped, no agent's screen is up, whatever the rows said last time.
     { const box = pool.row(SHARED_COMPUTER_ID); if (!box || (box.state !== "running" && box.state !== "frozen")) agentUsers.asleepAll(); }
     const tool = (name, description, input, run, extra = {}) => ctx.tool(name, { description, input, run, ...extra });
-    const agentTools = registerAgentTools({ tool, users: agentUsers, call: ctx.call, callers: PEOPLE, held: agent => keyboard.takeovers.has(agent) || pool.checkouts.has(agent) || (screenViewers.get(agent) || 0) > 0,
+    const agentTools = registerAgentTools({ tool, users: agentUsers, call: ctx.call, callers: PEOPLE, problem: problemNow, space: spaceNow, held: agent => keyboard.takeovers.has(agent) || pool.checkouts.has(agent) || (screenViewers.get(agent) || 0) > 0,
       terminal: (agent, session) => {
         const ticket = pool.ticket(agent, `terminal:${session}`, { perAgent: true });
         return { ticket, path: `/v1/streams/computers/terminal?ticket=${encodeURIComponent(ticket)}` };
@@ -463,13 +514,13 @@ export default {
       });
 
     // Per-agent users on the space's computer are off until 0.6.2: the box opts in with computers.agentUsers: true, and even then agentd must be up (the shared box has a container and its computerd answered, so its host is registered).
-    const agentdReady = () => { if (!(ctx.config && ctx.config.computers && ctx.config.computers.agentUsers === true)) return false; const box = pool.row(SHARED_COMPUTER_ID); return Boolean(pool.driver && typeof /** @type {any} */ (pool.driver).execIn === "function" && box && box.container && pool.hosts.has(SHARED_COMPUTER_ID)); };
+    const agentdReady = () => { if (liveCfg().agentUsers !== true) return false; const box = pool.row(SHARED_COMPUTER_ID); return Boolean(pool.driver && typeof /** @type {any} */ (pool.driver).execIn === "function" && box && box.container && pool.hosts.has(SHARED_COMPUTER_ID)); };
     // The Space's computer for agentBrowser: never the shared browser unless computers.browse is "browser" on purpose. It waits (bounded) for the computer and agentd, and says so loudly when they do not come.
     {
       agentBrowser.log = ctx.log;
       const canExec = Boolean(pool.driver && typeof /** @type {any} */ (pool.driver).execIn === "function");
       agentBrowser.space = !canExec ? null : { endpoint: async agent => {
-        const waitMs = Number((ctx.config && ctx.config.computers && ctx.config.computers.agentdWaitMs) ?? 90_000), t0 = Date.now();
+        const waitMs = Number(liveCfg().agentdWaitMs ?? 90_000), t0 = Date.now();
         let last = NOT_SET, said = false;
         for (;;) {
           if (agentdReady()) {
@@ -499,7 +550,7 @@ export default {
       ticket: (agent, hello, spec) => agentUsers.runTicket(agent, hello, spec),
       where: async () => {
         const h = pool.hosts.get(SHARED_COMPUTER_ID);
-        if (!h) throw new Error(NOT_SET);
+        if (!h) throw notSet();
         // the relay lets in vyred's address only: have the computer pin this vyred's address first
         await pool.pin(SHARED_COMPUTER_ID);
         return { host: h.host, port: RELAY_PORT };

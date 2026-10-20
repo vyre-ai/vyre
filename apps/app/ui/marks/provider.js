@@ -1,32 +1,36 @@
 // @ts-check
-// The provider badge (docs/design/system/components/provider-badge.md): which AI account wrote a reply, drawn with the provider's own published mark (./provider-art.js, copied unmodified from the old Deck, never Vyre's own branding).
-// Pure: the markup and the names, no DOM and no React. An unknown provider has no mark and gets a monogram; a reply that does not say who wrote it gets nothing, never a guess.
-import * as ART from "./provider-art.js";
+// The AI providers as the app draws them (docs/design/system/components/provider-badge.md): each one's name, the company behind it, and its brand mark from the app's one icon set
+// (src/ui/icons.source.json: logo-claude, logo-openai, logo-grok, logo-openrouter, monochrome and tinted with the theme's ink, so they read in light and dark). OpenAI-compatible is any key, so it gets the
+// key icon. Every provider is drawn the same way; none comes first. Pure: names and icon names, no DOM and no React. An unknown provider has no mark and gets a monogram; a reply that does not say
+// who wrote it gets nothing, never a guess.
 
-/** @type {Record<string, { name: string, mono: string, dark?: string, paper?: string }>} */
+/** @type {Record<string, { name: string, vendor: string, mono: string, icon: string }>} */
 const KNOWN = {
-  claude: { name: "Claude", mono: "Cl", dark: ART.CLAUDE, paper: ART.CLAUDE },
-  codex: { name: "Codex", mono: "Cx", dark: ART.OPENAIDARK, paper: ART.OPENAIPAPER },
-  openrouter: { name: "OpenRouter", mono: "Or", dark: ART.OPENROUTERDARK, paper: ART.OPENROUTERPAPER },
-  grok: { name: "Grok", mono: "Gk", dark: ART.GROKDARK, paper: ART.GROKPAPER },
+  claude: { name: "Claude", vendor: "Anthropic", mono: "Cl", icon: "logo-claude" },
+  codex: { name: "Codex", vendor: "OpenAI", mono: "Cx", icon: "logo-openai" },
+  grok: { name: "Grok", vendor: "xAI", mono: "Gk", icon: "logo-grok" },
+  openrouter: { name: "OpenRouter", vendor: "OpenRouter", mono: "Or", icon: "logo-openrouter" },
+  "openai-compatible": { name: "OpenAI-compatible", vendor: "Any key", mono: "Ok", icon: "key" },
 };
+
+const known = (/** @type {string | null | undefined} */ provider) => KNOWN[String(provider || "").toLowerCase().trim()];
 
 /** "codex" is "Codex", an unknown one is capitalised as given. @param {string | null | undefined} provider */
 export function providerName(provider) {
   const k = String(provider || "").toLowerCase().trim();
-  return KNOWN[k]?.name || (k ? k[0].toUpperCase() + k.slice(1) : "");
+  return known(k)?.name || (k ? k[0].toUpperCase() + k.slice(1) : "");
 }
 
-/** The mark's SVG for a scheme, or null (an unknown provider, or none). @param {string | null | undefined} provider @param {"dark" | "paper"} [scheme] */
-export function providerArt(provider, scheme = "dark") {
-  const k = KNOWN[String(provider || "").toLowerCase().trim()];
-  return k ? (scheme === "paper" ? k.paper : k.dark) ?? null : null;
-}
+/** The company behind a provider ("Anthropic" for Claude), or "" for one the app does not know. @param {string | null | undefined} provider */
+export const providerVendor = (provider) => known(provider)?.vendor ?? "";
 
-/** The monogram of a provider without art. @param {string | null | undefined} provider */
+/** The provider's mark in the icon set (a name of src/ui/icons.generated.ts), or null for an unknown provider or none. @param {string | null | undefined} provider */
+export const providerIcon = (provider) => known(provider)?.icon ?? null;
+
+/** The monogram of a provider without a mark. @param {string | null | undefined} provider */
 export function providerMono(provider) {
   const key = String(provider || "").toLowerCase().trim();
-  return KNOWN[key]?.mono ?? key.slice(0, 2).replace(/^./, (c) => c.toUpperCase());
+  return known(key)?.mono ?? key.slice(0, 2).replace(/^./, (c) => c.toUpperCase());
 }
 
 /** The provider a model's name belongs to, when the name says so; otherwise null (no guess). @param {string | null | undefined} model */

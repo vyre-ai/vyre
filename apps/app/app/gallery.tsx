@@ -14,7 +14,7 @@ import { setBoxOverride } from "../src/real/box";
 import { RealSite, RealSites } from "../screens/sites/RealSites";
 import RealVault from "../screens/vault/RealVault";
 import { RunHereView } from "../screens/runner/RunHere";
-import { PlacementChip, MovedLines } from "../src/chat/placement";
+import { PlacementSwitch, MovedLines } from "../src/chat/placement";
 import { StatusLine } from "../src/chat/StatusLine";
 import { AwayView } from "../screens/now/AwayCard";
 import { ComputersView } from "../screens/spaces/ComputersSection";
@@ -29,6 +29,7 @@ import { ExplainCard } from "../screens/flows/ExplainCard";
 import { RunSteps } from "../screens/flows/RunSteps";
 import { RunPage } from "../screens/flows/RunPage";
 import { FlowBuilder } from "../ui/flows/FlowBuilder";
+import { WebhookFields } from "../ui/flows/WebhookFields";
 import { SAMPLE_OPTIONS, REMINDER_DRAFT } from "../screens/flows/starters.js";
 import { dayTimeOf } from "../src/time/show.js";
 import { TimelineEntries } from "../screens/projects/TimelineList";
@@ -126,6 +127,12 @@ function Sample({ name }: { name: string }) {
   if (name === "setup-field-access") return <FieldPaneDemo draft={DRAFTS.value} rules={{ visible: null, required: { field: "kind", op: "is_not", value: "Other" } }} />;
   if (name === "setup-field-seal") return <FieldPaneDemo draft={DRAFTS.sealed} />;
   if (name === "setup-field-errors") return <FieldPaneDemo draft={DRAFTS.broken} tried />;
+  if (name === "flow-webhook" || name === "flow-webhook-wait") {
+    const live = name === "flow-webhook";
+    const h = { open: true, address: { path: "/hooks/refund-request-4f9c", url: live ? "https://team.example/hooks/refund-request-4f9c0b7e1d2a" : null }, why: live ? null : "The public address is not up yet: the server's name does not point at it. Senders on the internet reach it once the server has its public address.",
+      last: live ? { when: "Today 10:05", ok: true, bytes: 412 } : { when: "Today 9:58", ok: false, why: "the token does not match", bytes: 210 }, check: null };
+    return <Card><WebhookFields kind="webhook" onOwn={() => {}} sources={{ flowHook: async () => h, renewHook: async () => {}, testHook: async () => ({ ok: true, line: "The test reached the address and its token checked. A test does not start the Flow." }), signHook: async () => {} }} /></Card>;
+  }
   if (name === "flow-parallel") {
     // A flow with a parallel (two lanes) and the step that follows it, in the shape kernel/flows/canvas.js graph() hands over.
     const n = (id: string, kind: string, label: string, lane: number, y: number, state?: NodeState) => ({ id, kind, label, lane, y, ...(state ? { state } : {}) });
@@ -258,10 +265,10 @@ function Sample({ name }: { name: string }) {
   if (name === "runner-chip") {
     return (
       <View style={{ gap: 12, alignItems: "flex-start" }}>
-        <PlacementChip placement={{ where: "mac" }} onMove={() => {}} />
-        <PlacementChip placement={{ where: "server", reason: "lid-closed" }} onMove={() => {}} />
+        <PlacementSwitch placement={{ where: "mac" }} onMove={() => {}} />
+        <PlacementSwitch placement={{ where: "server", reason: "lid-closed" }} onMove={() => {}} />
         <View style={{ alignSelf: "stretch" }}><StartingSample /></View>
-        <MovedLines lines={[{ at: 1, text: "Moved to the server: lid closed." }, { at: 2, text: "Moved to this Mac: you moved it." }, { at: 3, text: "Dana's MacBook did not answer. Running on the server instead." }, { at: 4, text: "This chat borrowed Dana's MacBook. It can reach the AI provider and nothing else." }]} />
+        <MovedLines lines={[{ at: 1, text: "Moved to the server: lid closed." }, { at: 2, text: "Moved to this computer: you moved it." }, { at: 3, text: "Dana's MacBook did not answer. Running on the server instead." }, { at: 4, text: "This chat borrowed Dana's MacBook. It can reach the AI provider and nothing else." }]} />
       </View>
     );
   }
@@ -271,7 +278,7 @@ function Sample({ name }: { name: string }) {
 /** The chat's status line while its process starts on a computer: the words, then Stop, and no chip yet (the chip comes when it is up). */
 function StartingSample() {
   const { phone } = useUiTheme();
-  return <StatusLine starting="Starting on Dana's MacBook..." presence="" state="working" busy canStop stopping={false} offline={false} phone={phone} onStop={() => {}} place={<PlacementChip placement={{ where: "mac", computer: "Dana's MacBook" }} onMove={() => {}} />} />;
+  return <StatusLine starting="Starting on Dana's MacBook..." presence="" state="working" busy canStop stopping={false} offline={false} phone={phone} onStop={() => {}} />;
 }
 
 /** The guided-flow kit in one page: /gallery?f=flow-kit. Phases, not a step count. */
@@ -389,7 +396,7 @@ export default function Gallery() {
     return <ThemeProvider><Page><View nativeID="fixture"><RunPage flow="reminder" run="run_9" /></View></Page></ThemeProvider>;
   }
   if (q.f === "flow-kit") return <ThemeProvider><FlowKit /></ThemeProvider>;
-  // The shell looks and the space tiles are components, not block fixtures: /gallery?f=shell shows every state of the sidebar, ?f=shell-main|shell-folded|shell-projects|shell-projects-folded|shell-records one, ?f=space-tiles the tiles.
+  // The shell looks and the space tiles are components, not block fixtures: /gallery?f=shell shows every state of the sidebar, ?f=shell-main|shell-folded|shell-projects|shell-projects-folded|shell-records one (shell-folded-account and shell-folded-space are the folded rail the picture test presses), ?f=space-tiles the tiles.
   if (typeof q.f === "string" && (q.f === "space-tiles" || q.f === "shell" || q.f.startsWith("shell-"))) return <ThemeProvider><Page><View nativeID="fixture"><Sample name={q.f} /></View></Page></ThemeProvider>;
   const form = q.form === "compact" || q.form === "glance" ? q.form : "full";
   const given = fromQuery(q.screen);

@@ -15,6 +15,16 @@
 
 name: vyre
 
+# The agents' computers' create policy, ONE source for both services that read it: vyred (which asks for a computer with these values, lib/computers-env.js)
+# and the docker-api proxy (which refuses a create that differs, core/computers/driver/policy.js). Each line is anchored here and named below, so the two can never
+# drift. The release pins the computers image's default to its signed digest (scripts/pin-release-compose.mjs); a root run passes none of these on, so the
+# defaults stand on a released box.
+x-computers-policy:
+  - &computers-network VYRE_COMPUTERS_NETWORK=${VYRE_COMPUTERS_NETWORK:-vyre-computers}
+  - &computers-image VYRE_COMPUTERS_IMAGE=${VYRE_COMPUTERS_IMAGE:-vyre/computer:0.1}
+  - &computers-label-prefix VYRE_COMPUTERS_LABEL_PREFIX=${VYRE_COMPUTERS_LABEL_PREFIX:-run.vyre.computers}
+  - &computers-cap-add VYRE_COMPUTERS_CAP_ADD=${VYRE_COMPUTERS_CAP_ADD:-}
+
 services:
   vyre:
     image: ${VYRE_IMAGE:-ghcr.io/vyre-ai/vyre:latest}
@@ -66,6 +76,12 @@ services:
       # Settings can opt out with wink.publish: false. A home or a Mac sets neither.
       - VYRE_WINK_PUBLISH=1
       - VYRE_WINK_INGRESS_PORT=443
+      # The agents' computers: with these and VYRE_SUPERVISOR=docker, vyred uses the docker-api service below with exactly its create policy (and each agent
+      # its own Linux user on the Space's computer) unless config.json says otherwise; computers.enabled: false there turns them off.
+      - *computers-network
+      - *computers-image
+      - *computers-label-prefix
+      - *computers-cap-add
     env_file:
       # CLOUDFLARE_VYRE_TOKEN and similar. See vyre.env.example.
       - path: ./vyre.env
@@ -130,17 +146,17 @@ services:
       run.vyre: "1"
     environment:
       - DOCKER_SOCKET=/var/run/docker.sock
-      # What a create may ask for. The same values as vyred's computers.network, computers.image,
-      # computers.labelPrefix and computers.capAdd; a create that differs is refused.
-      - VYRE_COMPUTERS_NETWORK=${VYRE_COMPUTERS_NETWORK:-vyre-computers}
-      - VYRE_COMPUTERS_IMAGE=${VYRE_COMPUTERS_IMAGE:-vyre/computer:0.1}
-      - VYRE_COMPUTERS_LABEL_PREFIX=${VYRE_COMPUTERS_LABEL_PREFIX:-run.vyre.computers}
-      - VYRE_COMPUTERS_CAP_ADD=${VYRE_COMPUTERS_CAP_ADD:-}
+      # What a create may ask for: the same lines vyred gets (x-computers-policy above); a create that differs is refused.
+      - *computers-network
+      - *computers-image
+      - *computers-label-prefix
+      - *computers-cap-add
       # Required (core/dockerproxy/main.js refuses to start without it): every request must
       # carry this bearer, so being on the docker-api network is not enough on its own -- a
       # session sharing vyred's container and network cannot reach this proxy just by being on
       # it. vyred writes the file this points at (core/computers/index.js, bearer.ensure); this
-      # container only ever reads it, and retries for a while on a first-boot race.
+      # container only ever reads it, and reads it again when a request's bearer does not match
+      # what it holds, so it starts in either order and needs no restart (lib/bearer watch).
       - DOCKER_PROXY_BEARER_FILE=/var/lib/vyre-secrets/docker-api-bearer
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
