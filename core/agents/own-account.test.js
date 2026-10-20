@@ -256,7 +256,7 @@ test("Rule 2: the onboarding greeting is asked as the owner who finishes onboard
   // no person proved on the call: nothing to relay, so the greeting names nobody and starts nothing
   const nobody = await w.reg.call("onboard.greet", {}, "local");
   assert.ok(nobody.error, JSON.stringify(nobody));
-  assert.match(nobody.error.message, /No person asked for this, so no agent was started\./);
+  assert.equal(nobody.error.code, "denied", "refused: a call with no person on it is judged as the module, which does not reach the assistant, and names nobody to run it for");
   assert.equal(w.count(), before, "NEGATIVE: no agent was started");
   // the owner finishing onboarding: the greeting runs for the owner, on the owner's own (the assistant's or the home's), never as the module
   const owner = { kernelFacts: { kind: "device", device_key_id: "d-owner", person: OWNER, path: "direct", session: "s-owner" } };

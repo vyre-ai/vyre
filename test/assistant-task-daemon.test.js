@@ -45,7 +45,7 @@ test("the assistant's session starts and submits a task: ready, working, needs_c
   const second = await ask(`vyre-sock tasks.submit ${JSON.stringify({ id: task.id, evidence: { answer: "yes", reason: "drafted" } })}`);
   assert.ok(!second.error, JSON.stringify(second));
   // on a timeout, say what the task and the assistant's thread show
-  const why = async () => { const l = (await d.registry.call("agents.list", {}, "cli")).data.find((/** @type {any} */ x) => x.name === name); const ev = l && l.thread ? (await d.registry.call("threads.get", { thread: l.thread, limit: 100 }, "cli")).data.events : []; return JSON.stringify({ task: await row(), said: ev.filter((/** @type {any} */ e) => e.type === "thread.text" && e.payload.text).map((/** @type {any} */ e) => e.payload.text) }).slice(0, 1500); };
+  const why = async () => { const l = (await d.registry.call("agents.list", {}, "cli")).data.find((/** @type {any} */ x) => x.name === name); const ev = l && l.thread ? (await d.registry.call("threads.get", { thread: l.thread, limit: 100 }, "cli")).data.events : []; const tk = /** @type {any} */ (await row()); return `state ${tk.state}; stuck ${JSON.stringify(tk.stuck || null).slice(0, 300)}; said ${JSON.stringify(ev.filter((/** @type {any} */ e) => e.type === "thread.text" && e.payload.text).map((/** @type {any} */ e) => String(e.payload.text).slice(0, 200)).slice(-4))}`; };
   try { await until(async () => (await row()).state === "needs_check", "the assistant submits it"); }
   catch (e) { throw new Error(`${/** @type {Error} */ (e).message}: ${await why()}`); }
 });
