@@ -44,7 +44,10 @@ test("the assistant's session starts and submits a task: ready, working, needs_c
   await until(async () => (await row()).state === "working", `the assistant starts the task (${await (async () => { const l = (await d.registry.call("agents.list", {}, "cli")).data.find((/** @type {any} */ x) => x.name === name); const ev = l && l.thread ? (await d.registry.call("threads.get", { thread: l.thread, limit: 100 }, "cli")).data.events : []; return JSON.stringify(ev.filter((/** @type {any} */ e) => e.type === "thread.text" && e.payload.text).map((/** @type {any} */ e) => e.payload.text)); })()})`);
   const second = await ask(`vyre-sock tasks.submit ${JSON.stringify({ id: task.id, evidence: { answer: "yes", reason: "drafted" } })}`);
   assert.ok(!second.error, JSON.stringify(second));
-  await until(async () => (await row()).state === "needs_check", "the assistant submits it");
+  // on a timeout, say what the task and the assistant's thread show
+  const why = async () => { const l = (await d.registry.call("agents.list", {}, "cli")).data.find((/** @type {any} */ x) => x.name === name); const ev = l && l.thread ? (await d.registry.call("threads.get", { thread: l.thread, limit: 100 }, "cli")).data.events : []; return JSON.stringify({ task: await row(), said: ev.filter((/** @type {any} */ e) => e.type === "thread.text" && e.payload.text).map((/** @type {any} */ e) => e.payload.text) }).slice(0, 1500); };
+  try { await until(async () => (await row()).state === "needs_check", "the assistant submits it"); }
+  catch (e) { throw new Error(`${/** @type {Error} */ (e).message}: ${await why()}`); }
 });
 
 test("a plain session (started for no agent) is nobody's assistant: it cannot move, submit or decide a task the assistant is the doer of", { timeout: 120_000 }, async t => {
