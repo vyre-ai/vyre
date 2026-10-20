@@ -5,6 +5,10 @@
 
 /** The one line the tab says. */
 export const AI_ACCOUNTS_LINE = "Runs on these accounts no matter who or what starts it.";
+/** The providers a Flow's AI step can run on (the inference door's drivers): keys, then sign-ins (core/daemon/flow-model.js). */
+export const AI_STEP_PROVIDERS = Object.freeze(["openrouter", "openai-compatible", "claude", "codex", "grok"]);
+const SIGNIN = new Set(["claude", "codex", "grok"]);
+const NAMES = /** @type {Record<string, string>} */ ({ openrouter: "OpenRouter", "openai-compatible": "OpenAI-compatible", claude: "Claude", codex: "Codex", grok: "Grok" });
 /** The step kinds that call a model on the Flow's accounts. */
 const AI_KINDS = new Set(["classify", "extract"]);
 
@@ -26,11 +30,12 @@ export function hasAiStep(flow) {
   return false;
 }
 
-/** The viewer's own finished accounts, sign-ins and keys of every provider. @param {unknown} accounts @returns {Choice[]} */
+/** The viewer's own finished accounts a Flow's AI steps can run on: keys and sign-ins of those providers (a sign-in to an address of its own is not one yet). @param {unknown} accounts @returns {Choice[]} */
 export function aiChoices(accounts) {
   const list = Array.isArray(accounts) ? accounts : accounts && typeof accounts === "object" && Array.isArray(/** @type {any} */ (accounts).accounts) ? /** @type {any} */ (accounts).accounts : [];
   return list
-    .filter((/** @type {any} */ a) => a && typeof a.id === "string" && typeof a.provider === "string" && !a.pending && !a.synthetic && !a.needs)
+    .filter((/** @type {any} */ a) => a && typeof a.id === "string" && AI_STEP_PROVIDERS.includes(String(a.provider)) && !a.pending && !a.synthetic && !a.needs
+      && (SIGNIN.has(String(a.provider)) ? ["login", "setup-token", "api-key"].includes(String(a.kind)) && !a.base_url : a.kind === "api-key"))
     .map((/** @type {any} */ a) => ({ id: String(a.id), provider: String(a.provider), label: String(a.label || a.provider), kind: String(a.kind || "login") }));
 }
 
@@ -54,4 +59,10 @@ export function withAccounts(flow, main, fallback) {
   const f = flow && typeof flow === "object" ? /** @type {Record<string, unknown>} */ (flow) : {};
   const clean = (/** @type {Pick} */ p) => ({ account: p.account, ...(p.provider ? { provider: p.provider } : {}), ...(p.model ? { model: p.model } : {}) });
   return { ...f, runs_on: { main: clean(main), ...(fallback && fallback.account !== main.account ? { fallback: clean(fallback) } : {}) } };
+}
+
+/** What kind of account a choice is, in a few words ("Claude subscription", "OpenRouter key"). @param {Choice} c */
+export function choiceKind(c) {
+  const name = NAMES[c.provider] || c.provider;
+  return SIGNIN.has(c.provider) && c.kind !== "api-key" ? `${name} subscription` : `${name} key`;
 }

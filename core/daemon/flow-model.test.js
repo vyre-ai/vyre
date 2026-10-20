@@ -1,94 +1,96 @@
 // @ts-check
-// The Flow model port's fallback: the main account answers; when it is out of credits, rate limited (after one more try), signed out or not answering, the fallback answers and says why; a bad request or a
-// content refusal fails the step and the fallback is never asked. Over a fake registry (the person's accounts, their keys) and a fake door (each account's answer by its key).
+// The Flow model port picks the door's driver from the account's provider: a member's Claude, Codex or Grok sign-in goes to the sign-in driver with HER credential only (lent from her own vault, or her
+// login's own folder), the owner's never; a key keeps the HTTP driver; and a failure is never retried on another account or provider. Tokens here are fakes.
 import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { flowModel } from "./flow-model.js";
-import { modelError } from "../../lib/model-errors.js";
+import { flowModel, DOOR_PROVIDERS } from "./flow-model.js";
 
-const ANA = "per_ana";
-const ROWS = {
-  main: { id: "main", provider: "openrouter", kind: "api-key", label: "Main key", person: ANA, own_vault: true, vault_item: "m" },
-  back: { id: "back", provider: "openai-compatible", kind: "api-key", label: "Back key", person: ANA, own_vault: true, vault_item: "b", base_url: "https://api.example.com/v1", model: "gpt-x" },
-  owner: { id: "owner", provider: "openrouter", kind: "api-key", label: "Owner key", person: null, vault_item: "o" },
-};
+const BEN = "per_" + "b".repeat(26), OWNER = "per_" + "o".repeat(26);
+const BEN_TOKEN = "sk-ant-oat01-" + "b".repeat(60), OWNER_TOKEN = "sk-ant-oat01-" + "a".repeat(60), BEN_KEY = "sk-or-v1-" + "b".repeat(40);
 
-/** @param {(key: string, i: any) => any} answer */
-function world(answer) {
-  /** @type {any[]} */ const sent = [];
+/** A registry whose accounts are `rows`: resolve answers a person's own rows only, as sessions.accounts.resolve does. @param {any[]} rows */
+function world(rows, o = {}) {
+  /** @type {any[]} */ const lends = [], doors = [], keys = [];
   const registry = {
     call: async (/** @type {string} */ tool, /** @type {any} */ q) => {
-      if (tool !== "sessions.accounts.resolve") return { error: { code: "no_such_tool", message: tool } };
-      const r = /** @type {any} */ (ROWS)[q.account];
-      // as sessions.accounts.resolve: only an account that is this person's, on that provider
-      if (!r || r.provider !== q.provider || (r.person ? r.person !== q.person : q.person !== "per_owner")) return { error: { code: "not_found", message: "no account" } };
-      return { data: r };
+      assert.equal(tool, "sessions.accounts.resolve");
+      const mine = rows.filter(a => a.provider === q.provider && (a.person ? a.person === q.person : q.person === OWNER));
+      if (q.account) { const a = mine.find(x => x.id === q.account); return a ? { data: a } : { error: { code: "not_found", message: "no" } }; }
+      const d = mine.find(x => x.is_default) || (mine.length === 1 ? mine[0] : null);
+      return d ? { data: d } : { data: null };
     },
-    deps: { lendKey: async (/** @type {any} */ q) => ({ data: { value: `key-${q.account}` } }), accountKey: async (/** @type {any} */ a) => `key-${a.id}` },
+    deps: {
+      lendKey: async (/** @type {any} */ q) => { lends.push(q); const a = rows.find(x => x.id === q.account); return a && a.person === q.asker ? { data: { value: a.secret } } : { error: { code: "denied" } }; },
+      accountKey: async (/** @type {any} */ a) => { keys.push(a.id); return a.secret; },
+      accountHome: (/** @type {any} */ a) => `/vyre/accounts/${a.id}`,
+    },
   };
-  const door = { call: async (/** @type {any} */ i) => { sent.push(i); return answer(i.credential.key, i); } };
-  const fm = flowModel({ registry, retryMs: 1 });
-  const call = (/** @type {any} */ extra = {}) => fm.call({ person: ANA, main: { account: "main", provider: "openrouter" }, fallback: { account: "back", provider: "openai-compatible" }, purpose: "classify", max_tokens: 64, messages: [{ role: "user", content: "hi" }], space: "spc_x", door, chainFor: async () => ({ hops: [] }), ...extra });
-  return { sent, call, fm };
+  const door = { call: async (/** @type {any} */ i) => { doors.push(i); if (o.fail) throw Object.assign(new Error("Your Claude sign-in has expired. Sign in again in Settings, AI accounts."), { code: "signin_expired" }); return { content: "refund", usage: { input_tokens: 1, output_tokens: 1 } }; } };
+  const m = flowModel({ registry });
+  const call = (/** @type {any} */ q) => m.call({ purpose: "classify", max_tokens: 64, messages: [{ role: "user", content: "x" }], expect: { kind: "label", labels: ["refund", "other"] }, space: "spc_1", door, chainFor: async (/** @type {string} */ p) => ({ person: p }), ...q });
+  return { m, call, lends, doors, keys };
 }
 
-test("the main account answers, and says so", async () => {
-  const w = world(() => ({ content: "ok" }));
-  const r = await w.call();
-  assert.deepEqual(r.answered, { which: "main", label: "Main key", provider: "openrouter" });
-  assert.deepEqual(w.sent.map((s) => s.credential.key), ["key-main"]);
+const ownerClaude = { id: "acc_owner_claude", provider: "claude", kind: "setup-token", label: "Owner's Claude", person: null, secret: OWNER_TOKEN, is_default: true };
+const benClaude = { id: "acc_ben_claude", provider: "claude", kind: "setup-token", label: "Ben's Claude", person: BEN, own_vault: true, secret: BEN_TOKEN };
+const benKey = { id: "acc_ben_or", provider: "openrouter", kind: "api-key", label: "Ben's OpenRouter", person: BEN, own_vault: true, secret: BEN_KEY };
+
+test("the door's providers: keys first, then the sign-ins", () => {
+  assert.deepEqual([...DOOR_PROVIDERS], ["openrouter", "openai-compatible", "claude", "codex", "grok"]);
 });
 
-for (const [kind, status] of /** @type {[string, number][]} */ ([["credits", 402], ["auth", 401], ["unavailable", 503]])) {
-  test(`main ${kind}: the fallback answers, with its own model, and the answer says why`, async () => {
-    const w = world((key) => { if (key === "key-main") throw modelError(`OpenRouter answered ${status}: nope`, { status }); return { content: "ok" }; });
-    const r = await w.call({ model: "x/step" });
-    assert.deepEqual(r.answered, { which: "fallback", label: "Back key", provider: "openai-compatible", main_label: "Main key", main_kind: kind });
-    assert.deepEqual(w.sent.map((s) => [s.credential.key, s.model]), [["key-main", "x/step"], ["key-back", "gpt-x"]], "the step's model on main, the fallback's own model on the fallback");
-  });
-}
-
-test("main rate limited: tried once more, then the fallback answers", async () => {
-  const w = world((key) => { if (key === "key-main") throw modelError("OpenRouter answered 429: slow down", { status: 429 }); return { content: "ok" }; });
-  const r = await w.call();
-  assert.equal(r.answered.which, "fallback");
-  assert.equal(r.answered.main_kind, "rate_limit");
-  assert.deepEqual(w.sent.map((s) => s.credential.key), ["key-main", "key-main", "key-back"], "the retry, then the fallback");
+test("a member's Claude sign-in named under Runs on: her token, lent from her own vault, to the Claude driver; never the owner's", async () => {
+  const w = world([ownerClaude, benClaude, benKey]);
+  const r = await w.call({ person: BEN, account: benClaude.id, provider: "claude" });
+  assert.equal(r.content, "refund");
+  assert.equal(w.doors.length, 1);
+  const d = w.doors[0];
+  assert.equal(d.provider, "claude");
+  assert.deepEqual(d.chain, { person: BEN }, "called as her chain");
+  assert.deepEqual(d.credential.env, { CLAUDE_CODE_OAUTH_TOKEN: BEN_TOKEN });
+  assert.deepEqual(d.credential.account, { id: benClaude.id, provider: "claude", kind: "setup-token", label: "Ben's Claude", person: BEN });
+  assert.deepEqual(d.expect, { kind: "label", labels: ["refund", "other"] }, "the step's reading rides to the driver");
+  assert.ok(!JSON.stringify(w.doors).includes(OWNER_TOKEN), "the owner's token never appears for her");
+  assert.deepEqual(w.lends.map(l => [l.asker, l.account]), [[BEN, benClaude.id]]);
+  assert.deepEqual(w.keys, [], "the home's own keys were never read");
 });
 
-test("main rate limited once and fine on its retry: no fallback", async () => {
-  let n = 0;
-  const w = world((key) => { if (key === "key-main" && n++ === 0) throw modelError("too many requests", { status: 429 }); return { content: "ok" }; });
-  assert.equal((await w.call()).answered.which, "main");
+test("her only account a sign-in: it is her default; the owner's own runs as the owner's", async () => {
+  const w = world([ownerClaude, benClaude]);
+  await w.call({ person: BEN });
+  assert.equal(w.doors[0].credential.env.CLAUDE_CODE_OAUTH_TOKEN, BEN_TOKEN);
+  await w.call({ person: OWNER });
+  assert.equal(w.doors[1].credential.env.CLAUDE_CODE_OAUTH_TOKEN, OWNER_TOKEN);
+  assert.deepEqual(w.keys, [ownerClaude.id]);
 });
 
-for (const [kind, err] of /** @type {[string, any][]} */ ([["bad_request", () => modelError("OpenRouter answered 400: not a valid model", { status: 400 })], ["refused", () => modelError("OpenRouter answered 403: flagged by moderation", { status: 403 })]])) {
-  test(`main ${kind}: the step fails and the fallback is never asked`, async () => {
-    const w = world((key) => { if (key === "key-main") throw err(); return { content: "ok" }; });
-    await assert.rejects(w.call(), (e) => /** @type {any} */ (e).kind === kind);
-    assert.deepEqual(w.sent.map((s) => s.credential.key), ["key-main"]);
-  });
-}
-
-test("the main account removed (signed out for good): the fallback answers", async () => {
-  const w = world(() => ({ content: "ok" }));
-  const r = await w.call({ main: { account: "gone", provider: "openrouter" } });
-  assert.equal(r.answered.which, "fallback");
-  assert.equal(r.answered.main_kind, "auth");
+test("a failed sign-in is the step's failure: never retried on her key or another provider", async () => {
+  const w = world([benClaude, benKey], { fail: true });
+  await assert.rejects(w.call({ person: BEN, account: benClaude.id, provider: "claude" }), (e) => /** @type {any} */ (e).code === "signin_expired");
+  assert.equal(w.doors.length, 1, "one call");
+  assert.deepEqual(w.lends.map(l => l.account), [benClaude.id], "her OpenRouter key was never lent");
 });
 
-test("both fail: the step fails with both reasons and the main account's name for the card", async () => {
-  const w = world(() => { throw modelError("OpenRouter answered 402: no credits", { status: 402 }); });
-  await assert.rejects(w.call(), (e) => /Main Main key is out of credits, and the fallback Back key failed too/.test(/** @type {Error} */ (e).message) && /** @type {any} */ (e).account_label === "Main key" && /** @type {any} */ (e).kind === "credits");
+test("a login goes with its own folder and no key; Codex and Grok keys ride in their own variables; a sign-in to its own address is refused", async () => {
+  const codexLogin = { id: "acc_ben_codex", provider: "codex", kind: "login", label: "Ben's Codex", person: BEN, uid: 2003, signed_in_at: 1 };
+  const grokKey = { id: "acc_ben_grok", provider: "grok", kind: "api-key", label: "Ben's Grok", person: BEN, own_vault: true, secret: "xai-" + "g".repeat(40) };
+  const elsewhere = { id: "acc_ben_else", provider: "claude", kind: "api-key", label: "Elsewhere", person: BEN, own_vault: true, secret: "k", base_url: "https://example.com" };
+  const notYet = { id: "acc_ben_grok2", provider: "grok", kind: "login", label: "Grok", person: BEN, needs: "sign-in" };
+  const w = world([codexLogin, grokKey, elsewhere, notYet]);
+  await w.call({ person: BEN, account: codexLogin.id });
+  assert.deepEqual([w.doors[0].provider, w.doors[0].credential.env, w.doors[0].credential.home, w.doors[0].credential.account.uid], ["codex", {}, `/vyre/accounts/${codexLogin.id}`, 2003]);
+  assert.deepEqual(w.lends, [], "a login lends nothing");
+  await w.call({ person: BEN, account: grokKey.id, provider: "grok" });
+  assert.deepEqual(w.doors[1].credential.env, { XAI_API_KEY: grokKey.secret });
+  await assert.rejects(w.call({ person: BEN, account: elsewhere.id, provider: "claude" }), /address of its own/);
+  await assert.rejects(w.call({ person: BEN, account: notYet.id, provider: "grok" }), (e) => /** @type {any} */ (e).code === "signin_expired");
+  assert.equal(w.doors.length, 2, "nothing sent for either");
 });
 
-test("a member can never run on the owner's account, as main or as fallback", async () => {
-  const w = world(() => ({ content: "ok" }));
-  await assert.rejects(w.call({ main: { account: "owner", provider: "openrouter" }, fallback: undefined }), (e) => /** @type {any} */ (e).code === "no_account");
-  const r = await w.call({ fallback: { account: "owner", provider: "openrouter" } }).catch((e) => e);
-  assert.equal(r.answered.which, "main", "the main one answered; the owner's was never needed");
-  assert.equal(await w.fm.accountOk({ person: ANA, account: "owner", provider: "openrouter" }), false);
-  assert.equal(await w.fm.accountOk({ person: ANA, account: "back", provider: "openai-compatible" }), true);
-  assert.ok(!w.sent.some((s) => s.credential.key === "key-owner"), "the owner's key was never sent");
+test("Runs on accepts her own sign-in, never someone else's", async () => {
+  const w = world([ownerClaude, benClaude]);
+  assert.equal(await w.m.accountOk({ person: BEN, account: benClaude.id, provider: "claude" }), true);
+  assert.equal(await w.m.accountOk({ person: BEN, account: ownerClaude.id, provider: "claude" }), false);
+  assert.equal(await w.m.accountOk({ person: BEN, account: benClaude.id }), true, "found without naming the provider");
 });

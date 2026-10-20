@@ -3,12 +3,15 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { AI_ACCOUNTS_LINE, aiChoices, hasAiStep, pickWords, storedAccounts, withAccounts } from "./runs-on-model.js";
+import { AI_ACCOUNTS_LINE, aiChoices, choiceKind, hasAiStep, pickWords, storedAccounts, withAccounts } from "./runs-on-model.js";
 
 const ACCOUNTS = [
   { id: "k1", provider: "openrouter", kind: "api-key", label: "My OpenRouter" },
   { id: "l1", provider: "codex", kind: "login", label: "My Codex", signed_in_at: 5 },
   { id: "l2", provider: "claude", kind: "login", label: "Not signed in", needs: "sign-in" },
+  { id: "t1", provider: "claude", kind: "setup-token", label: "My Claude" },
+  { id: "k5", provider: "claude", kind: "api-key", label: "Elsewhere", base_url: "https://example.com" },
+  { id: "x1", provider: "acme", kind: "api-key", label: "Not a door provider" },
   { id: "k4", provider: "openrouter", kind: "api-key", label: "Not finished", pending: true },
   { id: "default", provider: "claude", kind: "login", label: "Default", synthetic: true },
 ];
@@ -21,8 +24,9 @@ test("the AI accounts tab shows only for a Flow with an AI step, wherever the st
 });
 
 test("the choices are the viewer's own finished accounts, sign-ins and keys of every provider", () => {
-  assert.deepEqual(aiChoices(ACCOUNTS).map((c) => c.id), ["k1", "l1"]);
-  assert.deepEqual(aiChoices({ accounts: ACCOUNTS }).map((c) => c.id), ["k1", "l1"]);
+  assert.deepEqual(aiChoices(ACCOUNTS).map((c) => c.id), ["k1", "l1", "t1"]);
+  assert.deepEqual(aiChoices({ accounts: ACCOUNTS }).map((c) => c.id), ["k1", "l1", "t1"]);
+  assert.deepEqual(Object.fromEntries(aiChoices(ACCOUNTS).map((c) => [c.id, choiceKind(c)])), { k1: "OpenRouter key", l1: "Codex subscription", t1: "Claude subscription" });
   assert.deepEqual(aiChoices(null), []);
 });
 

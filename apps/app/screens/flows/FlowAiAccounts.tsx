@@ -8,7 +8,7 @@ import { Sec } from "../places/Frame";
 import { callT } from "../../src/real/call-tool";
 import { modelRows } from "../../src/chat/agent-new-model.js";
 import { defineReal } from "./builder-source";
-import { AI_ACCOUNTS_LINE, aiChoices, pickWords, storedAccounts, withAccounts } from "./runs-on-model.js";
+import { AI_ACCOUNTS_LINE, aiChoices, choiceKind, pickWords, storedAccounts, withAccounts } from "./runs-on-model.js";
 
 type Choice = { id: string; provider: string; label: string; kind: string };
 type Pick = { account: string; provider?: string; model?: string };
@@ -22,7 +22,7 @@ function AccountPick({ title, choices, models, value, onChange, optional }: { ti
     <View className="gap-s2">
       <View className="flex-row items-center gap-s2">{acct ? <ProviderBadge provider={acct.provider} size={20} /> : null}<Text strong>{title}</Text></View>
       <Select label="Account" value={value ? value.account : ""} placeholder={optional ? "No fallback" : "Choose an account"}
-        options={[...(optional ? [["", "No fallback"] as [string, string]] : []), ...choices.map((c) => [c.id, `${c.label} (${c.kind === "login" ? "sign-in" : "key"})`] as [string, string])]}
+        options={[...(optional ? [["", "No fallback"] as [string, string]] : []), ...choices.map((c) => [c.id, `${c.label} (${choiceKind(c)})`] as [string, string])]}
         onChange={(id) => { const c = choices.find((x) => x.id === id); onChange(c ? { account: c.id, provider: c.provider } : null); }} />
       {value ? <Select label="Model" value={value.model ?? DEFAULT_MODEL} options={[[DEFAULT_MODEL, "The account's default"], ...offered.map((m) => [m.id, m.label] as [string, string])]}
         onChange={(model) => onChange(model ? { ...value, model } : { account: value.account, ...(value.provider ? { provider: value.provider } : {}) })} /> : null}
