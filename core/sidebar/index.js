@@ -201,7 +201,7 @@ export default {
 
     ctx.tool("sidebar.get", {
       effect: "read", callers: WHO,
-      description: "The Space's default sidebar, the caller's own list, the merged result, whether the caller may set the default, the caller's role in the Space, and addable module screens.",
+      description: "The Space's default sidebar, the caller's own list, the merged result, the caller's role, whether they may set the default, and addable module screens.",
       input: { type: "object", properties: { space: str } },
       run: async (/** @type {any} */ i, /** @type {any} */ meta = {}) => doGet(await ownerId(), isPerson(meta), i, BOX_ROLE),
     });
