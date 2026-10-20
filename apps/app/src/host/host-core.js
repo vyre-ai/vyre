@@ -17,7 +17,7 @@ import { resolveInviteLink } from "../../../../lib/invite-link.js";
 import { createAddServer } from "../real/add-server.js";
 import { trail } from "./trail.js";
 import { modelOf } from "../models/model-choice.js";
-import { createMasterRecord, openMasterRecord } from "./master-web.js";
+import { createMasterRecord, openMasterRecord, rewrapIdentity } from "./master-web.js";
 import { makeDeviceKey } from "./device-key.js";
 import * as C from "../../../../kernel/identity/chain.js";
 import { BROWSER_TOO_OLD, ed25519Works, ed25519Mode } from "../identity/webcrypto-web.js";
@@ -70,7 +70,7 @@ function pickSignin(r) {
 
 /**
  * `agreePoint` answers this device's key-agreement point (base64url, the raw uncompressed P-256 point), or null where this page has none: it goes in the genesis device entry, and is added to an entry that lacks it (ensureAgree).
- * @param {{ store: KeptStore, directory: string, agreePoint?: () => Promise<string | null>, fetch?: typeof fetch, kdf?: { memoryKiB: number, passes: number }, random?: (n: number) => Uint8Array, now?: () => number, signin?: { base?: (space: string) => string, label?: string, deviceId?: () => Promise<string> | string, resolves?: (space: string) => Promise<boolean | null> }, github?: GithubPorts,
+ * @param {{ store: KeptStore, directory: string, agreePoint?: () => Promise<string | null>, fetch?: typeof fetch, kdf?: { memoryKiB: number, passes: number }, random?: (n: number) => Uint8Array, now?: () => number, signin?: { base?: (space: string) => string, label?: string, deviceId?: () => Promise<string> | string, resolves?: (space: string) => Promise<boolean | null> }, github?: GithubPorts, agreeKey?: { make: () => Promise<{ point: string, priv: string }>, use: (priv: string | null) => Promise<string | null> },
  *   space?: { load: () => Promise<SpacePorts> }, done?: () => Promise<void>, sleep?: (ms: number) => Promise<void>, pollMs?: number, version?: string | null, softwareKeyHere?: boolean, memberKeyPath?: boolean, memberKeys?: { get: (acct: string) => Promise<string | null>, put: (acct: string, key: string) => Promise<void>, remove: (acct: string) => Promise<void> } }} o
  */
 export function createHost(o) {
@@ -268,6 +268,53 @@ export function createHost(o) {
   const agreeNote = { failed: "" };
 
   /**
+   * The person's chat key is in the master record (`agreePrivate`), so every device opens the same one. After the record is opened: its key is held for the session; a record with none (an account made
+   * before this) gets one made here, wrapped back into the record with the password's key (the salt and KDF stay, so the space's login key still fits) and returned for the caller to keep and send to the
+   * person's spaces. A recovery-key unlock has no password to re-wrap with, so it holds nothing new and says so (the next password unlock does it). @param {any} master @param {{ privateKey: string, agreePrivate: string | null }} keys @param {string | null} password
+   * @returns {Promise<any>} the master record to keep (the same object when nothing changed)
+   */
+  async function adoptChatKey(master, keys, password) {
+    if (!o.agreeKey) return master;
+    try {
+      if (keys.agreePrivate) { await o.agreeKey.use(keys.agreePrivate); return master; }
+      if (!password) { await o.agreeKey.use(null); agreeNote.failed = "unlock once with your password, not the recovery key, to open your chat key"; trail("chat key: no password to make one with"); return master; }
+      const made = await o.agreeKey.make();
+      const next = await rewrapIdentity(master, { password: String(password) }, { privateKey: keys.privateKey, agreePrivate: made.priv });
+      await o.agreeKey.use(made.priv);
+      trail("chat key: made and kept in the record");
+      return next;
+    } catch (e) {
+      agreeNote.failed = `your chat key could not be opened (${String(/** @type {any} */ (e) && /** @type {any} */ (e).code || "error")})`;
+      trail(`chat key failed ${String(/** @type {any} */ (e) && /** @type {any} */ (e).code || "error")}`);
+      return master;
+    }
+  }
+
+  /**
+   * Send a changed record to each space this identity signs in to (op "register": the identity key signs it, and the login key, from the same password and salt, is unchanged), so a device that signs in there
+   * next opens the same chat key. A space that does not answer is skipped and tried at the next unlock. @param {any} k the stored identity (names the spaces) @param {any} master the new record @param {string} password
+   */
+  async function pushRecord(k, master, password) {
+    const names = [...new Set([...(Array.isArray(k.spaces) ? k.spaces.map((/** @type {any} */ x) => String(x.name || "")) : []), ...(k.signin && k.signin.space ? [String(k.signin.space)] : [])].filter(Boolean))];
+    if (!names.length || !held) return;
+    const seed = held;
+    try {
+      const d = await deriveLogin(String(password).normalize("NFKC"), String(master.kdf.salt), acceptKdf(master.kdf));
+      try {
+        const key = await fromSeed(seed);
+        for (const space of names) {
+          try {
+            const ts = o.now ? o.now() : Date.now();
+            const sig = b64u(await key.sign(registerMessage(space, master.username, d.loginPub, bundleHash(master), ts)));
+            await door(space, { op: "register", username: master.username, person: master.id, pub: key.publicKey, ts, sig, salt: String(master.kdf.salt), loginPub: d.loginPub, bundle: master });
+            trail(`record sent to ${space}`);
+          } catch (e) { trail(`record not sent to ${space}: ${String(/** @type {any} */ (e) && /** @type {any} */ (e).code || "error")}`); }
+        }
+      } finally { d.close(); }
+    } catch { trail("record not sent"); }
+  }
+
+  /**
    * Repair an identity whose device entry has no key-agreement point (v0.6.1 made them so): the device signs the chain's own `agree` op for ITS OWN entry (kernel/identity/chain.js: once, only for itself) and the
    * directory appends it. Never a silent failure: what stopped it is kept in agreeNote (and one trail line), and Account shows it with a retry.
    * When the list holds another point than this device keeps now, the unlock repair only says so; Try again (`replace`) signs a replacing `agree` op for this device's own entry with the identity key held here (never another entry, never while locked). @param {Uint8Array} seed @param {{ replace?: boolean }} [opt]
@@ -289,7 +336,7 @@ export function createHost(o) {
         // The list keeps one point per device, set once. An older build that lost its key on every launch (the ad-hoc Mac window, v0.6.1) may have put a point there this device no longer holds:
         // say so, because chats on this device cannot open until the device is added again with the key it keeps now.
         if (entry.agree === point) return;
-        if (!opt.replace) { agreeNote.failed = "your list holds an older chat key for this device, one it no longer has; press Try again to replace it with this device's current key"; trail("agree repair: the list holds another point"); return; }
+        if (!opt.replace && !o.agreeKey) { agreeNote.failed = "your list holds an older chat key for this device, one it no longer has; press Try again to replace it with this device's current key"; trail("agree repair: the list holds another point"); return; }
       }
       const op = await C.makeOp(state, { type: "agree", target: entry.eid, agree: point, ...(entry.agree !== undefined ? { replaces: entry.agree } : {}) }, { by: entry.eid, ts: Math.max(o.now ? o.now() : Date.now(), state.ts), sign: (/** @type {Uint8Array} */ m) => key.sign(m) });
       const next = await C.applyOp(state, op, { now: (o.now ? o.now() : Date.now()) + C.SKEW_MS });
@@ -601,10 +648,13 @@ export function createHost(o) {
       const key = await fromSeed(seed);
       const code = await reserve(name);
       // The device's key-agreement point goes in its first entry: without it no other device (or this one, for a chat) can wrap a chat key to it. A page with no such key says so and goes on; ensureAgree adds it later.
-      const agree = o.agreePoint ? await o.agreePoint().catch(() => null) : null;
+      // With the record holding the chat key, it is made here, first: its point goes in the genesis entry and its private half in the record, so no device ever makes one of its own.
+      const chatKey = o.agreeKey ? await o.agreeKey.make().catch(() => null) : null;
+      if (chatKey && o.agreeKey) await o.agreeKey.use(chatKey.priv);
+      const agree = chatKey ? chatKey.point : o.agreePoint ? await o.agreePoint().catch(() => null) : null;
       trail(`agree ${agree ? "in the genesis entry" : "none on this page"}`);
       const made = await claimIdentity({ name, code, base, key, fetch: f, ...(agree ? { agree } : {}), ...(o.random ? { random: o.random } : {}), ...(o.now ? { now: o.now } : {}) });
-      const master = await createMasterRecord({ username: name, id: made.id, password, recoveryCode: made.recoveryCode, privateKey: b64u(seed), agreePrivate: null, ...(o.kdf ? { kdf: o.kdf } : {}) });
+      const master = await createMasterRecord({ username: name, id: made.id, password, recoveryCode: made.recoveryCode, privateKey: b64u(seed), agreePrivate: chatKey ? chatKey.priv : null, ...(o.kdf ? { kdf: o.kdf } : {}) });
       // The name the person typed (first and last), kept beside the username: Account shows it, with the username under it. One line of letters and marks, up to 60.
       const given = displayOk(display);
       await o.store.save({ master, username: name, ...(given ? { display: given } : {}), id: made.id, ops: made.ops, pin: made.pin, device: makeDeviceKey(seed, o.random) });
@@ -625,6 +675,9 @@ export function createHost(o) {
       if (!k) throw bad("There is no password on this device yet. Create your username first.", "no_identity");
       const keys = await openMasterRecord(k.master, recovery ? { recovery } : { password });
       held = unb64(keys.privateKey);
+      // The chat key out of the record (or a first one made into it, for an account that had none), before anything repairs the list.
+      const master = await adoptChatKey(k.master, keys, recovery ? null : String(password));
+      if (master !== k.master) { await o.store.save({ ...k, master }); void pushRecord(k, master, String(password)); k.master = master; }
       // A record made before the device key existed gets one now, wrapped under the identity just opened.
       if (!k.device) await o.store.save({ ...k, device: makeDeviceKey(held, o.random) });
       // An identity made without its key-agreement point (v0.6.1) is repaired now, and a Space named before the first run listed its server gets that listing, in the background: nothing waits on it.
@@ -733,7 +786,7 @@ export function createHost(o) {
     // A page has no vault to open with the identity (the daemon's vault takes the unlocked key here): the unlock screen asks, and this says there is nothing to install, so a good password opens the page.
     "identity.vault.install": async () => ({ installed: false, reason: "no_vault" }),
 
-    "identity.lock": async () => { stopRuns(); for (const i of invites.values()) { try { i.close(); } catch { /* gone */ } } invites.clear(); if (held) held.fill(0); held = null; pendingGithub = null; return { locked: true }; },
+    "identity.lock": async () => { stopRuns(); for (const i of invites.values()) { try { i.close(); } catch { /* gone */ } } invites.clear(); if (held) held.fill(0); held = null; pendingGithub = null; if (o.agreeKey) await o.agreeKey.use(null); return { locked: true }; },
 
     // Sign in from any device: the space's address, the username, the password. The space gives the username's salt, the device stretches the password itself, signs a single-use challenge, and
     // opens the returned record with the same key. Every refusal for a wrong name or password is the door's one bad_login answer.
@@ -759,8 +812,10 @@ export function createHost(o) {
       const seed = unb64(keys.privateKey);
       if (!(await seedIsDeviceOnChain(seed, chain.entries))) throw Object.assign(new Error(BAD), { code: "bad_login" });
       const row = rowFromReply(done, addr);
-      await o.store.save({ master: done.bundle, username: name, id: String(done.bundle.id), ops: chain.ops, pin: chain.pin, device: makeDeviceKey(seed, o.random), signin: { space: addr.space }, spaces: [row], current: row.id });
+      const master = await adoptChatKey(done.bundle, keys, String(password));
+      await o.store.save({ master, username: name, id: String(done.bundle.id), ops: chain.ops, pin: chain.pin, device: makeDeviceKey(seed, o.random), signin: { space: addr.space }, spaces: [row], current: row.id });
       held = seed;
+      if (master !== done.bundle) void pushRecord({ spaces: [row], signin: { space: addr.space } }, master, String(password));
       void heal(seed, { ask: true });
       return { username: name, id: String(done.bundle.id), spaces: [row] };
     },
@@ -823,9 +878,11 @@ export function createHost(o) {
       const seed = unb64(keys.privateKey);
       if (!(await seedIsDeviceOnChain(seed, chain.entries))) throw Object.assign(new Error(BAD), { code: "bad_password" });
       const rows = opened.map((x) => x.row);
-      await o.store.save({ master: first.bundle, username: String(first.bundle.username), id: String(first.bundle.id), ops: chain.ops, pin: chain.pin, device: makeDeviceKey(seed, o.random), signin: { space: opened[0].space }, spaces: rows, current: rows[0].id });
+      const master = await adoptChatKey(first.bundle, keys, String(password));
+      await o.store.save({ master, username: String(first.bundle.username), id: String(first.bundle.id), ops: chain.ops, pin: chain.pin, device: makeDeviceKey(seed, o.random), signin: { space: opened[0].space }, spaces: rows, current: rows[0].id });
       held = seed;
       pendingGithub = null;
+      if (master !== first.bundle) void pushRecord({ spaces: rows, signin: { space: opened[0].space } }, master, String(password));
       void heal(seed, { ask: true });
       return { username: String(first.bundle.username), id: String(first.bundle.id), spaces: rows };
     },

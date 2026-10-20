@@ -9,7 +9,7 @@ import { spacePorts } from "./space-ports";
 import { hostWantedFor } from "./wanted.js";
 import { shellKind, shellSetupDone } from "../shell/shell";
 import { relayUrl } from "../api/relay-url";
-import { agreeKeyResult, chatKeyProblem } from "../crypto/agree-key";
+import { agreeKeyResult, chatKeyProblem, makeRecordAgreeKey, useRecordAgreeKey } from "../crypto/agree-key";
 import { installEd25519Fallback } from "../identity/webcrypto-web.js";
 import { onConnection } from "../state/connection";
 import { watchHeal } from "./heal-watch.js";
@@ -71,7 +71,7 @@ let host: ReturnType<typeof createHost> | null = null;
 export function getHost() {
   // The Mac window pairs with the page's own software key today (the Secure Enclave key does not sign the session yet), so a release server will not take it for approvals that need a fingerprint: the online screen says so.
   if (!host) {
-    const made = createHost({ store: hostStore, directory: directory(), agreePoint, github, signin: { deviceId }, space: { load: spacePorts }, done: shellSetupDone, softwareKeyHere: shellKind() === "mac", memberKeyPath: true, memberKeys: deviceKeyStore({ get: kvGet, set: kvSet }) });
+    const made = createHost({ store: hostStore, directory: directory(), agreePoint, agreeKey: { make: makeRecordAgreeKey, use: useRecordAgreeKey }, github, signin: { deviceId }, space: { load: spacePorts }, done: shellSetupDone, softwareKeyHere: shellKind() === "mac", memberKeyPath: true, memberKeys: deviceKeyStore({ get: kvGet, set: kvSet }) });
     host = made;
     // The repairs run again when the connection comes back and every ten minutes while the app is open (quiet when locked), so a Space's address the server cannot serve heals by itself.
     const onOnline = typeof window !== "undefined" && typeof window.addEventListener === "function" ? (f: () => void) => { window.addEventListener("online", f); return () => window.removeEventListener("online", f); } : undefined;

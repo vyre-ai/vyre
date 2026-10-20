@@ -728,3 +728,39 @@ test("joining by name a Space the person owns is the owner's own Space: the row 
   assert.equal(kept.spaces[0].paired.box, "bx");
   assert.ok(kept.listed.harbor);
 });
+
+test("the chat key lives in the master record: an account with none gets one made into its record on the next password unlock, the list's agree point is replaced once, and the next unlock reads the same key", async (t) => {
+  const A = await import("../crypto/agree-key.ts");
+  const d = directory(t);
+  const store = memoryStore();
+  const old = createHost({ store, directory: d.base, fetch: d.fetch, now: d.now, kdf: FAST });
+  await old.call("onboard.person.create", { username: "ruth", password: PASSWORD, confirm: PASSWORD });
+  const before = store.peek().master;
+  const port = { make: A.makeRecordAgreeKey, use: A.useRecordAgreeKey };
+  const agreePoint = async () => { const r = await A.agreeKeyResult(); if (!r.key) throw Object.assign(new Error(r.reason), { code: "no_agree_key" }); return r.key.point; };
+  const fresh = createHost({ store, directory: d.base, fetch: d.fetch, now: d.now, kdf: FAST, agreePoint, agreeKey: port });
+  assert.equal((await A.agreeKeyResult()).key, null, "locked: no chat key, and no device makes one");
+  await fresh.call("identity.unlock", { password: PASSWORD });
+  const point = (await A.agreeKeyResult()).key.point;
+  const after = store.peek().master;
+  assert.deepEqual([after.kdf, after.passwordWrap, after.recoveryWrap], [before.kdf, before.passwordWrap, before.recoveryWrap], "the salt, the password wrap and the recovery wrap are as they were, so the space's login key still fits");
+  assert.notDeepEqual(after.identityWrap, before.identityWrap, "the identity wrap now carries the chat key");
+  assert.ok(!JSON.stringify(store.peek()).includes('"d":'), "the private half is kept only inside the wrap");
+  for (let i = 0; i < 100 && (await chainEntry(d, "ruth")).entry.agree !== point; i++) await new Promise((r) => setTimeout(r, 20));
+  const entry = await chainEntry(d, "ruth");
+  assert.equal(entry.entry.agree, point, "the list's agree point is the record's key");
+  // lock drops the key from memory; the next unlock reads the SAME key out of the record and changes nothing on the list
+  await fresh.call("identity.lock");
+  assert.equal((await A.agreeKeyResult()).key, null);
+  await fresh.call("identity.unlock", { password: PASSWORD });
+  assert.equal((await A.agreeKeyResult()).key.point, point);
+  await new Promise((r) => setTimeout(r, 100));
+  assert.equal((await chainEntry(d, "ruth")).ops.length, entry.ops.length, "no second op");
+  // a recovery-key unlock has no password to re-wrap with: it makes nothing and says why
+  await fresh.call("identity.lock");
+  const recDev = createHost({ store: memoryStore(), directory: d.base, fetch: d.fetch, now: d.now, kdf: FAST, agreeKey: port });
+  const made = await recDev.call("onboard.person.create", { username: "ira", password: PASSWORD, confirm: PASSWORD });
+  const iraEntry = await chainEntry(d, "ira");
+  assert.ok(iraEntry.entry.agree, "a new account's genesis entry already carries the record's key");
+  assert.ok(made.recoveryKey);
+});
