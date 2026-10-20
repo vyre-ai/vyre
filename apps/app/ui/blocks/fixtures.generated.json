@@ -4223,6 +4223,22 @@
     }
    }
   },
+  "agent-routines": {
+   "title": "An agent's Routines and Watchers",
+   "screens": {
+    "compact": {
+     "component": "agent-routines"
+    }
+   }
+  },
+  "watcher-card": {
+   "title": "A Watcher's card in the chat",
+   "screens": {
+    "glance": {
+     "component": "watcher-card"
+    }
+   }
+  },
   "setup-model": {
    "title": "Records setup: the model",
    "screens": {

@@ -27,6 +27,19 @@ test("a watcher card keeps its facts as given and checks every field", { skip: !
   assert.equal(m.ownerWords({ project: "intake" }), "Owned by the intake project");
 });
 
+test("an agent's own Watcher card says whose it is, whether it is testing, and what it needs lent; delete is the person's watchers.delete", { skip: !strip }, async () => {
+  const m = await import("./more-model.ts");
+  const c = m.watcherCardOf({ name: "northwind-invoices", hash: "h2", state: "paused", waiting: true, kind: "watcher", owner: { kind: "agent", agent: "scout", person: "per_a", thread: "t1" },
+    lines: { when: "Every 15 minutes", do: "Tells you here" }, facts: { reads: ["mail.example"], credentials: [{ host: "mail.example", item: "billing-inbox" }] }, needs: [{ item: "billing-inbox", host: "mail.example" }, { nope: 1 }] });
+  assert.equal(c?.agent, "scout");
+  assert.equal(c?.owner, "scout's, set up when you asked");
+  assert.equal(c?.waiting, true);
+  assert.equal(c?.routine, false);
+  assert.deepEqual(c?.needs, [{ item: "billing-inbox", host: "mail.example" }]);
+  assert.equal(m.watcherCardOf({ name: "morning-inbox", kind: "routine", owner: { kind: "agent", agent: "scout" } })?.routine, true);
+  assert.deepEqual(m.watcherCall("delete", { name: "w", hash: "h" }), { tool: "watchers.delete", input: { name: "w" } });
+});
+
 test("turn on carries the card's hash; pause does not; a moved hash is refused and offers the new card", { skip: !strip }, async () => {
   const m = await import("./more-model.ts");
   assert.deepEqual(m.watcherCall("on", { name: "w", hash: "h" }), { tool: "watchers.create", input: { name: "w", hash: "h" } });

@@ -7,11 +7,10 @@ import { SAMPLE_OPTIONS as O } from "../../screens/flows/starters.js";
 
 const flowOf = (trigger) => ({ format: 1, name: "t", label: "T", authorship: "builder", trigger, steps: [{ id: "c1", kind: "create", type: "matter", set: { client: "x" } }] });
 
-test("a record, event or watcher trigger keeps its optional condition and opens as the same editable trigger", () => {
+test("a record or event trigger keeps its optional condition and opens as the same editable trigger", () => {
   for (const [trigger, kind] of [
     [{ on: "event", event: "matter.created", where: "trigger.amount > 5" }, "created"],
     [{ on: "event", event: "documents.signed", where: "trigger.name == \"x\"" }, "event"],
-    [{ on: "watcher", watcher: "new-mail", where: "trigger.item.from != \"\"" }, "watcher"],
     [{ on: "event", event: ["matter.created", "matter.updated"], field: "status", when_record_changes: "replace", where: "trigger.after.amount > 5" }, "changed"],
   ]) {
     const stored = flowOf(trigger);
@@ -86,8 +85,8 @@ test("a Flow with several triggers opens as the first plus the others, says them
 
 test("each trigger is checked on its own, named when there is more than one", () => {
   const d = fromDefinition({ format: 1, name: "t", label: "T", authorship: "builder", trigger: { on: "event", event: "matter.created" }, steps: [{ id: "c1", kind: "create", type: "matter", set: { client: "x" } }] });
-  const two = { ...d, trigger: { kind: "created", type: "matter" }, moreTriggers: [{ kind: "watcher", watcher: "" }] };
-  assert.deepEqual(draftProblems(two, O), ["Trigger 2: Name the watcher."]);
+  const two = { ...d, trigger: { kind: "created", type: "matter" }, moreTriggers: [{ kind: "event" }] };
+  assert.deepEqual(draftProblems(two, O), ["Trigger 2: Choose what happens."]);
 });
 
 test("a step turned off keeps enabled false and stays an editable step", () => {

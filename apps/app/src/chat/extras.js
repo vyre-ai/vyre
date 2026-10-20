@@ -25,8 +25,8 @@ export function watcherNames(data) {
   return out;
 }
 
-/** Did the assistant call a tool that shows a watcher card? The row's tool is watchers.card or watchers.preset, possibly with an MCP prefix and underscores. @param {string} tool */
-export const showsWatcherCard = (tool) => /(^|[._]|__)watchers[._](card|preset)$/.test(String(tool));
+/** Did the assistant call a tool that shows a watcher card? The row's tool is watchers.card, watchers.preset, or an agent setting up its own (watchers.write, watchers.revise, watchers.routine.create), possibly with an MCP prefix and underscores. @param {string} tool */
+export const showsWatcherCard = (tool) => /(^|[._]|__)watchers[._](card|preset|write|revise|routine[._]create)$/.test(String(tool));
 
 /**
  * An artifact the assistant made in this chat. The stream's frame is a finished tool row keyed `art:<artifact id>:<version>` whose words are "Artifact <title>" (core/stream/adapter.js, thread.artifact):

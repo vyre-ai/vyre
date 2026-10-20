@@ -16,6 +16,7 @@ import { chatHas } from "../agents/home-model.js";
 import { EFFORT, accountModelsFor, computerView, modelsFor, usageView, type AgentFull, type Computer, type UsageFull } from "./agent-model.ts";
 import { AgentThreads } from "./AgentThreads";
 import { RealSkills } from "../skills/RealSkills";
+import { AgentRoutines } from "./AgentRoutines";
 
 const say = (e: unknown, f = "That did not go through.") => (e instanceof Error && e.message ? e.message : f);
 
@@ -41,6 +42,8 @@ export default function AgentPage() {
           <Header a={a} onLook={() => setLooking(true)} />
           <LookSheet a={a} open={looking} onClose={() => setLooking(false)} onSaved={(look) => { setA({ ...a, look }); setLooking(false); }} />
           <Chats a={a} />
+          {/* the Routines and Watchers this agent set up when someone asked it, with its duties: the same list as its panel beside a chat, with more detail */}
+          <AgentRoutines agent={a.name} detail />
           <Tabs items={TABS} value={tab} onChange={setTab} />
           {tab === "threads" ? <AgentThreads name={a.name} /> : null}
           {tab === "overview" ? <><Instructions name={a.name} /><Context name={a.name} /><AgentMemory name={a.name} /><Used name={a.name} /><Sharing name={a.name} /></> : null}

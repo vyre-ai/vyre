@@ -32,7 +32,6 @@ export const TRIGGERS = /** @type {const} */ ([
   { id: "form", icon: "list", label: "A form is submitted", hint: "Any form or link that calls the Flow" },
   { id: "schedule", icon: "clock", label: "At a set time", hint: "Every few minutes, every day or weekday at a time, every Monday, every month" },
   { id: "event", icon: "bolt", label: "Something happens in Vyre", hint: "A document is signed, a message is sent or held" },
-  { id: "watcher", icon: "eye", label: "Something new arrives", hint: "An email in a watched mailbox, or a file in a watched folder" },
   { id: "webhook", icon: "globe", label: "A webhook is called", hint: "Another service calls a web address, checked by its signature" },
   { id: "manual", icon: "play", label: "I press Run", hint: "A person or an agent presses Run" },
 ]);
@@ -99,6 +98,15 @@ const lc = (/** @type {string} */ s) => (s && /^[A-Z]/.test(s) && !/[A-Z]/.test(
 /** @param {Options} o */
 export const emptyOptions = (o = /** @type {any} */ ({})) => ({ ...(typeof o.zone === "string" ? { zone: o.zone } : {}), ...(Array.isArray(o.actions) ? { actions: o.actions } : {}), ...(Array.isArray(o.documents) ? { documents: o.documents } : {}), ...(typeof o.placeholdersOf === "function" ? { placeholdersOf: o.placeholdersOf } : {}), ...(Array.isArray(o.events) ? { events: o.events } : {}), types: o.types || [], agents: o.agents || [], templates: o.templates || [], roles: o.roles || [], people: o.people || [], ...(o.recordsOf ? { recordsOf: o.recordsOf } : {}) });
 
+/** A Flow an older build started from a watcher: the engine still runs it, the builder shows it under Advanced and keeps it as stored. @param {any} raw */
+export const isWatcherTrigger = (raw) => Boolean(raw && typeof raw === "object" && raw.on === "watcher" && typeof raw.watcher === "string");
+/** What the trigger editor says about a trigger it cannot show. @param {Trigger} t */
+export function advancedWords(t) {
+  return isWatcherTrigger(t.raw)
+    ? `Advanced: this Flow starts when the watcher ${String(t.raw.watcher)} finds something new. It is kept as it is. Watchers now belong to agents: ask an agent in chat to set one up.`
+    : "This Flow starts in a way the builder cannot show yet. It is kept as it is.";
+}
+
 /** @param {Trigger} t @param {Options} o  "a record is created in RefundRequests" */
 export function triggerPhrase(t, o) {
   const type = named(o.types, t.type);
@@ -113,7 +121,7 @@ export function triggerPhrase(t, o) {
     case "signup": return "a person signs up";
     case "form": return t.path ? `the form ${t.path} is submitted` : "a form is submitted";
     case "schedule": return t.every ? `it is ${t.every.toLowerCase()}${TIMED.has(t.every) ? ` at ${t.at || "09:00"}` : ""}` : "it is time";
-    case "advanced": return "it starts in a way the builder cannot show yet";
+    case "advanced": return isWatcherTrigger(t.raw) ? `the watcher ${String(t.raw.watcher)} finds something new` : "it starts in a way the builder cannot show yet";
     default: return "someone runs it";
   }
 }
@@ -835,7 +843,8 @@ function triggerFromKind(t) {
     if (t.kind === "changed" && keys(t, ["kind", "type"])) return { kind: "changed", type: t.type, ...(t.field ? { field: t.field } : {}), again: t.again === "keep" ? "keep" : "replace" };
     if (t.kind === "removed" && keys(t, ["kind", "type"])) return { kind: "removed", type: t.type };
     if (t.kind === "event" && keys(t, ["kind", "event"])) return { kind: "event", event: t.event };
-    if (t.kind === "watcher" && keys(t, ["kind", "watcher"])) return { kind: "watcher", watcher: t.watcher };
+    // a watcher trigger (Watchers belong to agents now): kept exactly as stored, under Advanced
+    if (t.kind === "watcher" && keys(t, ["kind", "watcher"])) return { kind: "advanced", raw: { on: "watcher", watcher: t.watcher } };
     if (t.kind === "webhook" && keys(t, ["kind", "route"])) return { kind: "webhook", route: t.route };
     if (t.kind === "stage" && keys(t, ["kind", "type", "stage"])) return { kind: "stage", type: t.type, stage: t.stage };
     if (t.kind === "signup" && keys(t, ["kind"])) return { kind: "signup" };
@@ -854,7 +863,6 @@ function triggerFromKind(t) {
     const m = /^([a-z][a-z0-9_]*)\.created$/.exec(t.event || ""), r = /^([a-z][a-z0-9_]*)\.removed$/.exec(t.event || "");
     return m ? { kind: "created", type: m[1] } : r ? { kind: "removed", type: r[1] } : raw;
   }
-  if (t.on === "watcher" && keys(t, ["on", "watcher"]) && typeof t.watcher === "string") return { kind: "watcher", watcher: t.watcher };
   if (t.on === "web" && keys(t, ["on", "path"])) return t.path === "signup" ? { kind: "signup" } : { kind: "form", path: t.path };
   if (t.on === "time" && keys(t, ["on", "every_ms"])) { const hit = Object.entries(EVERY).find(([, v]) => v.every_ms === t.every_ms); return hit ? { kind: "schedule", every: hit[0] } : raw; }
   if (t.on === "time" && keys(t, ["on", "cron"]) && typeof t.cron === "string") {

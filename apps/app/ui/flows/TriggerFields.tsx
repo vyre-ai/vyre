@@ -1,24 +1,20 @@
-import { useEffect, useState } from "react";
 import { View } from "react-native";
 import { Field } from "../components/Field";
 import { Select } from "../components/Select";
 import { Text } from "../components/Text";
 import { FormulaBox } from "./FormulaBox";
-import { EVERY_CHOICES, eventChoices, stageChoices, stagesOf, TIMED, TRIGGERS, isRecordTrigger } from "./logic.js";
+import { EVERY_CHOICES, advancedWords, eventChoices, stageChoices, stagesOf, TIMED, TRIGGERS, isRecordTrigger } from "./logic.js";
 import type { Options } from "./logic.js";
 import { WebhookFields } from "./WebhookFields";
 import type { TriggerSources } from "./trigger-sources";
 
 const pick = (list: { name: string; label: string }[]): [string, string][] => list.map((x) => [x.name, x.label]);
 
-/** The settings of one trigger: what starts the Flow, its object, field, stage, form, time, event or watcher, and the optional "only when" filter on what started it. */
+/** The settings of one trigger: what starts the Flow, its object, field, stage, form, time or event, and the optional "only when" filter on what started it. A trigger the builder cannot show (an older Flow started by a watcher) is kept as it is, under Advanced. */
 export function TriggerFields({ t, setTrig, options, sources }: { t: any; setTrig: (patch: Record<string, unknown>) => void; options: Options; sources?: TriggerSources }) {
-  const [watchers, setWatchers] = useState<string[] | null>(null);
-  const [making, setMaking] = useState(false);
-  useEffect(() => { if (t.kind === "watcher" && sources?.watchers) void sources.watchers().then(setWatchers).catch(() => setWatchers(null)); }, [t.kind, sources, making]);
   return (
     <View className="gap-s3">
-          {t.kind === "advanced" ? <Text tone="muted">This Flow starts in a way the builder cannot show yet. It is kept as it is.</Text> : null}
+          {t.kind === "advanced" ? <Text tone="muted">{advancedWords(t)}</Text> : null}
           {t.kind === "advanced" ? null : <Select label="What starts the Flow" value={t.kind} options={TRIGGERS.map((x) => [x.id, x.label] as [string, string])} onChange={(kind) => setTrig({ kind })} />}
           {isRecordTrigger(t) || t.kind === "removed" ? <Select label="Object" value={t.type ?? ""} options={pick(options.types)} placeholder="Choose an object" onChange={(type) => setTrig({ type })} /> : null}
           {t.kind === "changed" && t.type ? <Select label="Only when this field changes" value={t.field ?? ""} options={[["", "Any field"], ...((options.types.find((x) => x.name === t.type)?.fields ?? []).map((f) => [f.name, f.label] as [string, string]))]} onChange={(field) => setTrig({ field })} /> : null}
@@ -28,15 +24,8 @@ export function TriggerFields({ t, setTrig, options, sources }: { t: any; setTri
           {t.kind === "schedule" ? <Select label="How often" value={t.every ?? ""} options={EVERY_CHOICES.map((x) => [x, x] as [string, string])} placeholder="Choose" onChange={(every) => setTrig({ every })} /> : null}
           {t.kind === "schedule" && TIMED.has(t.every ?? "") ? <Field label="At what time" value={t.at ?? "09:00"} onChangeText={(at) => setTrig({ at })} placeholder="09:00" help="24-hour time in your space's time zone, such as 09:00 or 17:30." /> : null}
           {t.kind === "event" ? <Select label="What happens" value={t.event ?? ""} options={eventChoices(options, t.event)} placeholder="Choose" onChange={(event) => setTrig({ event })} /> : null}
-          {t.kind === "watcher" ? (sources?.watchers && watchers ? (
-            <>
-              <Select label="Which watcher" value={t.watcher ?? ""} options={[...watchers.map((w) => [w, w] as [string, string]), ...(t.watcher && !watchers.includes(t.watcher) ? [[t.watcher, `${t.watcher} (not found)`] as [string, string]] : []), ["__new", "+ New watcher"]]} placeholder="Choose a watcher" onChange={(v) => { if (v === "__new") { setMaking(true); return; } setTrig({ watcher: v }); }} />
-              {sources.newWatcher ? sources.newWatcher(making, () => setMaking(false), (name) => { setTrig({ watcher: name }); setMaking(false); }) : null}
-              <Text size="caption" tone="label">The steps start with the new item the watcher finds. Watchers live in the Watchers tab of Flows.</Text>
-            </>
-          ) : <Field label="Watcher name" value={t.watcher ?? ""} onChangeText={(watcher) => setTrig({ watcher })} placeholder="For example new-mail" help="The name of a watcher in your space: a mailbox or a folder it watches. The steps start with the new item." />) : null}
           {t.kind === "webhook" ? <WebhookFields route={t.route ?? ""} onRoute={(route) => setTrig({ route })} sources={sources} /> : null}
-          {["created", "changed", "removed", "event", "watcher"].includes(t.kind) ? <FormulaBox label="Only when (optional, a formula)" value={t.where ?? ""} onChange={(where) => setTrig({ where })} placeholder="For example trigger.after.amount > 500" /> : null}
+          {["created", "changed", "removed", "event"].includes(t.kind) ? <FormulaBox label="Only when (optional, a formula)" value={t.where ?? ""} onChange={(where) => setTrig({ where })} placeholder="For example trigger.after.amount > 500" /> : null}
           {t.kind === "signup" ? <Text tone="muted">Runs when someone signs up through your sign-up form. The person's name and email are what the steps start with.</Text> : null}
     </View>
   );

@@ -375,11 +375,10 @@ test("an emails field is its main address: in text, and as the To, Reply-To or F
   assert.deepEqual(toDefinition(d).steps[0].input.to, { expr: "trigger.after.email" }, "without the object's fields the value is as it is");
 });
 
-test("the triggers the engine has are in the builder: removed, a module event, a watcher, and schedules with a time", () => {
+test("the triggers the engine has are in the builder: removed, a module event, and schedules with a time", () => {
   const cases = [
     [{ kind: "removed", type: "client" }, { on: "event", event: "client.removed" }],
     [{ kind: "event", event: "documents.signed" }, { on: "event", event: "documents.signed" }],
-    [{ kind: "watcher", watcher: "new-mail" }, { on: "watcher", watcher: "new-mail" }],
     [{ kind: "schedule", every: "Every 15 minutes" }, { on: "time", every_ms: 900000 }],
     [{ kind: "schedule", every: "Every hour" }, { on: "time", cron: "0 * * * *" }],
     [{ kind: "schedule", every: "Every day", at: "09:00" }, { on: "time", cron: "0 9 * * *" }],
@@ -398,7 +397,20 @@ test("the triggers the engine has are in the builder: removed, a module event, a
   assert.equal(triggerPhrase({ kind: "schedule", every: "Every weekday", at: "17:30" }, O), "it is every weekday at 17:30");
   assert.equal(triggerPhrase({ kind: "event", event: "documents.signed" }, O), "a document is signed");
   assert.ok(draftProblems({ name: "T", trigger: { kind: "schedule", every: "Every day", at: "9am" }, steps: [{ id: "wait1", kind: "wait", amount: 1, unit: "days" }] }, O).some((p) => /like 09:00/.test(p)));
-  assert.ok(draftProblems({ name: "T", trigger: { kind: "watcher", watcher: "" }, steps: [{ id: "wait1", kind: "wait", amount: 1, unit: "days" }] }, O).includes("Name the watcher."));
+});
+
+test("Flows no longer offer a watcher trigger: an older Flow started by a watcher opens under Advanced, is said in words, and is saved back unchanged", async () => {
+  const { TRIGGERS, advancedWords } = await import("./logic.js");
+  assert.equal(TRIGGERS.some((t) => t.id === "watcher" || /watch/i.test(t.label + t.hint)), false, "the builder's menu has no watcher");
+  for (const stored of [{ on: "watcher", watcher: "new-mail" }, { on: "watcher", watcher: "new-mail", where: "trigger.item.from != \"\"" }]) {
+    const def = { format: 1, name: "t", label: "T", authorship: "builder", trigger: stored, steps: [{ id: "wait1", kind: "wait", amount: 1, unit: "days" }] };
+    assert.deepEqual(checkFlow(def), [], "the engine still runs it");
+    const d = fromDefinition(def);
+    assert.equal(d.trigger.kind, "advanced");
+    assert.deepEqual(toDefinition(d).trigger, stored, "kept exactly as stored");
+    assert.equal(triggerPhrase(d.trigger, O), "the watcher new-mail finds something new");
+    assert.match(advancedWords(d.trigger), /^Advanced: this Flow starts when the watcher new-mail finds something new\. It is kept as it is\./);
+  }
 });
 
 test("Look up one record and Keep only some of a list are in the palette and round-trip", () => {

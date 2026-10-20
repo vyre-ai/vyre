@@ -1,26 +1,11 @@
-// Watchers and webhook routes on the real vyred, over the one tool call. The owner's door: a member gets the box's refusal in words, never a widened list.
+// Webhook routes on the real vyred, over the one tool call (watchers belong to agents now: screens/assistants/AgentRoutines). The owner's door: a member gets the box's refusal in words, never a widened list.
 import { callT } from "../../src/real/call-tool";
-import { projectNames } from "./real";
-import type { WatcherRow } from "./watchers-model.js";
 
 async function ask<T>(tool: string, input: Record<string, unknown> = {}): Promise<T> {
   const r = await callT<T>(tool, input);
   if (r.error) throw Object.assign(new Error(r.error.message || r.error.code || "That did not go through."), { code: r.error.code });
   return r.data as T;
 }
-
-export const watchersSource = {
-  list: async (): Promise<WatcherRow[]> => { const d = await ask<{ watchers?: WatcherRow[] }>("watchers.list", {}); return Array.isArray(d?.watchers) ? d.watchers : []; },
-  projects: async (): Promise<[string, string][]> => Object.entries(await projectNames()),
-  preset: (input: Record<string, unknown>) => ask<any>("watchers.preset", input),
-  test: (name: string) => ask<any>("watchers.test", { name }),
-  card: (name: string) => ask<any>("watchers.card", { name }),
-  create: (name: string, hash: string) => ask<any>("watchers.create", { name, hash }),
-  run: (name: string) => ask<any>("watchers.run", { name }),
-  pause: (name: string) => ask<any>("watchers.pause", { name }),
-  resume: (name: string) => ask<any>("watchers.resume", { name }),
-  remove: (name: string) => ask<any>("watchers.delete", { name }),
-};
 
 export type HookRoute = { name: string; path?: string; scheme?: string; header?: string; secret?: string; deliveries?: number };
 export type HooksState = { enabled: boolean; listening: boolean; routes: HookRoute[]; public: { available: boolean; base?: string; why?: string }; urls: Record<string, string | null> };
