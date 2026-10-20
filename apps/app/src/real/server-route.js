@@ -24,7 +24,7 @@ const APPROVAL_LIST = /^approvals\.(pending|items)$/;
 /** @param {string} tool */ export const isEveryServer = (tool) => EVERY.test(tool);
 /** @param {string} tool */ export const isApprovalList = (tool) => APPROVAL_LIST.test(tool);
 /** A plain read of many (or of status) carries nothing private: under All spaces it is the active server's, as it always was. The vault has no such exemption: even its list names what a person keeps. */
-const PLAIN_READ = /\.(list|types|me|actors|library|events|status|info|catalog|catalogue|accounts|agenda|holders|serve|serve-create|serve-update|serve-request|serve-work)$/;
+const PLAIN_READ = /\.(list|types|me|actors|library|events|status|catalog|catalogue|accounts|agenda|holders|serve|serve-create|serve-update|serve-request|serve-work)$/;
 /** The inputs that name an item by an id alone. */
 const ID_KEYS = ["id", "task", "project", "template", "thread"];
 
