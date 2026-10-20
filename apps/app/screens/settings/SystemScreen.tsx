@@ -2,7 +2,7 @@
 import { RC } from "../shell/rc";
 import { ServerLine } from "./ServerLine";
 import { useCallback, useEffect, useState } from "react";
-import { View } from "react-native";
+import { Pressable, View } from "react-native";
 import { Banner, Button, Card, Divider, ErrorState, Field, LoadingState, Row, Segmented, Select, Sheet, Text, showToast } from "@vyre/ui";
 import { Page, Sec } from "../places/Frame";
 import { system } from "./system";
@@ -52,6 +52,7 @@ function AgentComputer() {
   const [s, setS] = useState<any>(null);
   const [busy, setBusy] = useState(false);
   const [said, setSaid] = useState("");
+  const [more, setMore] = useState(false);
   const load = useCallback(() => { system.computer().then(setS); }, []);
   useEffect(load, [load]);
   const v = computerView(s);
@@ -64,8 +65,11 @@ function AgentComputer() {
         <Divider />
         <View className="gap-s2 p-s3">
           <Text size="secondary" tone="muted">{said || v.line}</Text>
-          <View className="self-start"><Button kind={v.canUpdate ? "primary" : "secondary"} size="sm" label={busy ? "Updating" : "Update now"} disabled={busy || !v.canUpdate} onPress={run} /></View>
+          {v.canUpdate ? <View className="self-start"><Button kind="primary" size="sm" label={busy ? "Updating" : "Update now"} disabled={busy} onPress={run} /></View> : null}
         </View>
+        <Divider />
+        <Pressable accessibilityRole="button" accessibilityState={{ expanded: more }} onPress={() => setMore(!more)} className="flex-row items-center gap-s2 p-s3"><Text size="caption" strong tone="label">{more ? "Hide details" : "Details"}</Text></Pressable>
+        {more ? v.details.map(([k, val]) => <View key={k}><Divider /><Row dense title={k} end={<Text tone="muted">{val}</Text>} /></View>) : null}
       </Card>
     </Sec>
   );
@@ -74,6 +78,7 @@ function AgentComputer() {
 function History() {
   const [s, setS] = useState<any>(undefined);
   const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState(false);
   const load = useCallback(() => { system.recall().then(setS); }, []);
   useEffect(load, [load]);
   if (!s) return s === null ? <Sec title="History"><Card><Text tone="muted">History search is not available.</Text></Card></Sec> : null;
@@ -84,6 +89,7 @@ function History() {
       <Card flush>
         {v.lines.map(([k, val], i) => <View key={k}>{i ? <Divider /> : null}<Row title={k} sub={val} /></View>)}
         {v.problem ? <View className="p-s3"><Text size="caption" tone="warn">{v.problem}</Text></View> : null}
+        {v.folders.length ? <><Divider /><Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} onPress={() => setOpen(!open)} className="p-s3"><Text size="caption" strong tone="label">{open ? "Hide details" : "Details"}</Text></Pressable>{open ? v.folders.map((f: string) => <View key={f}><Divider /><Row dense title={f} /></View>) : null}</> : null}
       </Card>
       <View className="flex-row"><Button size="sm" label={v.indexing || busy ? "Indexing" : "Re-index now"} disabled={v.indexing || busy} onPress={run} /></View>
       <Text size="caption" tone="label">Reads new and changed chats now.</Text>

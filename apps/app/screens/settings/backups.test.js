@@ -2,12 +2,12 @@
 import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { backupLine, whenLine, vaultBackupLines } from "./backups-model.js";
+import { spaceWords, backupLine, whenLine, vaultBackupLines } from "./backups-model.js";
 
 test("a Space nobody turned backups on for says so plainly, by name", () => {
   assert.equal(backupLine({ space: "spc_a", name: "Harbor", home: false, enrolled: false, last: null }), "Space Harbor isn't backed up: its owner hasn't turned on backups.");
   assert.match(backupLine({ space: "spc_b", name: "this box's own Space", home: true, enrolled: false, last: null }), /Your own Space isn't backed up yet/);
-  assert.equal(backupLine({ space: "spc_a", name: "Harbor", home: false, enrolled: true, last: 1 }), "Backed up with this box's backups");
+  assert.equal(backupLine({ space: "spc_a", name: "Harbor", home: false, enrolled: true, last: 1 }), "Backed up with this server's backups");
 });
 
 test("when it was last written reads in a few words", () => {
@@ -29,4 +29,11 @@ test("the vault's own backup reads as two plain lines: the last backup and the l
   const bad = vaultBackupLines({ enrolled: true, last: { at: now, items: 2 }, drill: { at: now, ok: false, note: "1 missing, 0 different" }, keep: 14 }, now);
   assert.match(bad.drill, /did NOT match/);
   assert.equal(bad.warn, true);
+});
+
+test("the server's placeholder name for the home Space reads as Your own Space, and no copy tells a person to type a command", () => {
+  assert.equal(spaceWords("this box's own Space"), "Your own Space");
+  assert.equal(spaceWords("Harbor"), "Harbor");
+  const off = vaultBackupLines({ enrolled: false, last: null, drill: null, keep: 14 });
+  assert.doesNotMatch(off.backup, /vyre vault/);
 });

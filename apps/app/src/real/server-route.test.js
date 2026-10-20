@@ -235,7 +235,7 @@ test("route: update, system, onboard, person sign-ins, spend and providers follo
     assert.deepEqual(go({ tool, input: {}, showing: B }), { box: "boxb" }, `${tool} goes to the server of the Space showing`);
     assert.equal(go({ tool, input: {}, showing: "all" }).error?.code, "pick_a_space", `${tool} is never the active server by default`);
   }
-  for (const tool of ["events.catalog", "providers.list", "update.status"]) assert.equal(go({ tool, input: {}, showing: "all" }).error, undefined, `${tool} is a plain read`);
+  for (const tool of ["events.catalog", "providers.list", "update.status", "system.info"]) assert.equal(go({ tool, input: {}, showing: "all" }).error, undefined, `${tool} is a plain read`);
 });
 
 // An approval is judged on the server that holds the held act, whichever server is active.

@@ -3,8 +3,11 @@
 
 /** @typedef {{ space: string, name: string, home: boolean, enrolled: boolean, last: number | null, note?: string }} SpaceBackup */
 
+/** A Space's name as a person reads it: the server's placeholder for the home Space becomes "Your own Space". @param {string} name */
+export const spaceWords = name => (/^this (box|server|computer)'s own space$/i.test(String(name || "").trim()) ? "Your own Space" : name);
+
 /** One plain line under a Space's name. @param {SpaceBackup} r */
-export const backupLine = r => (r.enrolled ? "Backed up with this box's backups" : r.note || (r.home ? "Your own Space isn't backed up yet: turn on backups with your recovery code." : `Space ${r.name} isn't backed up: its owner hasn't turned on backups.`));
+export const backupLine = r => (r.enrolled ? "Backed up with this server's backups" : r.note || (r.home ? "Your own Space isn't backed up yet: turn on backups with your recovery code." : `Space ${spaceWords(r.name)} isn't backed up: its owner hasn't turned on backups.`));
 
 /** When the bundle was last written, in a few words. @param {number | null} last @param {number} [now] */
 export function whenLine(last, now = Date.now()) {
@@ -19,9 +22,9 @@ export function whenLine(last, now = Date.now()) {
  * @returns {{ title: string, backup: string, drill: string, warn: boolean }}
  */
 export function vaultBackupLines(v, now = Date.now()) {
-  if (!v || !v.enrolled) return { title: "Vault backup", backup: "Not on. Turn it on from the computer where Vyre runs: vyre vault autobackup enrol.", drill: "", warn: true };
+  if (!v || !v.enrolled) return { title: "Vault backup", backup: "Not on. Turn it on with your recovery code.", drill: "", warn: true };
   const items = v.last ? `${v.last.items} ${v.last.items === 1 ? "item" : "items"}` : "";
   const backup = v.last ? `Last backup ${whenLine(v.last.at, now).toLowerCase()}, ${items}. The newest ${v.keep} are kept.` : "Turned on; the first backup is made within the hour.";
-  const drill = !v.drill ? "Not tried yet: vyre vault restore --drill proves a backup restores." : v.drill.ok ? `Restore tried ${whenLine(v.drill.at, now).toLowerCase()}: it worked. ${v.drill.note}.` : `Restore tried ${whenLine(v.drill.at, now).toLowerCase()}: it did NOT match (${v.drill.note}). Make a new backup and try again.`;
+  const drill = !v.drill ? "Not tried yet. It runs by itself and proves a backup restores." : v.drill.ok ? `Restore tried ${whenLine(v.drill.at, now).toLowerCase()}: it worked. ${v.drill.note}.` : `Restore tried ${whenLine(v.drill.at, now).toLowerCase()}: it did NOT match (${v.drill.note}). Make a new backup and try again.`;
   return { title: "Vault backup", backup, drill, warn: !v.last || Boolean(v.drill && !v.drill.ok) };
 }

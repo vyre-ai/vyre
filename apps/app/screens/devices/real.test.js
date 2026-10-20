@@ -56,3 +56,10 @@ test("three words from an array or a spaced string, else nothing", () => {
   assert.deepEqual(wordsOf("Cedar harbor VIOLET"), ["cedar", "harbor", "violet"]);
   assert.equal(wordsOf("a b"), null);
 });
+
+test("the Mac app is a computer with a computer's words, not a phone", () => {
+  const rows = deviceRows({ devices: [{ id: "d1", name: "Vyre on Mac", kind: "app" }, { id: "d2", name: "Qi's iPhone", kind: "app" }] });
+  assert.equal(rows[0].device, "computer");
+  assert.equal(rows[0].name, "Vyre on a computer");
+  assert.equal(rows[1].device, "phone");
+});

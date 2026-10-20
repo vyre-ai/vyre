@@ -9,7 +9,8 @@ const want = { image: "ghcr.io/vyre-ai/agent-computer:0.6.0", version: "0.6.0", 
 
 test("a computer made from an older image says so and offers the update", () => {
   const v = computerView({ present: true, current: false, want, have: { image: "ghcr.io/vyre-ai/agent-computer:0.5.4", version: "0.5.4", layout: 1 } });
-  assert.deepEqual(v?.rows, [["Image", "agent-computer:0.6.0"], ["Vyre version", "0.6.0"], ["Made from", "agent-computer:0.5.4 (Vyre 0.5.4)"]]);
+  assert.deepEqual(v?.rows, [["Vyre version", "0.6.0"]]);
+  assert.deepEqual(v?.details, [["Image", "agent-computer:0.6.0"], ["Made from", "agent-computer:0.5.4 (Vyre 0.5.4)"]]);
   assert.equal(v?.canUpdate, true);
   assert.match(String(v?.line), /closes every agent's screen/);
 });
@@ -24,4 +25,9 @@ test("a current computer, or none yet, offers no update", () => {
 test("no answer, or a refusal, leaves the section out", () => {
   assert.equal(computerView(null), null);
   assert.equal(computerView({}), null);
+});
+
+test("an image digest never reaches the plain rows or the details", () => {
+  const v = computerView({ present: true, current: true, want: { image: "vyre-computer@sha256:abc123", version: "0.6.0" }, have: null });
+  assert.equal(JSON.stringify(v).includes("sha256"), false);
 });
