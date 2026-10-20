@@ -17,6 +17,7 @@
   "comms.credentials",
   "comms.release",
   "comms.service.test",
+  "files.agent.open",
   "files.deliver",
   "files.dirs",
   "files.drive.access",

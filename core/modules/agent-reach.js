@@ -12,6 +12,13 @@ import { SETUP_REASONS } from "../../lib/setup-gate.js";
 
 /** @type {ReadonlyMap<string, string>} */
 export const PERSON_ONLY = new Map([
+  ["files.agent.open", "starts an agent's computer and moves its folder in: the person's own act from their own Files, never an assistant's"],
+  ["hooks.flow", "reads a Flow's webhook address, which carries its token: the person's own, the body refuses an agent (core/hooks)"],
+  ["hooks.flow.renew", "makes a Flow a new webhook address and ends the old one at once: the person's own, the body refuses an agent (core/hooks)"],
+  ["hooks.flow.test", "sends a test delivery to a Flow's webhook address with its token: the person's own, the body refuses an agent (core/hooks)"],
+  ["hooks.flow.sign", "sets how a Flow's webhook address checks the sender's signature: widens what the internet may send in, so the person's own (core/hooks)"],
+  ["records.remove", "moves a record to the bin: kept the person's own until the owner rules how far an assistant may delete (strictest choice, 20 Oct 2026); an assistant changes a record with records.update"],
+  ["records.restore", "brings a record back from the bin: kept the person's own with records.remove until the owner rules (strictest choice, 20 Oct 2026)"],
   ["skills.import", "uploads a skill or plugin file into the person's own approval queue: a model has no file of the person's to upload; it writes a skill with skills.draft"],
   ["documents.signing.audit", "saves a signed request's audit file into the person's own Files: the person's own act, never a model's"],
   ["onboard.first.done", "marks first run finished on the person's own surface: the person's own act"],

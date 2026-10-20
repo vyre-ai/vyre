@@ -3,6 +3,10 @@
   "apps/app/ui/flows/special-builder-actions.js tools": {
    "count": 1,
    "why": "four built-in Flow call shortcuts the builder names without flows.actions; not a registry surface copy"
+  },
+  "apps/app/src/api/store-link.ts tools": {
+   "count": 1,
+   "why": "the three Records calls that touch a sealed value, which the phone sends through the held door; the box holds the same calls (core/records-tools), and the phone cannot import core"
   }
  }
 }

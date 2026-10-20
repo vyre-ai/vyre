@@ -598,7 +598,7 @@ export default {
           const base = { ...rowOf(r), project_name: (r.data.project && projects.get(r.data.project.urn)) || null, place, project: place === "project" && proj ? { urn: proj.urn, name: proj.name } : null, faces: { people: faces.people(ppl), agents: faces.agents(ags) } };
           if (!mine.has(r.data.chat)) return base;
           // each chat's runs on a short budget (chat-runs.js): one slow lookup lists its row without providers and a last line, never holds the list
-          const runs = await chatRuns((tool, input) => ctx.call(tool, input), r.data.chat);
+          const runs = await chatRuns((_tool, input) => ctx.call("threads.of-chat", input), r.data.chat);
           const line = runs.filter((/** @type {any} */ x) => x.last_line).sort((/** @type {any} */ a, /** @type {any} */ b) => (b.last || 0) - (a.last || 0))[0];
           return { ...base, open: true, unread: unreadOf(personId, r.data.chat), providers: [...new Set(runs.map((/** @type {any} */ x) => x.provider).filter(Boolean))], ...(line ? { last_line: line.last_line } : {}) };
         }));

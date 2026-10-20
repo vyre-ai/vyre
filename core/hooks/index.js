@@ -70,7 +70,7 @@ function owner(caller, what) {
 }
 
 /** A Flow's address carries its token, so reading it, renewing it, testing it and setting its check are the person's own surface only (lib/caller.js): never a model (mcp, harness), an agent, a module or a guest. */
-function person(caller, what) {
+function humanOnly(caller, what) {
   owner(caller, what);
   if (!isPerson(String(caller || ""))) throw refuse(`${what} is the person's own, from their own Vyre app or the vyre command`);
 }
@@ -442,14 +442,14 @@ export default {
     ctx.tool("hooks.flow", {
       description: "A Flow's own webhook address: { flow } -> the address to give the sender (it carries the token), whether the internet can reach it and why not, the last delivery (time, OK or refused, size) and the signature check if one is set. A person's, never an agent's.",
       input: obj({ flow: str }, ["flow"]),
-      run: async (input, { caller }) => { person(caller, "reading a Flow's webhook address"); return flowOut(flowArg(input)); },
+      run: async (input, { caller }) => { humanOnly(caller, "reading a Flow's webhook address"); return flowOut(flowArg(input)); },
     });
 
     ctx.tool("hooks.flow.renew", {
       description: "Get a Flow a new webhook address: { flow }. A new token is made in the Vault; the old address stops working at once. A person's, never an agent's.",
       input: obj({ flow: str }, ["flow"]),
       run: async (input, { caller }) => {
-        person(caller, "giving a Flow a new webhook address");
+        humanOnly(caller, "giving a Flow a new webhook address");
         const flow = flowArg(input), hit = routeFor(flow);
         if (!hit) throw refuse("this Flow has no webhook address yet: turn it on first", "not_found");
         const r = /** @type {any} */ (await ctx.call("vault.make-hook-secret", { name: hit[1].secret, renew: true }));
@@ -464,7 +464,7 @@ export default {
       description: "Send a test to a Flow's webhook address: { flow }. One delivery through this server's own listener, with the address's token; it is checked like any other and starts nothing. A person's, never an agent's.",
       input: obj({ flow: str }, ["flow"]),
       run: async (input, { caller }) => {
-        person(caller, "sending a test to a Flow's webhook address");
+        humanOnly(caller, "sending a test to a Flow's webhook address");
         const flow = flowArg(input), hit = routeFor(flow);
         if (!hit || hit[1].open === false) return { ok: false, line: "This Flow has no open address. Turn the Flow on first." };
         if (!live) return { ok: false, line: "Webhooks are turned off on this server, so the test cannot reach the address." };
@@ -486,7 +486,7 @@ export default {
       input: obj({ flow: str, scheme: { type: "string", enum: [...Object.keys(SCHEMES), "none"] }, header: str, secret: str }, ["flow", "scheme"]),
       presence: { summary: i => i && i.scheme === "none" ? "Stop checking a signature on this Flow's webhook address" : `Accept deliveries to this Flow's webhook address only with a valid ${i && i.scheme} signature` },
       run: async (input, { caller }) => {
-        person(caller, "setting how a Flow's webhook address is checked");
+        humanOnly(caller, "setting how a Flow's webhook address is checked");
         const flow = flowArg(input), hit = routeFor(flow);
         if (!hit) throw refuse("this Flow has no webhook address yet: turn it on first", "not_found");
         const [key, route] = hit;
