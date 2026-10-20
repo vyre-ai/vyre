@@ -9,6 +9,7 @@ import { SlotsSheet } from "../templates/SlotsSheet";
 import { NewWatcherSheet } from "./NewWatcherSheet";
 import { WatchersTab } from "./WatchersTab";
 import type { TriggerSources } from "@vyre/ui";
+import type { FlowHookState } from "./watchers-source";
 import { RunSteps } from "./RunSteps";
 import { REFUND_DRAFT, SAMPLE_OPTIONS } from "./starters.js";
 
@@ -53,8 +54,10 @@ const FAKE = {
   card: async () => ({ hash: "h1", lines: { when: "Runs every 30 minutes", do: "Files new issues from acme/site into Ads" }, facts: { readsText: "Reads github.com with your GitHub credential, read only", acts: "Never acts: it reads and files", cost: "No model cost" } }),
   create: async () => ({}), run: async () => ({}), pause: async () => ({}), resume: async () => ({}), remove: async () => ({}),
 } as never;
-const HOOKS = { enabled: false, listening: false, routes: [{ name: "northwind-orders", scheme: "hmac-sha256", header: "x-signature", secret: "northwind-orders-hook" }], public: { available: false, why: "The box has no public address yet." }, urls: { "northwind-orders": null } };
-const SOURCES: TriggerSources = { hooks: async () => HOOKS, enableHooks: async () => {}, openRoute: async () => {}, watchers: async () => WATCHERS.map((w) => w.name), newWatcher: (open, onClose, onCreated) => <NewWatcherSheet source={FAKE} open={open} onClose={onClose} onCreated={onCreated} /> };
+const HOOK: FlowHookState = { open: true, address: { path: "/hooks/refund-request-4f9c", url: "https://team.example/hooks/refund-request-4f9c0b7e1d2a" }, why: null, last: { when: "Today 10:05", ok: true, bytes: 412 }, check: null };
+const HOOK_WAIT: FlowHookState = { ...HOOK, address: { path: "/hooks/refund-request-4f9c", url: null }, why: "The public address is not up yet: the server's name does not point at it. Senders on the internet reach it once the server has its public address.", last: null };
+const hookSources = (h: FlowHookState): TriggerSources => ({ flowHook: async () => h, renewHook: async () => {}, testHook: async () => ({ ok: true, line: "The test reached the address and its token checked. A test does not start the Flow." }), signHook: async () => {}, watchers: async () => WATCHERS.map((w) => w.name), newWatcher: (open, onClose, onCreated) => <NewWatcherSheet source={FAKE} open={open} onClose={onClose} onCreated={onCreated} /> });
+const SOURCES = hookSources(HOOK);
 
 function KitShot() {
   const [read, setRead] = useState(false);
@@ -76,7 +79,9 @@ export default function ShotScreen() {
   if (k === "kit") return <KitShot />;
   if (k === "watchers") return <Frame back="/u/flows" title="Flows" sub="Jobs Vyre does on its own."><Tabs items={[["flows", "Flows"], ["watchers", "Watchers"]]} value="watchers" onChange={() => {}} /><WatchersTab source={FAKE} /></Frame>;
   if (k === "newwatcher") return <Frame back="/u/flows" title="Flows" sub="Jobs Vyre does on its own."><NewWatcherSheet source={FAKE} open initialKind="repo" onClose={() => {}} onCreated={() => {}} /></Frame>;
-  if (k === "webhook") return <Frame back="/u/flows" title="Refund request" sub="Starts when a webhook is called."><FlowBuilder draft={{ ...(REFUND_DRAFT as FlowDraft), name: "Refund request", trigger: { kind: "webhook", route: "northwind-orders" } }} onChange={() => {}} options={SAMPLE_OPTIONS as never} initialOpen="trigger" triggerSources={SOURCES} /></Frame>;
+  if (k === "webhook") return <Frame back="/u/flows" title="Refund request" sub="Starts when a webhook is called."><FlowBuilder draft={{ ...(REFUND_DRAFT as FlowDraft), name: "Refund request", trigger: { kind: "webhook" } }} onChange={() => {}} options={SAMPLE_OPTIONS as never} initialOpen="trigger" triggerSources={SOURCES} /></Frame>;
+  if (k === "webhookwait") return <Frame back="/u/flows" title="Refund request" sub="Starts when a webhook is called."><FlowBuilder draft={{ ...(REFUND_DRAFT as FlowDraft), name: "Refund request", trigger: { kind: "webhook" } }} onChange={() => {}} options={SAMPLE_OPTIONS as never} initialOpen="trigger" triggerSources={hookSources(HOOK_WAIT)} /></Frame>;
+  if (k === "formhook") return <Frame back="/u/flows" title="Contact form" sub="Starts when a form is submitted."><FlowBuilder draft={{ ...(REFUND_DRAFT as FlowDraft), name: "Contact form", trigger: { kind: "form", path: "contact" } }} onChange={() => {}} options={SAMPLE_OPTIONS as never} initialOpen="trigger" triggerSources={SOURCES} /></Frame>;
   if (k === "watcherpick") return <Frame back="/u/flows" title="Refund request" sub="Starts when a watcher finds something new."><FlowBuilder draft={{ ...(REFUND_DRAFT as FlowDraft), name: "Refund request", trigger: { kind: "watcher", watcher: "mail-intake" } }} onChange={() => {}} options={SAMPLE_OPTIONS as never} initialOpen="trigger" triggerSources={SOURCES} /></Frame>;
   if (k === "run") {
     return (
