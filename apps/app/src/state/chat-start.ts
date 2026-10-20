@@ -19,9 +19,6 @@ export async function deviceReadiness(): Promise<string | null> {
   return "say" in gate ? gate.say : null;
 }
 
-/** The line when this device's chat key is not the one on the person's list. It is the one gap the app can fix in place (Settings, Account and recovery, Try again), so the screens that show it offer that button. */
-export const NOT_LISTED = "This device isn't ready for private chats yet.";
-
 async function deviceGate(): Promise<{ holders: Record<string, any> } | { say: string }> {
   // No store kept this device's key: say which store refused and why, not a vague "not ready" on a timer (the ad-hoc Mac app, v0.6.2).
   const got = await agreeKeyResult();
@@ -30,7 +27,7 @@ async function deviceGate(): Promise<{ holders: Record<string, any> } | { say: s
   const who = await tool<{ person?: string }>("records.me", {}).catch(() => null);
   if (!who?.person) return { say: "Vyre could not tell who you are, so the chat did not start." };
   const r = await holdersFor((t, i) => tool(t, i ?? {}), [who.person], me);
-  if (!r.listed) return { say: NOT_LISTED };
+  if (!r.listed) return { say: "This device isn't ready for private chats yet." };
   if (r.without.length) return { say: "Some devices can't open private chats yet." };
   return { holders: r.holders };
 }
