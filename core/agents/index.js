@@ -173,6 +173,9 @@ const ASK_WAIT_MS = 590_000;
 /** A setup token and an API key look different; the Vault item says which it is only by its value. */
 export const envFor = (value, as) => (as === "api-key" ? { ANTHROPIC_API_KEY: value } : { CLAUDE_CODE_OAUTH_TOKEN: value });
 
+/** What every agent is told about the work it can set up for itself. Words only; the tools decide what is allowed. */
+export const OWN_WORK = "When the person asks you to do something at set times (\"every weekday at 9, summarise my inbox\"), set up a Routine for yourself: it starts you at its time, for them, and you post the result here. When they ask you to tell them when something new appears (\"tell me when an invoice from Northwind arrives\"), set up a Watcher for yourself: it checks a source and wakes you only when there is something new. Use the write-a-watcher skill, only when their own words asked, then confirm in one plain line what you set up.";
+
 /**
  * What an agent's thread is told about itself, after Claude Code's own system prompt.
  * @param {any} a an agent record
@@ -187,6 +190,8 @@ export function preamble(a, { withWords = true } = {}) {
        "To drive a thread for the user (\"tell the site thread to run the tests and report back\"), call tools_call threads_send, then set that watch. If another surface holds the thread's keyboard, that call says who; tell the user rather than taking it.",
        "When a watch fires, the user sees it in Lumen and on their devices. Do not poll tools_call threads_get to wait for it."]
     : [`You are ${a.name}, an agent in Vyre. You may use context from ${scope}, and from nothing outside it.`];
+  // Both kinds set up their own Routines and Watchers when a person asks (core/watchers, the write-a-watcher skill).
+  lines.push(OWN_WORK);
   // the instructions are the agent's AGENTS.md, read from its folder (named by the orientation); copied here only when there is no folder to read them from
   if (a.instructions && withWords) lines.push("", String(a.instructions));
   return lines.join("\n");
@@ -1019,11 +1024,44 @@ export default {
     // A task given to an agent: wake it with the task as the prompt. Once per (task, agent); the claim is written first. The job is for the approver (the asker gate judges them, so it is never wider than
     // they may use) and sits in the task's project only when the agent reaches it. It is not marked done here: the agent starts and submits the task itself.
     const wakeCfg = () => (ctx.config && ctx.config.agents) || {};
+    /**
+     * An agent's own Routine or Watcher is due (the watchers module asks): its words go into the chat the person asked in, as a turn of the agent's, so the agent
+     * answers there. It runs for that person on that person's own AI account (accountFor: anyone but the owner needs one of their own, and is told how to connect one),
+     * and the thread must be this agent's; else the person's own thread with the agent, or a new one for them. The watcher's text is built and quoted by the
+     * watchers module (outside data in markers); this adds nothing to it.
+     * @param {any} i @param {unknown} caller
+     */
+    const watcherWake = async (i, caller) => {
+      if (String(caller || "") !== "module:watchers") throw Object.assign(new Error("only the watchers module wakes an agent for its own Routine or Watcher"), { code: "denied" });
+      const a = must(i.agent);
+      const text = String(i.text || "").trim();
+      if (!text) throw Object.assign(new Error("a wake needs the text to post"), { code: "bad_input" });
+      const person = typeof i.approver === "string" && i.approver ? i.approver : undefined;
+      const own = await accountFor(a, person);
+      const from = `watcher:${String(i.watcher).slice(0, 60)}`;
+      // the chat it was asked in, when that is this agent's thread; else the thread this person talks to the agent in
+      let thread = null;
+      if (typeof i.thread === "string" && i.thread) {
+        const t = await ctx.call("threads.get", { thread: i.thread, limit: 1 }).catch(() => null);
+        if (t && !t.error && t.data && t.data.thread && t.data.thread.agent === a.name) thread = String(i.thread);
+      }
+      if (!thread) {
+        const row = own ? /** @type {any} */ (db.prepare("SELECT thread FROM agents_person_threads WHERE agent = ? AND person = ?").get(a.name, String(person))) : null;
+        const id = own ? (row ? String(row.thread) : null) : a.thread;
+        const cur = id ? (await ctx.call("threads.get", { thread: id, limit: 1 })).data?.thread : null;
+        thread = cur ? String(cur.id) : (await launch(a, { forPerson: person, own, ...(own ? { runAs: person } : {}) })).id;
+      }
+      // threads.post brings a stopped thread back the way agents.resume does: as the person whose thread it is, on their own account
+      const r = await ctx.call("threads.post", { thread, text, kind: "watcher.item", from });
+      if (r.error) throw new Error(r.error.message || "the chat did not take the message");
+      return { agent: a.name, thread, sent: r.data ? r.data.sent !== false : true };
+    };
     ctx.tool("agents.wake", {
-      description: "Wake an agent for a task it was given: one job thread with the task's title, instructions and record as the prompt. Once per task and agent. For the Flows host.",
+      description: "Wake an agent for a task it was given: one job thread with the task's title, instructions and record as the prompt. Once per task and agent. For the Flows host. With watcher (the watchers module only): wake an agent for its own Routine or Watcher, in the chat it was asked in, for that person.",
       internal: true, callers: ["module"],
-      input: { type: "object", required: ["task", "agent", "title"], properties: { task: { type: "string" }, task_id: { type: "string" }, slot: { type: "string", enum: ["reviewer", "approver", "changes"] }, agent: { type: "string" }, title: { type: "string" }, instructions: { type: "string" }, info: { type: "object" }, record: { type: "string" }, project: { type: "string" }, approver: { type: "string" }, flow: { type: "string" }, origin: { type: "object" } } },
+      input: { type: "object", required: ["task", "agent", "title"], properties: { task: { type: "string" }, task_id: { type: "string" }, watcher: { type: "string" }, text: { type: "string" }, thread: { type: "string" }, slot: { type: "string", enum: ["reviewer", "approver", "changes"] }, agent: { type: "string" }, title: { type: "string" }, instructions: { type: "string" }, info: { type: "object" }, record: { type: "string" }, project: { type: "string" }, approver: { type: "string" }, flow: { type: "string" }, origin: { type: "object" } } },
       run: async (i, { caller }) => {
+        if (i.watcher !== undefined) return watcherWake(i, caller);
         if (String(caller || "") !== "module:vyred") throw Object.assign(new Error("only the Space's own host wakes an agent for a task"), { code: "denied" }); // internal-word: the caller label, not shown text
         const a = must(i.agent);
         const task = String(i.task);

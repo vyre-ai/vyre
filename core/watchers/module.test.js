@@ -1,6 +1,6 @@
 // @ts-check
 // The watchers module inside a real vyred: the real vault with a grant per watcher, real projects
-// and Memory, a watcher that reads a local feed, and the webhook route.
+// and Memory, a watcher that reads a local feed, and the retired webhook route.
 
 import "../../scripts/mac-test-guard.mjs";
 import { test as nodeTest } from "node:test";
@@ -108,24 +108,14 @@ test("watchers module: dry run, create, filing into the project, and the items i
   assert.ok(released.some(e => e.payload.watcher === "harlow-sqlite"), "the vault did not record which watcher it released to");
 });
 
-test("watchers module: the webhook route checks the token, and the hook tool is never listed or callable as a tool", async t => {
-  const { root, p } = await boot(t);
-  writeWatcher(p, "harlow-forms", { schedule: "webhook" }, `export default async function watch({ hook, emit }) { if (hook) emit({ id: hook.id, title: hook.title }); }`);
-  assert.equal((await call("watchers.test", { name: "harlow-forms" }, { root })).data.ok, true);
-  const on = (await call("watchers.create", { name: "harlow-forms" }, { root })).data;
-
+test("watchers module: the watcher webhook route is retired, and the hook tool is never listed or callable as a tool", async t => {
+  const { root } = await boot(t);
   const tools = (await request("GET", "/v1/tools", undefined, { root })).data.map(x => x.name);
   assert.ok(tools.includes("watchers.create") && !tools.includes("watchers.hook"));
-  assert.equal((await call("watchers.hook", { name: "harlow-forms", token: on.hook.token }, { root })).error.code, "no_such_tool");
-  assert.equal((await call("watchers.hook", { name: "harlow-forms", token: on.hook.token }, { root, caller: "hook" })).error.code, "no_such_tool", "a socket client posed as the webhook route");
-
-  const bad = await request("POST", "/v1/watchers/harlow-forms/hook?token=wrong", { id: 1 }, { root });
-  assert.match(bad.error.message, /wrong token/);
-  const ok = await request("POST", `/v1/watchers/harlow-forms/hook?token=${on.hook.token}`, { id: "f-1", title: "New intake form" }, { root });
-  assert.deepEqual(ok.data, { accepted: true });
-  let items = [];
-  for (let i = 0; i < 50 && !items.length; i++) { await new Promise(r => setTimeout(r, 100)); items = (await call("watchers.items", { name: "harlow-forms" }, { root })).data; }
-  assert.deepEqual(items.map(i => i.title), ["New intake form"]);
+  assert.equal((await call("watchers.hook", { name: "harlow-forms", token: "x" }, { root })).error.code, "no_such_tool");
+  assert.equal((await call("watchers.hook", { name: "harlow-forms", token: "x" }, { root, caller: "hook" })).error.code, "no_such_tool", "a socket client posed as the webhook route");
+  const gone = await request("POST", "/v1/watchers/harlow-forms/hook?token=x", { id: 1 }, { root });
+  assert.match(gone.error.message, /watcher webhooks are retired: a webhook starts a Flow/);
 });
 
 test("watchers module: without a vault, a watcher that needs one fails its run and says why", async t => {

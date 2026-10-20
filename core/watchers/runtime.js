@@ -27,6 +27,7 @@ import { parseWhen } from "./when.js";
 import { buildPreset } from "./presets.js";
 import { wakeText, DEFAULT_PER_DAY } from "./wake.js";
 import { DUTY_NAME, DUTY_WATCH_JS } from "./duty.js";
+import { isRoutine, routineText } from "./routine.js";
 import { systemZone } from "../../lib/time/index.js";
 
 /** Schedules that are not cron: nothing is due on a clock. */
@@ -175,6 +176,8 @@ export class Runtime {
       const every = schedule === "event" && f.spec ? describeOn(f.spec) : schedule ? cron.describe(schedule, this.zone()) : null;
       const o = f.spec && f.spec.owner && f.spec.owner.kind === "agent" ? f.spec.owner : null;
       out.push({ name, state, hash: f.hash || null, title: f.spec?.summary?.do || null, project: f.spec?.project || r?.project || null, schedule, every,
+        kind: f.spec ? (isRoutine(f.spec) ? "routine" : DUTY_NAME.test(name) ? (f.spec.schedule === "event" ? "watcher" : "routine") : "watcher") : "watcher",
+        ...(f.spec && f.spec.instruction && (isRoutine(f.spec) || DUTY_NAME.test(name)) ? { instruction: f.spec.instruction.slice(0, 2000) } : {}),
         ...(own ? { agent: own, person: o && o.person ? o.person : null, thread: o && o.thread ? o.thread : null, waiting: Boolean(r.paused && r.paused_by === "waiting"), pausedBy: r.paused ? r.paused_by || null : null } : {}),
         next: on && !r.paused && r.next_at ? new Date(r.next_at).toISOString() : null,
         lastRun: r?.last_run ? new Date(r.last_run).toISOString() : null, lastError: r?.last_error || null, failures: r?.failures || 0,
@@ -229,8 +232,9 @@ export class Runtime {
     const mine = spec.owner != null && spec.owner.kind === "agent" ? spec.owner : null;
     const wakes = spec.about && spec.about.session && spec.act ? spec.about.session : null;
     return {
-      name, hash, project: spec.project || null, state: !r || !r.enabled ? "draft" : r.hash !== hash ? "changed" : r.paused ? "paused" : "on",
+      name, hash, project: spec.project || null, state: !r || !r.enabled ? "draft" : r.paused ? "paused" : r.hash !== hash ? "changed" : "on",
       ...(mine && r && r.paused ? { pausedWhy: r.paused_why || null, waiting: r.paused_by === "waiting" } : {}),
+      kind: isRoutine(spec) ? "routine" : "watcher",
       owner: spec.owner ? { ...spec.owner } : { kind: "project", project: spec.project },
       lines: {
         when: spec.summary ? spec.summary.when : spec.when ? `Runs ${when} (${spec.when})` : `Runs ${when}`,
@@ -288,6 +292,18 @@ export class Runtime {
       paused_by = 'waiting', owner_agent = excluded.owner_agent, tested_hash = NULL, failures = 0, last_error = NULL, next_at = NULL`)
       .run(name, spec && spec.project ? spec.project : null, spec ? spec.schedule : null, f.hash, WAITING, agent, this.now());
     this.d.emit("watcher.created", { name, agent, state: "paused", schedule: spec ? spec.schedule : null }, spec && spec.project ? { project: spec.project } : {});
+  }
+
+  /**
+   * A Routine is Vyre's own code, so it needs no dry run: it is on from the moment it is written, and its first run is at its next time (never now).
+   * @param {string} name
+   */
+  routineOn(name) {
+    const { spec, hash } = this.spec(name);
+    if (!isRoutine(spec)) throw new Error(`${name} is not a routine`);
+    const next = cron.next(cron.parse(spec.schedule), this.now(), this.zone());
+    this.db.prepare("UPDATE watchers_watchers SET hash = ?, tested_hash = ?, tested_at = ?, enabled = 1, paused = 0, paused_why = NULL, paused_by = NULL, failures = 0, next_at = ? WHERE name = ?").run(hash, hash, this.now(), next, name);
+    return { name, state: "on", next: next ? new Date(next).toISOString() : null, every: cron.describe(spec.schedule, this.zone()) };
   }
 
   /** Who owns a watcher as watchers.write recorded it: the agent's name, or null for a person's, a project's, a session's or a duty. */
@@ -728,16 +744,18 @@ export class Runtime {
     const skip = why => { logs.push(`not woken: ${why}`); this.d.log(`${name}: not woken: ${why}`); };
     if (!row || String(row.owner_agent || "") !== owner.agent) return skip(`the watcher is not ${owner.agent}'s own`);
     if (typeof this.d.wakeAgent !== "function") return skip("this computer cannot wake an agent");
+    // A Routine starts its agent at every time it is due (its schedule is its bound, at least ROUTINE_MIN_MINUTES apart); a Watcher's wakes are capped per day.
+    const routine = isRoutine(spec);
     const day = new Date(this.now()).toISOString().slice(0, 10), cap = spec.wake ? spec.wake.maxPerDay : DEFAULT_PER_DAY;
     const used = Number(/** @type {any} */ (this.db.prepare("SELECT posts FROM watchers_wakes WHERE watcher = ? AND day = ?").get(name, day))?.posts || 0);
-    if (used >= cap) return skip(`already woke ${owner.agent} ${used} times today (the most is ${cap})`);
-    const { text, shown } = wakeText(name, fresh, { to: owner.agent });
+    if (!routine && used >= cap) return skip(`already woke ${owner.agent} ${used} times today (the most is ${cap})`);
+    const { text, shown } = routine ? { text: routineText(name, String(spec.instruction || ""), cron.describe(spec.schedule, this.zone())), shown: 1 } : wakeText(name, fresh, { to: owner.agent });
     let woke;
     try { woke = await this.d.wakeAgent({ agent: owner.agent, person: owner.person || null, thread: owner.thread || null, watcher: name, text }); }
     catch (e) { return skip(`${owner.agent} could not be woken: ${/** @type {Error} */ (e).message}`); }
     this.db.prepare(`INSERT INTO watchers_wakes (watcher, day, posts) VALUES (?,?,1) ON CONFLICT(watcher, day) DO UPDATE SET posts = posts + 1`).run(name, day);
     this.d.emit("watcher.woke", { name, agent: owner.agent, ...(woke && woke.thread ? { thread: woke.thread } : {}), items: shown }, spec.project ? { project: spec.project } : {});
-    logs.push(`woke ${owner.agent} with ${shown} item${shown === 1 ? "" : "s"}`);
+    logs.push(routine ? `started ${owner.agent} with the routine's instructions` : `woke ${owner.agent} with ${shown} item${shown === 1 ? "" : "s"}`);
   }
 
   /**

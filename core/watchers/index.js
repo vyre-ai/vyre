@@ -14,7 +14,7 @@ import { scopeFor } from "./scope.js";
 import { PRESET_KINDS } from "./presets.js";
 import * as folderMod from "./folder.js";
 import { isAgent, isPerson, agentName } from "../../lib/caller.js";
-import { connectOwn } from "../../lib/own-account.js";
+import { askerAccount as askerOf } from "./asker.js";
 import { DUTY_NAME } from "./duty.js";
 import { testHooks } from "../../lib/sandbox/index.js";
 import { Runtime, MIGRATIONS, LATE_MIGRATIONS, WAITING } from "./runtime.js";
@@ -23,6 +23,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createDefs, MIGRATIONS as DEF_MIGRATIONS } from "./defs.js";
+import { ROUTINE_EMITS, ROUTINE_WATCH_JS, routineSchedule } from "./routine.js";
+import * as cron from "./cron.js";
 import { validZone, systemZone } from "../../lib/time/index.js";
 
 /**
@@ -73,7 +75,7 @@ export default {
     const defs = ctx.kernel && ctx.kernel.records ? createDefs({ kernel: ctx.kernel, dir: ctx.paths.watchers, db: ctx.store.db, log: ctx.log, onGone: name => { try { if (rtRef) rtRef.remove(name); } catch { /* it had no schedule row */ } } }) : null;
     // The folders and the records are brought into step before a tool reads or changes a definition and after one is written, and every minute with the schedule's tick.
     const sync = () => (defs ? defs.sync().catch(e => { ctx.log(`watchers: definitions not synced (${e && e.message})`); }) : Promise.resolve());
-    const SYNCED = new Set(["watchers.list", "watchers.test", "watchers.card", "watchers.create", "watchers.preset", "watchers.delete", "watchers.duty.create", "watchers.duty.update", "watchers.duty.delete"]);
+    const SYNCED = new Set(["watchers.list", "watchers.test", "watchers.card", "watchers.create", "watchers.preset", "watchers.delete", "watchers.duty.create", "watchers.duty.update", "watchers.duty.delete", "watchers.own.delete"]);
     const tool = (/** @type {string} */ name, /** @type {any} */ spec) => ctx.tool(name, defs && SYNCED.has(name) ? { ...spec, run: async (/** @type {any} */ i, /** @type {any} */ m) => { await sync(); const r = await spec.run(i, m); void sync(); return r; } } : spec);
     const K = ctx.kernel || null;
     const canon = (/** @type {string} */ x) => (K && typeof K.canonicalPerson === "function" ? K.canonicalPerson(x) : x);
@@ -85,17 +87,7 @@ export default {
       try { const c = await K.chain(meta); const h = c && Array.isArray(c.hops) ? c.hops.find((/** @type {any} */ x) => x && x.actor && x.actor.kind === "person") : null; return h ? String(h.actor.id) : (K.owner ? String(K.owner) : null); }
       catch { return null; }
     };
-    /**
-     * The account a watcher's model question runs on: the asker's own (any provider, the sessions module's one resolution), else the owner's own default for the owner. Anyone else with none is refused in plain words.
-     * @param {string|undefined} person @param {string} agent
-     */
-    const askerAccount = async (person, agent) => {
-      if (!person || isOwnerPerson(person)) return person ? { person } : {};
-      const r = await ctx.call("sessions.accounts.resolve", { provider: "claude", person, agent, any: true }).catch(() => null);
-      const acct = r && !r.error ? r.data : null;
-      if (acct && !acct.synthetic && acct.person === person && acct.id) return { person, account: String(acct.id), ...(acct.provider ? { provider: String(acct.provider) } : {}) };
-      throw new Error(connectOwn(agent));
-    };
+    const askerAccount = (/** @type {string|undefined} */ person, /** @type {string} */ agent) => askerOf({ call: ctx.call, isOwner: isOwnerPerson }, person, agent);
     const rt = rtRef = new Runtime({
       db: ctx.store.db, dir: ctx.paths.watchers, defs,
       // Schedules run in the Space's time zone: the planner's configured zone, else the server's own.
@@ -191,6 +183,115 @@ export default {
       run: async (i) => rt.create(i.name, { hash: i.hash || null }),
     });
 
+
+    // ---------------------------------------------------------------- an agent's own Routines and Watchers
+    // A Watcher runs when something new appears ("tell me when an invoice from Northwind arrives"); a Routine runs on a schedule ("every weekday at 9,
+    // summarise my inbox"). Both belong to the agent that set them up, are made only when the person's own words in the chat asked (reach "asked", the
+    // said-check), and run for that person on that person's own AI account. They live in this module's one store, beside teammates' duties.
+    /** Write a definition as the hidden def-watcher record (the folder follows from it), or the folder itself where the kernel is off. */
+    const putDef = async (/** @type {string} */ name, /** @type {string} */ json, /** @type {string} */ code) => {
+      if (defs) { await defs.put(name, json, code); return; }
+      const dir = path.join(ctx.paths.watchers, name);
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, "watcher.json"), json);
+      fs.writeFileSync(path.join(dir, "watch.js"), code);
+    };
+    /** The calling agent, for a tool only an agent's own session uses. */
+    const mustAgent = (/** @type {any} */ meta, /** @type {string} */ what) => {
+      const me = callingAgent(meta);
+      if (!me) throw Object.assign(new Error(`${what} is for an agent setting up its own; a person asks the agent in chat`), { code: "denied" });
+      return me;
+    };
+    /** A name that is free, or already this agent's own. Teammates' duties keep their own names. */
+    const freeOrMine = (/** @type {string} */ name, /** @type {string} */ me) => {
+      if (!folderMod.NAME.test(String(name || "")) || String(name).length > 60) throw Object.assign(new Error(`"${String(name).slice(0, 60)}" is not a name: lowercase words joined by dashes, like northwind-invoices`), { code: "bad_input" });
+      if (DUTY_NAME.test(name)) throw Object.assign(new Error("names starting duty- are teammates' duties; pick another name"), { code: "bad_input" });
+      const own = rt.ownerAgent(name);
+      if (own && own !== me) throw Object.assign(new Error(`${name} is ${own}'s; pick another name`), { code: "denied" });
+      if (!own && (rt.row(name) || fs.existsSync(path.join(ctx.paths.watchers, name)))) throw Object.assign(new Error(`a watcher named ${name} already exists; pick another name`), { code: "denied" });
+    };
+    /** The owner block Vyre writes into an agent's own definition: from the verified call, never from the agent's words. */
+    const ownerOf = async (/** @type {any} */ meta, /** @type {string} */ me) => {
+      const person = await personOf(meta);
+      const thread = typeof (meta || {}).thread === "string" && /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(meta.thread) ? meta.thread : null;
+      return { kind: "agent", agent: me, ...(person ? { person } : {}), ...(thread ? { thread } : {}) };
+    };
+    /** A watcher an agent wrote: Vyre sets the owner, drops what only Vyre may say, writes it and records it as paused until a test passes. */
+    const writeOwnWatcher = async (/** @type {any} */ meta, /** @type {string} */ me, /** @type {any} */ i) => {
+      const spec = i.spec && typeof i.spec === "object" && !Array.isArray(i.spec) ? { ...i.spec } : null;
+      if (!spec) throw Object.assign(new Error("spec is watcher.json as an object: schedule (cron) or on and where, net (the hosts it reads, each with the Vault item or Connection lent to you), summary { when, check, do }"), { code: "bad_input" });
+      if (typeof i.code !== "string" || !i.code.trim() || i.code.length > 200_000) throw Object.assign(new Error("code is watch.js as text: export default async function watch({ since, emit, log, fetch, ask })"), { code: "bad_input" });
+      for (const k of ["owner", "act", "about", "source", "needs"]) delete spec[k];
+      if (spec.emits === ROUTINE_EMITS) delete spec.emits;
+      const json = JSON.stringify({ ...spec, name: i.name, owner: await ownerOf(meta, me) }, null, 2);
+      const checked = folderMod.checkFiles(i.name, json, String(i.code));
+      await putDef(i.name, json, String(i.code));
+      rt.ownWritten(i.name, me);
+      let card = null;
+      if (!checked.problems.length) { card = rt.card(i.name); remember(meta, card); }
+      return { name: i.name, state: "paused", waiting: true, ...(checked.problems.length ? { problems: checked.problems, next: "Fix these with watchers.revise, then dry-run it with watchers.test." } : { card, next: "Dry-run it with watchers.test now. It turns on when the test passes. Then tell the person in plain words what you set up, for example: Done. I'll tell you here when an invoice from Northwind arrives." }) };
+    };
+
+    tool("watchers.write", {
+      callers: [...PEOPLE, ...MODEL],
+      description: "Set up a Watcher for yourself, when the person's own words in this chat asked you to watch something (\"tell me when an invoice from Northwind arrives\"). A Watcher runs when something new appears: it checks a source and wakes you, for that person, only when there is something new, quoted as outside data. For work at set times use watchers.routine.create instead. Give name, spec (watcher.json: schedule as cron like */15 * * * * or on and where for an event; net: the hosts it reads, each with the Vault item or Connection already lent to you; summary { when, check, do }; optional ask { dailyUsd }) and code (watch.js: export default async function watch({ since, emit, log, fetch, ask }), read only). It starts paused; dry-run it with watchers.test and it turns on when the test passes. Then confirm in the chat what you set up.",
+      input: { type: "object", required: ["name", "spec", "code"], properties: { name: { ...str, description: "lowercase words joined by dashes, like northwind-invoices" }, spec: { type: "object", description: "watcher.json; Vyre sets name and owner" }, code: { type: "string", maxLength: 200000, description: "watch.js" } } },
+      run: async (i, meta = {}) => { const me = mustAgent(meta, "watchers.write"); freeOrMine(String(i.name), me); return writeOwnWatcher(meta, me, i); },
+    });
+    tool("watchers.revise", {
+      callers: [...PEOPLE, ...MODEL],
+      description: "Fix one of your own Watchers that is still waiting for its first passing test (after watchers.write, before it ever ran): the same spec and code as watchers.write. Once it is on, a change needs the person to ask again (watchers.write).",
+      input: { type: "object", required: ["name", "spec", "code"], properties: { name: str, spec: { type: "object" }, code: { type: "string", maxLength: 200000 } } },
+      run: async (i, meta = {}) => {
+        const me = mustOwn(meta, String(i.name));
+        const r = rt.row(String(i.name));
+        if (!r || r.paused_by !== "waiting") throw Object.assign(new Error(`${i.name} already passed its test and is set up; to change it, the person asks you again and you use watchers.write`), { code: "denied" });
+        return writeOwnWatcher(meta, me, i);
+      },
+    });
+    tool("watchers.routine.create", {
+      callers: [...PEOPLE, ...MODEL],
+      description: "Set up a Routine for yourself, when the person's own words in this chat asked for work at set times (\"every weekday at 9, summarise my inbox\"). A Routine runs on a schedule: at its time it starts you, for that person on their own AI account, with the instructions you give it, and you post the result in this chat. For something that happens or arrives, set up a Watcher with watchers.write instead. Give name, when (weekdays 09:00, daily 07:30, every 2 hours, hourly, or five-field cron; at most every 15 minutes) and instructions. It is on at once and first runs at its next time. Then confirm in the chat, for example: Done. I'll check your inbox every weekday at 9 and post here.",
+      input: { type: "object", required: ["name", "when", "instructions"], properties: { name: { ...str, description: "lowercase words joined by dashes, like morning-inbox" }, when: { ...str, description: "weekdays 09:00, daily 07:30, every 2 hours, hourly or five-field cron, in the Space's time zone" }, instructions: { type: "string", maxLength: 2000, description: "what to do each time, in the person's words" } } },
+      run: async (i, meta = {}) => {
+        const me = mustAgent(meta, "watchers.routine.create");
+        const name = String(i.name);
+        freeOrMine(name, me);
+        const instruction = String(i.instructions || "").trim();
+        if (!instruction) throw Object.assign(new Error("instructions are what to do each time, in plain words"), { code: "bad_input" });
+        const zone = (() => { const z = ctx.config && ctx.config.planner && ctx.config.planner.timezone; return validZone(z) ? String(z) : systemZone(); })();
+        let schedule;
+        try { schedule = routineSchedule(String(i.when || ""), zone); } catch (e) { throw Object.assign(new Error(/** @type {Error} */ (e).message), { code: "bad_input" }); }
+        const every = cron.describe(schedule, zone);
+        const json = JSON.stringify({ name, owner: await ownerOf(meta, me), schedule, when: String(i.when).slice(0, 200), instruction: instruction.slice(0, 2000), emits: ROUTINE_EMITS, timeout: 30, memory: false,
+          summary: { when: `Runs ${every}`.slice(0, 240), do: instruction.split("\n")[0].slice(0, 240) } }, null, 2);
+        const checked = folderMod.checkFiles(name, json, ROUTINE_WATCH_JS);
+        if (checked.problems.length) throw Object.assign(new Error(checked.problems.join("; ")), { code: "bad_input" });
+        await putDef(name, json, ROUTINE_WATCH_JS);
+        rt.ownWritten(name, me);
+        const on = rt.routineOn(name);
+        const card = rt.card(name); remember(meta, card);
+        return { ...on, card, next: "Tell the person in plain words what you set up and when it first runs." };
+      },
+    });
+    // The owning agent manages its own Routines and Watchers (never another agent's or a person's). Pausing is watchers.pause, open to anyone it is shown to.
+    tool("watchers.own.resume", {
+      callers: [...PEOPLE, "module", ...MODEL],
+      description: "Resume one of your own Routines or Watchers that you or Vyre paused. One a person paused stays paused until they resume it; a Watcher waiting for its first test turns on when watchers.test passes.",
+      input: named,
+      run: async ({ name }, meta = {}) => {
+        mustOwn(meta, String(name));
+        const r = rt.row(String(name));
+        if (r && r.paused && r.paused_by === "person") throw Object.assign(new Error(`a person paused ${name}; only they resume it`), { code: "denied" });
+        if (r && r.paused && r.paused_by === "waiting") throw Object.assign(new Error(`${name} turns on when watchers.test passes`), { code: "denied" });
+        return rt.resume(String(name), {});
+      },
+    });
+    tool("watchers.own.run", { callers: [...PEOPLE, "module", ...MODEL], description: "Run one of your own Routines or Watchers now and return what happened.", input: named,
+      run: async ({ name }, meta = {}) => { mustOwn(meta, String(name)); return rt.run(String(name)); } });
+    tool("watchers.own.delete", { callers: [...PEOPLE, "module", ...MODEL], description: "Delete one of your own Routines or Watchers. What it found stays.", input: named,
+      run: async ({ name }, meta = {}) => { mustOwn(meta, String(name)); return rt.remove(String(name)); } });
+
     // A teammate's standing duty is a watcher the teammates module manages for a person who turned it on (CHAT 09:21).
     // Its own tools, reach modules, so a model's "asked" gate on watchers.create never stands in a teammate's way.
     tool("watchers.duty.create", {
@@ -228,12 +329,31 @@ export default {
     ctx.tool("watchers.shown", { description: "The watcher cards shown in a thread, with the hash each card carried when it was shown: { project, kinds, watchers: [{ name, hash, title, state, project, at }] }. Answered from a record made when watchers.card or watchers.preset served the card, never from the folder now. The sessions module's call.", input: { type: "object", required: ["thread"], properties: { thread: str } },
       run: async ({ thread }) => {
         const watchers = shown.list(thread);
+        // an agent's own Routines and Watchers asked for in this chat show here for as long as they exist, not only until a restart
+        const have = new Set(watchers.map(w => w.name));
+        for (const w of rt.list().watchers) if (w.agent && w.thread === thread && !have.has(w.name)) watchers.push({ name: w.name, hash: w.hash, title: w.title, state: w.state, project: w.project, at: null });
         return { project: watchers.length ? watchers[watchers.length - 1].project : null, kinds: PRESET_KINDS, watchers };
       } });
+    /**
+     * An agent's own watcher may use what is lent to its agent and nothing else: each Vault item or Connection it names that is not lent shows as a need, with the
+     * item's name, so the person can let the agent use it (Vault, the item, Can use it, without seeing it). Never a value.
+     */
+    const withNeeds = async (/** @type {any} */ card) => {
+      const own = card && card.owner && card.owner.kind === "agent" ? card.owner.agent : null;
+      if (!own || !card.facts || !Array.isArray(card.facts.credentials)) return card;
+      const needs = [];
+      for (const c of card.facts.credentials) {
+        let item = String(c.item || "");
+        if (item.startsWith("google:")) { const r = await ctx.call("google.accounts", {}).catch(() => null); const a = r && Array.isArray(r.data) ? r.data.find((/** @type {any} */ x) => `google:${x.name}` === item) : null; item = a && a.auth && a.auth.item ? String(a.auth.item) : item; }
+        const g = await ctx.call("vault.granted", { name: item, watcher: card.name, agent: own }).catch(() => null);
+        if (!(g && g.data && g.data.granted)) needs.push({ item, host: c.host || null });
+      }
+      return needs.length ? { ...card, needs } : card;
+    };
     tool("watchers.card", {
       description: "What to show before a watcher is turned on: when, check and do lines, what it reads, whether it acts, its cost, and the hash.",
       input: named,
-      run: async ({ name }, meta = {}) => { await mustSee(meta, name); const c = rt.card(name); remember(meta, c); return c; },
+      run: async ({ name }, meta = {}) => { await mustSee(meta, name); const c = await withNeeds(rt.card(name)); remember(meta, c); return c; },
     });
     tool("watchers.preset", {
       description: "Write a watcher for a common source (kind: mail, calendar, repo, slack, feed, connector, pr) from a few fields, left off with its card.",
@@ -252,7 +372,11 @@ export default {
       },
     });
     ctx.tool("watchers.pause", { callers: [...PEOPLE, "module", ...MODEL], description: "Stop a watcher running until it is resumed. The pause says who stopped it.", input: named,
-      run: async ({ name }, meta = {}) => { await mustSee(meta, name); const m = /** @type {any} */ (meta); return rt.pause(name, `paused by ${m.agent || m.caller || "someone"}`); } });
+      run: async ({ name }, meta = {}) => {
+        await mustSee(meta, name); const m = /** @type {any} */ (meta);
+        const me = callingAgent(m), person = isPerson(m.caller) && !me;
+        return rt.pause(name, person ? "paused by you" : `paused by ${me || m.caller || "someone"}`, person ? "person" : me ? `agent:${me}` : "vyre");
+      } });
     ctx.tool("watchers.resume", { description: "Resume a paused watcher, clearing its failure count. The person's (or teammates' for a duty): an agent cannot undo a pause the person made.", input: { type: "object", required: ["name"], properties: { name: str, hash: str } }, run: async ({ name, hash }, { caller } = {}) => { owned(name, caller); return rt.resume(name, { hash: hash || null }); } });
     ctx.tool("watchers.logs", {
       description: "A watcher's recent runs, newest first: when, why (schedule, retry, create, hook, event, test), items seen and filed, error and log lines.",
@@ -265,14 +389,13 @@ export default {
       run: async ({ name, project, limit = 50 }, meta = {}) => {
         if (name) await mustSee(meta, name);
         const can = await scopeFor(meta, projectOfCwd, projectOfThread);
-        return rt.items({ name, project, limit: Math.min(500, Math.max(1, limit)) }).filter(it => can(it.project));
+        return rt.items({ name, project, limit: Math.min(500, Math.max(1, limit)) }).filter(it => visible(meta, can, it.watcher, it.project));
       },
     });
-    // What POST /v1/watchers/<name>/hook calls. A hook tool is reachable only through that route
-    // and is never listed; the token is what guards it.
+    // POST /v1/watchers/<name>/hook is retired: a webhook starts a Flow. The tool stays so the old address answers in words, and nothing runs.
     ctx.tool("watchers.hook", {
       hook: true,
-      description: "A webhook call for a watcher whose schedule is webhook.",
+      description: "Retired: a webhook starts a Flow now. Answers that, and runs nothing.",
       input: { type: "object", required: ["name"], properties: { name: str, token: str, body: {} } },
       run: async ({ name, token, body }) => rt.hook(name, token, body),
     });
