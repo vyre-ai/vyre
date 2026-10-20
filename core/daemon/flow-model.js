@@ -4,13 +4,19 @@
 // (core/daemon/lend-key.js); a home account's key comes from the Switchboard's accountKey, which reads only the home's own rows. The inference door is then called as that person's chain with that key. Nothing
 // is sent when there is no account: the caller gets code no_account and the runner says "Connect an AI account to run this Flow".
 //
-// The door can call the API-key providers only (openrouter, openai-compatible): a sign-in account (Claude, Codex, Grok) cannot run a Flow's AI step yet, and is refused in words.
+// The door has a driver for every kind of account a person holds: the API keys (openrouter, openai-compatible: core/sessions/drivers/openrouter.js) and the sign-ins (a Claude setup token or login, a Codex
+// login, a Grok login, and the keys those CLIs take: core/sessions/drivers/signin-door.js, one non-interactive turn of the provider's own CLI). The driver is picked by the account's provider, and the call is
+// never moved to another account or provider when this one fails. This port is generic: any caller with a person (a Flow's AI step, a Routine, a Watcher) calls `call` with that person.
 
 import { isLoopbackHost } from "../../lib/api-endpoint.js";
+import { ACCOUNT_ENV } from "../../lib/credential-env.js";
 import { modelFor } from "../sessions/drivers/openrouter.js";   // the chat driver's own pick of an OpenRouter model (its default when the account names none)
 
-/** The providers the inference door has a driver for, in the order a default is looked for. */
-export const DOOR_PROVIDERS = Object.freeze(["openrouter", "openai-compatible"]);
+/** The API-key providers (an HTTP call with the key) and the sign-in providers (the provider's own CLI, on the person's subscription or key). */
+export const KEY_PROVIDERS = Object.freeze(["openrouter", "openai-compatible"]);
+export const SIGNIN_PROVIDERS = Object.freeze(["claude", "codex", "grok"]);
+/** The providers the inference door has a driver for, in the order a default is looked for: a key first (as before), then a sign-in. */
+export const DOOR_PROVIDERS = Object.freeze([...KEY_PROVIDERS, ...SIGNIN_PROVIDERS]);
 const PERSON = /^per_[a-z0-9]{1,64}$/;
 const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
 
@@ -46,7 +52,7 @@ export function flowModel(o) {
     accountOk: async (q) => { if (!PERSON.test(String(q.person))) return false; try { const a = await accountOf(q); return Boolean(a && (a.person ? a.person === q.person : true)); } catch { return false; } },
     /**
      * One call through the door as `person`, on their account. `chainFor(person)` is that person's own chain in the Space's kernel, `door` that kernel's inference door.
-     * @param {{ person: string, account?: string, provider?: string, purpose: string, max_tokens: number, messages: any[], run: string, space: string, door: any, chainFor: (person: string) => any }} q
+     * @param {{ person: string, account?: string, provider?: string, purpose: string, max_tokens: number, messages: any[], expect?: any, run?: string, space: string, door: any, chainFor: (person: string) => any }} q
      */
     call: async (q) => {
       if (!PERSON.test(String(q.person))) throw refuse("this Flow has no person to run as, so nothing was sent", "no_person");
@@ -55,9 +61,14 @@ export function flowModel(o) {
       if (!a) throw refuse("Connect an AI account to run this Flow", "no_account");
       // never a home row for anyone but the home's owner, never another member's row (resolve already filters; this is the second lock)
       if (a.person && String(a.person) !== q.person) throw refuse("Connect an AI account to run this Flow", "no_account");
-      if (a.kind !== "api-key" || !DOOR_PROVIDERS.includes(String(a.provider))) throw refuse(`${a.label} cannot run a Flow's AI steps yet: add an API key (OpenRouter or OpenAI-compatible) and pick it under Runs on`, "no_account");
+      const provider = String(a.provider), signin = SIGNIN_PROVIDERS.includes(provider);
+      if (!DOOR_PROVIDERS.includes(provider) || (!signin && a.kind !== "api-key")) throw refuse(`${a.label} cannot run AI steps: pick another of your own AI accounts under Runs on`, "no_account");
+      if (signin && a.kind !== "login" && !(ACCOUNT_ENV[provider] && ACCOUNT_ENV[provider][a.kind])) throw refuse(`${a.label} cannot run AI steps: pick another of your own AI accounts under Runs on`, "no_account");
+      if (signin && a.base_url) throw refuse(`${a.label} sends its key to an address of its own, which AI steps do not use yet: pick another of your own AI accounts under Runs on`, "no_account");
+      if (signin && a.kind === "login" && a.needs) throw refuse(`Your ${a.label} sign-in is not finished. Sign in again in Settings, AI accounts.`, "signin_expired");
       let key = null;
-      if (a.person) {
+      if (signin && a.kind === "login") { /* a login holds no key: the provider's own sign-in is in the account's own folder */ }
+      else if (a.person) {
         const lend = o.registry.deps && o.registry.deps.lendKey;
         const lent = typeof lend === "function" ? await lend({ asker: q.person, account: String(a.id), space: q.space }) : { error: { code: "denied" } };
         if (lent.error) throw refuse(lent.error.code === "locked" ? `Unlock your own Vault so this Flow can use ${a.label}` : `${a.label} gave no key to this Flow: add the key to your own Vault again`, "no_credential");
@@ -66,7 +77,15 @@ export function flowModel(o) {
         const keyOf = o.registry.deps && o.registry.deps.accountKey;
         key = typeof keyOf === "function" ? await keyOf(a).catch(() => null) : null;
       }
-      if (typeof key !== "string" || !key) throw refuse(`${a.label} gave no key to this Flow: add it again under Settings, AI accounts`, "no_credential");
+      if (!(signin && a.kind === "login") && (typeof key !== "string" || !key)) throw refuse(`${a.label} gave no key to this Flow: add it again under Settings, AI accounts`, "no_credential");
+      if (signin) {
+        // the sign-in driver gets this one account: its own variable (a setup token or key, for its child only) or, for a login, its own folder (the Switchboard's accountHome: null where the spawner gives the uid's own)
+        const name = a.kind === "login" ? null : ACCOUNT_ENV[provider][a.kind];
+        const homeOf = o.registry.deps && o.registry.deps.accountHome;
+        const home = a.kind === "login" && typeof homeOf === "function" ? homeOf(a) : null;
+        const credential = { account: { id: String(a.id), provider, kind: String(a.kind), label: String(a.label), person: a.person ? String(a.person) : null, ...(typeof a.uid === "number" ? { uid: a.uid } : {}) }, env: name ? { [name]: /** @type {string} */ (key) } : {}, home };
+        return q.door.call({ chain: await q.chainFor(q.person), purpose: q.purpose, provider, model: a.model ? String(a.model) : "default", max_output_tokens: q.max_tokens, messages: q.messages, credential, ...(q.expect ? { expect: q.expect } : {}) });
+      }
       const base = a.base_url ? String(a.base_url) : a.provider === "openrouter" ? testBase() : null;
       const model = a.provider === "openrouter" ? modelFor({ model: a.model ? String(a.model) : "" }, {}) : a.model ? String(a.model) : null;
       if (!model) throw refuse(`${a.label} has no model chosen: choose one for it under Settings, AI accounts`, "no_account");

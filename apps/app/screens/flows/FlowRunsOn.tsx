@@ -1,4 +1,4 @@
-// A Flow's "Runs on": which of your OWN AI accounts its AI steps use. Only your own accounts are listed (sessions.accounts.list answers only yours); saving writes a new version the box checks: only the Flow's
+// A Flow's "Runs on": which of your OWN AI accounts its AI steps use (a subscription sign-in or a key). Only your own accounts are listed (sessions.accounts.list answers only yours); saving writes a new version the box checks: only the Flow's
 // maker, or the owner for themselves, may change it, and only to their own account (kernel/flows/runs-as.js). The new version is approved like any other.
 import { useEffect, useState } from "react";
 import { View } from "react-native";
@@ -6,9 +6,9 @@ import { Button, Card, Chip, Divider, Row, Text, showToast } from "@vyre/ui";
 import { Sec } from "../places/Frame";
 import { callT } from "../../src/real/call-tool";
 import { defineReal } from "./builder-source";
-import { runsOnChoices, runsOnLine, withRunsOn } from "./runs-on-model.js";
+import { choiceKind, runsOnChoices, runsOnLine, withRunsOn } from "./runs-on-model.js";
 
-type Choice = { id: string; provider: string; label: string };
+type Choice = { id: string; provider: string; label: string; kind: string };
 
 export function FlowRunsOn({ id, flow, onSaved }: { id: string; flow: unknown; onSaved: () => void }) {
   const [accounts, setAccounts] = useState<unknown[] | null>(null);
@@ -29,12 +29,12 @@ export function FlowRunsOn({ id, flow, onSaved }: { id: string; flow: unknown; o
         {choices.map((c) => (
           <View key={c.id}>
             <Divider />
-            <Row dense title={c.label} sub={c.provider === "openrouter" ? "OpenRouter key" : "OpenAI-compatible key"}
+            <Row dense title={c.label} sub={choiceKind(c)}
               end={current?.account === c.id ? <Chip tone="ok">In use</Chip> : <Button kind="ghost" size="sm" label={busy === c.id ? "Saving" : "Use this"} disabled={busy !== null} onPress={() => void pick(c)} />} />
           </View>
         ))}
       </Card>
-      {accounts && !choices.length ? <Text tone="muted">You have no API key account yet. Add one under Settings, AI accounts: a Flow's AI steps cannot run on a sign-in account yet.</Text> : null}
+      {accounts && !choices.length ? <Text tone="muted">You have no AI account of your own yet. Connect one in Settings, AI accounts: a subscription (Claude, Codex, Grok) or a key.</Text> : null}
     </Sec>
   );
 }

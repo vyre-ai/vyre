@@ -68,21 +68,22 @@ export async function runsAsChecked(store, ctx) {
 
 /**
  * One model call of a step, as the Flow's runs-as person, on their account. With no `model` port (an in-memory kernel in a test) the kernel's own model door is called as the run's chain, as before.
- * @param {{ ports: any, k: any, store: any, ctx: any, chain: any, alert: (title: string, form: any, idem: string) => Promise<any>, purpose: string, max_tokens: number, messages: any[], day: string }} o
+ * @param {{ ports: any, k: any, store: any, ctx: any, chain: any, alert: (title: string, form: any, idem: string) => Promise<any>, purpose: string, max_tokens: number, messages: any[], day: string, expect?: any }} o   expect: what the step reads its answer as (lib/model-answer.js), handed to the driver
  */
 export async function modelCall(o) {
   const { ctx } = o;
   if (typeof o.ports.model !== "function") {
     const m = o.ports.model || { provider: "default", model: "default" };
-    return o.k.model.call({ chain: o.chain, purpose: o.purpose, provider: m.provider, model: m.model, max_tokens: o.max_tokens, messages: o.messages });
+    return o.k.model.call({ chain: o.chain, purpose: o.purpose, provider: m.provider, model: m.model, max_tokens: o.max_tokens, messages: o.messages, ...(o.expect ? { expect: o.expect } : {}) });
   }
   const who = await runsAsChecked(o.store, ctx);
   const set = ctx.view.flow.runs_on || {};
   try {
-    return await o.ports.model({ person: who, ...(set.account ? { account: set.account } : {}), ...(set.provider ? { provider: set.provider } : {}), purpose: o.purpose, max_tokens: o.max_tokens, messages: o.messages, run: ctx.run.id });
+    return await o.ports.model({ person: who, ...(set.account ? { account: set.account } : {}), ...(set.provider ? { provider: set.provider } : {}), purpose: o.purpose, max_tokens: o.max_tokens, messages: o.messages, ...(o.expect ? { expect: o.expect } : {}), run: ctx.run.id });
   } catch (e) {
     const code = e && /** @type {any} */ (e).code;
-    if (code === "no_account" || code === "no_credential") {
+    // a sign-in that has expired is the same kind of thing: the person fixes it in Settings, AI accounts, and is told so on a card
+    if (code === "no_account" || code === "no_credential" || code === "signin_expired") {
       const name = ctx.view.flow.label || ctx.view.flow.name;
       // the runs-as person (the approver, checked above) is told once a day per Flow, in the Needs-you list
       await o.alert(`${name}: ${code === "no_account" ? NO_ACCOUNT : String(/** @type {any} */ (e).message)}`, { kind: "no_ai_account", flow: ctx.run.flow, run: ctx.run.id }, `no-account:${ctx.run.flow}:${o.day}`).catch(() => {});
