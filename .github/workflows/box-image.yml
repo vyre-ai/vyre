@@ -271,9 +271,12 @@ jobs:
           docker compose $F up -d vyre
           V=$(docker compose $F ps -q vyre); export V
           # every look inside is as uid vyre (1000): the box's container drops every capability, so root there cannot open vyred's home or the bearer's folder
+          # A person's call, proved the way a paired phone proves it (scripts/rc-smoke/person.mjs): a throwaway device key in this throwaway box's own db
+          # signs the one call and is removed again, and vyred's own presence checks run unchanged. docker exec has no person at a terminal, so a bare socket call is refused.
+          docker cp scripts/rc-smoke/person.mjs "$V":/tmp/person.mjs
           cat > "$RUNNER_TEMP/call.sh" <<'EOF'
-          # call.sh <tool> <json>: one call as the person at vyred's socket (the CLI's own uid), in the vyre container; prints the answer
-          docker exec -u 1000:1000 -e T="$1" -e I="$2" "$V" node -e 'import("/opt/vyre/core/daemon/client.js").then(async m => { const r = await m.call(process.env.T, JSON.parse(process.env.I), { caller: "cli", timeout: 240000 }); console.log(JSON.stringify(r)); }).catch(e => console.log(JSON.stringify({ error: { message: String(e && e.message || e) } })))'
+          # call.sh <tool> <json>: one call as the person, at vyred's socket as uid vyre; prints the answer
+          docker exec -u 1000:1000 "$V" node /tmp/person.mjs "$1" "$2"
           EOF
           i=0
           until docker exec -u 1000:1000 "$V" node -e 'import("/opt/vyre/core/daemon/client.js").then(async m => { const r = await m.request("GET", "/v1/health", undefined, { timeout: 3000 }); process.exit(r.error ? 1 : 0); }).catch(() => process.exit(1))' 2>/dev/null; do
