@@ -19,6 +19,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - feat(shell): the one resize handle (ResizeHandle and useStoredWidth from @vyre/ui) now also snaps a foldable pane shut when dragged past its least width and opens a folded pane when dragged out from its edge; the sidebar uses both, with a least width of 180.
 - feat(shell): the right pane. openWho(kind, id) from @vyre/ui (ui/shell/who.ts) opens an agent's, a person's or a group's pane beside the main view, resizable with the shared handle, closed by Escape, its button or Cmd Option B; the chat screens register their WhoPane with registerWhoPane. A right-click on a sidebar row opens it (whoPress for avatars elsewhere). The sidebar lists who: two chats with one person are one row. The foot menu has Sign-in and devices.
 - feat(shell): Cmd N is a new chat with your assistant in every place; the Chat section's search is Search chats (threads are found there, the sidebar lists who); a small Details button at the top right brings back the last pane (Cmd Option B); a long press on a face opens that one's pane (a sheet on a phone); Files' sidebar rows and headers use the same row, gutter and section-label tokens as every other section; the account menu has a phone picture.
+- test(chat): gallery pictures for the empty chat (app and phone, both themes) and the who pane: an agent's Threads (both themes), Computer, Routines and Watchers, Files, a person and a group (phone width, dark).
 
 ## 0.6.4
 

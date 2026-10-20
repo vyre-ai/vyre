@@ -12,7 +12,7 @@ import { agentWords } from "../../src/state/agent-name.js";
 import { whoLabel, type WhoKind } from "./who-model.js";
 
 export type { WhoKind };
-type AgentTab = "threads" | "computer" | "routines" | "files";
+export type AgentTab = "threads" | "computer" | "routines" | "files";
 type GroupTab = "members" | "threads";
 const AGENT_TABS: [AgentTab, string][] = [["threads", "Threads"], ["computer", "Computer"], ["routines", "Routines"], ["files", "Files"]];
 
@@ -24,13 +24,13 @@ const AGENT_TABS: [AgentTab, string][] = [["threads", "Threads"], ["computer", "
  * Picking a thread opens it in the main chat view (/u/chats/<id>); New thread opens an empty chat with that agent (/u/chats/new-thread?agent=<name>), where the first message creates it.
  * `id` is the agent's name, the person's id (with or without "person:") or the group's chat id. `onClose` (the shell's) runs before the main view navigates, so a pane on a phone closes itself.
  */
-export function WhoPane({ kind, id, onClose }: { kind: WhoKind; id: string; onClose?: () => void }) {
+export function WhoPane({ kind, id, onClose, tab }: { kind: WhoKind; id: string; onClose?: () => void; /** The agent tab to open on (Threads by default). */ tab?: AgentTab }) {
   const onOpen = onClose; // on a phone the pane closes itself before the main view navigates
   const router = useRouter();
   const go = (path: string) => { onOpen?.(); router.push(path as never); };
   if (kind === "person") return <PersonPane id={id} />;
   if (kind === "group") return <GroupPane id={id} go={go} />;
-  return <AgentPane name={id} go={go} onOpen={onOpen} />;
+  return <AgentPane name={id} go={go} onOpen={onOpen} first={tab} />;
 }
 
 function Head({ name, family, id, line }: { name: string; family: "person" | "assistant"; id: string; line?: string }) {
@@ -42,8 +42,8 @@ function Head({ name, family, id, line }: { name: string; family: "person" | "as
   );
 }
 
-function AgentPane({ name, go, onOpen }: { name: string; go: (p: string) => void; onOpen?: () => void }) {
-  const [tab, setTab] = useState<AgentTab>("threads");
+function AgentPane({ name, go, onOpen, first }: { name: string; go: (p: string) => void; onOpen?: () => void; first?: AgentTab }) {
+  const [tab, setTab] = useState<AgentTab>(first ?? "threads");
   const shown = agentWords(name);
   return (
     <View style={{ gap: 12 }} accessibilityLabel={`About ${shown}`}>
@@ -66,7 +66,7 @@ function PersonPane({ id }: { id: string }) {
   const pid = id.replace(/^person:/, "");
   const [who, setWho] = useState<{ name: string; role: string } | null | undefined>(undefined);
   useEffect(() => {
-    if (allowsMock()) { setWho({ name: pid, role: "" }); return; }
+    if (allowsMock()) { setWho({ name: "Dana Okafor", role: "Partner" }); return; }
     let live = true;
     void tool<{ actors?: { id: string; name?: string; role?: string; title?: string }[] }>("records.actors", {}).then((r) => {
       if (!live) return;
@@ -86,7 +86,9 @@ function PersonPane({ id }: { id: string }) {
 }
 
 function GroupPane({ id, go }: { id: string; go: (p: string) => void }) {
-  const here = useChatMembers(id);
+  const real = useChatMembers(id);
+  // the sample world has no box to ask: a group of two people and an assistant
+  const here = allowsMock() ? { ...real, members: [{ id: "person:dana", name: "Dana Okafor", family: "person" as const }, { id: "person:lee", name: "Lee Park", family: "person" as const }, { id: "agent:kit", name: "kit", family: "assistant" as const }] } : real;
   const [tab, setTab] = useState<GroupTab>("members");
   const tabs: [GroupTab, string][] = [["members", `Members${here.members.length ? ` (${here.members.length})` : ""}`], ["threads", "Threads"]];
   return (

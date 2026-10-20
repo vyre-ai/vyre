@@ -51,6 +51,8 @@ import { DRAFTS } from "../screens/records-setup/data";
 import { DocumentsBar } from "../screens/records/DocumentsBar";
 import { GroupedTasksDemo, ImportDemo, RecordFormDemo, RecordPageDemo } from "../screens/records-setup/RecordDemos";
 import { ChatComposer } from "../src/chat/ChatComposer";
+import { WhoPane } from "../screens/chats/WhoPane";
+import NewThreadScreen from "../screens/chats/NewThreadScreen";
 import { FileViewerFixture } from "../ui/files/Fixture";
 import { ChatPanel, type PanelPage } from "../src/chat/ChatPanel";
 import { sampleAccounts, sampleGroups, sampleNow } from "../src/models/mock-models.js";
@@ -102,6 +104,12 @@ function Sample({ name }: { name: string }) {
   const { phone } = useUiTheme();
   // An agent's Routines and Watchers as its panel beside a chat lists them, and a Watcher's card in the chat where the person asked for it (sample data, no box).
   if (name === "agent-routines") return <View style={{ maxWidth: 360 }}><RoutinesView agent="scout" rows={SAMPLE_ROWS} onAct={() => {}} /></View>;
+  // The empty chat a new thread opens (the title, the start of the chat, the composer focused at the bottom) and the who pane beside a chat, on the sample world.
+  if (name === "chat-empty") return <View style={{ height: 640, borderRadius: 12, overflow: "hidden" }}><NewThreadScreen /></View>;
+  if (name.startsWith("who-")) {
+    const [, kind, tab] = name.split("-");
+    return <View style={{ maxWidth: 360 }}><WhoPane kind={kind === "agent" ? "agent" : kind === "person" ? "person" : "group"} id={kind === "agent" ? (tab === "computer" ? "ads" : "kit") : kind === "person" ? "person:dana" : "chat_group"} tab={(tab as any) || undefined} /></View>;
+  }
   if (name === "watcher-card") {
     const card = watcherCardOf({ name: "northwind-invoices", hash: "h1", state: "paused", waiting: true, kind: "watcher", owner: { kind: "agent", agent: "scout", person: "per_self", thread: "t1" },
       lines: { when: "Every 15 minutes", check: "Is it an invoice from Northwind?", do: "Tells you here" },

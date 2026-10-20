@@ -4659,6 +4659,65 @@
      "component": "flow-ai-step"
     }
    }
+  },
+  "chat-empty": {
+   "title": "An empty chat with the assistant, ready to type",
+   "screens": {
+    "full": {
+     "component": "chat-empty"
+    },
+    "compact": {
+     "component": "chat-empty"
+    }
+   }
+  },
+  "who-agent-threads": {
+   "title": "Pane: an agent's Threads",
+   "screens": {
+    "compact": {
+     "component": "who-agent-threads"
+    }
+   }
+  },
+  "who-agent-computer": {
+   "title": "Pane: an agent's Computer",
+   "screens": {
+    "compact": {
+     "component": "who-agent-computer"
+    }
+   }
+  },
+  "who-agent-routines": {
+   "title": "Pane: an agent's Routines and Watchers",
+   "screens": {
+    "compact": {
+     "component": "who-agent-routines"
+    }
+   }
+  },
+  "who-agent-files": {
+   "title": "Pane: an agent's Files",
+   "screens": {
+    "compact": {
+     "component": "who-agent-files"
+    }
+   }
+  },
+  "who-person": {
+   "title": "Pane: a person",
+   "screens": {
+    "compact": {
+     "component": "who-person"
+    }
+   }
+  },
+  "who-group": {
+   "title": "Pane: a group",
+   "screens": {
+    "compact": {
+     "component": "who-group"
+    }
+   }
   }
  }
 }
