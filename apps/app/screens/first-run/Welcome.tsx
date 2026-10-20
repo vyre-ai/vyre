@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { Pressable, Text as RNText, TextInput, View, type TextInputProps } from "react-native";
+import { Platform, Pressable, Text as RNText, TextInput, View, type TextInputProps } from "react-native";
 import { Appear, Segmented, VyreMark, useAppearance, useUiTheme } from "@vyre/ui";
 import { hourOf } from "../../src/time/show.js";
 import { pickGreeting } from "./greetings.js";
@@ -90,7 +90,7 @@ export function ThemeToggle() {
 
 /**
  * The first screen: the Vyre mark, a big greeting that rises word by word with a playful line, then sign-in right here ("Sign in to [space].vyre.run", the last Space filled in, Enter goes on),
- * "New here? Get started", a quiet "Sign in with GitHub". The corners carry the theme switch (three icons: Light, Match this device, Dark), Privacy and Terms, and who made it.
+ * "New here? Get started", a quiet "Sign in with GitHub". On the web and in the Mac app the caret starts in the Space field (a phone keeps its keyboard down until a tap). The corners carry the theme switch (three icons: Light, Match this device, Dark), Privacy and Terms, and who made it.
  * Every colour is a theme token named in WELCOME_TONES, so each line reads in light and dark.
  */
 export function Welcome({ phone, failure, onSignIn, onStart, onGithub }: { phone: boolean; failure?: string; onSignIn: (space: string) => void; onStart: () => void; onGithub: () => void }) {
@@ -111,7 +111,7 @@ export function Welcome({ phone, failure, onSignIn, onStart, onGithub }: { phone
         <WelcomeGreeting phone={phone} greeting={greeting} line={line} />
         <Appear index={6} style={{ width: "100%", alignItems: "center" }}>
           <PillField lead={WELCOME_COPY.signInTo} tail={WELCOME_COPY.suffix} value={space} onChangeText={(v) => { setSpace(v); setBad(""); }} onGo={go} goLabel="Continue"
-            input={{ placeholder: WELCOME_COPY.placeholder, accessibilityLabel: "Space name" }} />
+            input={{ placeholder: WELCOME_COPY.placeholder, accessibilityLabel: "Space name", autoFocus: Platform.OS === "web" }} />
           {bad || failure ? <RNText style={{ color: color[T.error], fontSize: 13, marginTop: 10 }} accessibilityLiveRegion="polite">{bad || failure}</RNText> : null}
         </Appear>
         <Appear index={7} style={{ alignItems: "center", gap: 14, marginTop: 20 }}>

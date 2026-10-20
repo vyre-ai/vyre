@@ -486,7 +486,9 @@ export function createFlowsHost(o) {
     const stages = createStages({ kernel: { ask: gw.ask, records: gw.records }, catalog, hook: true, ports: { roles: ports.roles, doer: projectRoleDoer }, clock, emit, gates: flows.runner.gatePort(), isAdmin: proposals && proposals.isAdmin,
       // a template's Automations: an attached Flow starts as the person who approved it, once per entry (the key); a Flow that is not running says so
       startFlow: async (/** @type {string} */ id, /** @type {any} */ input, /** @type {string} */ key) => { const f = await store.active(id); if (!f || !f.approver) throw new Error("it is not running (paused, disabled, or without an approved version)"); return flows.runner.start(id, input, personChain(f.approver.id), key); },
-      chain: () => k.chains.appendService(owner(), "flows", true) });
+      chain: () => k.chains.appendService(owner(), "flows", true),
+      // a stage task that puts an agent to work is assigned by the person who moved the record into the stage, so the agent's job runs as them (core/daemon/agent-wake.js reads assigned_by)
+      chainFor: (/** @type {string} */ p) => k.chains.forModule({ module: "flows", approver: personChain(p) }) });
 
     flows.attachStages(stages);
     // A Mac coming back online wakes the runs that wait for a Chrome (kernel/flows/runner.js #awaitDevice): the module event becomes a kernel-shaped event for the runner.

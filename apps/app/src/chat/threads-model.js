@@ -59,6 +59,36 @@ export function addPeopleLine(names, agent) {
   return `${who} will see this thread's earlier messages. ${agent} keeps what it knows from this thread.`;
 }
 
+/**
+ * The quiet word after an agent's name in the chat header: the thread's own title, or nothing when it has none yet ("New chat", "Chat") or only repeats the agent ("engineer").
+ * @param {string | null | undefined} title @param {string | null | undefined} agent
+ */
+export function threadSub(title, agent) {
+  const t = String(title ?? "").trim();
+  if (!t || /^(new chat|new thread|chat)$/i.test(t)) return undefined;
+  return t.toLowerCase() === String(agent ?? "").trim().toLowerCase() ? undefined : t;
+}
+
+/** A title that says nothing yet. @param {unknown} t */
+export const untitledTitle = (t) => !String(t ?? "").trim() || /^(new chat|new thread|chat)$/i.test(String(t ?? "").trim());
+
+/**
+ * A short title for a thread from its first message, as chat apps do: the first line, without mentions, tags, links or markup, cut at a word to about six words. Nothing for a command or a message
+ * with no words, so the thread keeps waiting for a better one.
+ * @param {unknown} text @returns {string}
+ */
+export function titleFrom(text) {
+  const line = String(text ?? "").trim().split(/\n/).find((l) => l.trim()) ?? "";
+  if (!line || line.startsWith("/")) return "";
+  const words = line.replace(/https?:\/\/\S+/g, " ").replace(/[@#][\w.-]+/g, " ").replace(/[*_`>~[\]()]/g, " ").replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+  if (!words.length) return "";
+  let out = "";
+  for (const w of words.slice(0, 6)) { if ((out + " " + w).trim().length > 48) break; out = (out + " " + w).trim(); }
+  if (!out) out = words[0].slice(0, 48);
+  out = out.replace(/[,;:.!?-]+$/, "");
+  return out.charAt(0).toUpperCase() + out.slice(1);
+}
+
 /** The hint under the composer for an agent: /new and /threads. @param {string} agent @param {boolean} working */
 export function agentHint(agent, working) {
   return working ? `Your message steers ${agent} now. Press Tab to queue it for after.` : `/new starts a new thread. /threads shows every thread with ${agent}, ready to continue.`;

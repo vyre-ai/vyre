@@ -63,7 +63,7 @@ export function whileWorking(mode, phone) {
 export const tabQueues = (ev, o) => ev.key === "Tab" && !ev.shiftKey && !ev.metaKey && !ev.ctrlKey && !ev.altKey && o.working && o.hasText && !o.listOpen;
 
 /** @param {"mac" | "server"} where */
-export const runsOnLabel = (where) => (where === "mac" ? "Runs on My Computer" : "Runs on Space's Cloud");
+export const runsOnLabel = (where) => (where === "mac" ? "Runs on this computer" : "Runs on the server");
 
 export { rankCommands };
 
