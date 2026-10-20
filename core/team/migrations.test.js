@@ -38,7 +38,10 @@ test("an existing box whose database already has a later step's column still rea
 
 test("an older box (the list as released before the charter drafts) gets the drafts table and nothing is re-run", () => {
   const db = fresh();
-  migrate(db, "team", MIGRATIONS.slice(0, -1));
+  // the list as it stood before the charter drafts step: every step up to (not including) it
+  const drafts = MIGRATIONS.findIndex(step => /team_charter_drafts/.test(step));
+  assert.ok(drafts > 0, "the charter drafts step is still in the list");
+  migrate(db, "team", MIGRATIONS.slice(0, drafts));
   migrate(db, "team", MIGRATIONS);
   assert.ok(db.prepare("SELECT 1 FROM sqlite_master WHERE name = 'team_charter_drafts'").get());
 });

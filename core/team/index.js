@@ -33,6 +33,7 @@ import { duties as makeDuties, makeWake, holdUnstamped, DUTIES_MIGRATION, DUTIES
 import { isPerson } from "../../lib/caller.js";
 import { connectOwn, noPerson } from "../../lib/own-account.js";
 import { projectRecordIdOf } from "../../lib/project-id.js";
+import { newPrefixedId } from "../../lib/id.js";
 import { rekeyLegacy } from "./rekey.js";
 import { LIVE_STATUSES } from "../../lib/thread-status.js";
 import { AIS, KEY_ACCOUNTS } from "../../lib/ai-ids.js";
@@ -110,10 +111,26 @@ export const MIGRATIONS = [
   DUTIES_HELD_MIGRATION,
   // the person who added a teammate (team.add's chain): the integrator a worktree teammate brings along runs its merges for them when a merge needs its AI turn
   `ALTER TABLE team_teammates ADD COLUMN added_by TEXT`,
+  // A teammate's stable id (brief P1): minted once when the row is made (lib/id.js newPrefixedId("tmt")), never reused, and it is what a task, a Flow or a
+  // Playbook names the teammate by (the agent name is only the label a person reads, and a role that is retired and made again is a new teammate). `computer` is
+  // the teammate's own computer: 0 unless a person turns one on (P1's guard), so no model ever hands a teammate a machine.
+  `ALTER TABLE team_teammates ADD COLUMN uid TEXT; ALTER TABLE team_teammates ADD COLUMN computer INTEGER NOT NULL DEFAULT 0`,
 ];
 
 /** How long stop() waits for in-flight dispatch and merge work before it stops anyway (milliseconds). */
 export const STOP_WAIT_MS = 10_000;
+
+/**
+ * Every teammate row carries a stable id (P1): a row made before the column existed is given one
+ * now, once, and keeps it for good (a retired teammate that comes back is the same teammate, and
+ * an undone row is gone, so its id is never given to another teammate). Exported so the test can
+ * prove the upgrade path without a second daemon.
+ * @param {any} db
+ */
+export const backfillUids = db => {
+  for (const r of db.prepare("SELECT agent FROM team_teammates WHERE uid IS NULL").all())
+    db.prepare("UPDATE team_teammates SET uid = ? WHERE agent = ?").run(newPrefixedId("tmt"), String(r.agent));
+};
 
 /** The providers a session can run on (core/sessions PROVIDERS). */
 const PROVIDER_IDS = [...AIS, ...KEY_ACCOUNTS];
@@ -176,9 +193,17 @@ export const accountChanged = (rec, resolved) => Boolean(rec && rec.account && r
  * may use and the models it runs on stay the defaults. Brief, instructions and isolation may come from the call. The person sets the rest.
  * @param {any} i the call's input @returns {string|null} why it is refused, or null
  */
-export const addRefusal = i => (i && (i.tools !== undefined || i.model !== undefined || i.helper_model !== undefined)
-  ? "a model adds a teammate with the default tools and models; the person sets tools, model and helper_model"
+export const addRefusal = i => (i && (i.tools !== undefined || i.model !== undefined || i.helper_model !== undefined || i.computer !== undefined)
+  ? "a model adds a teammate with the default tools and models; the person sets tools, model and helper_model in team.add, and gives a computer with computer: true"
   : i && i.isolation === "none" ? "a model does not choose isolation none (it runs in the person's own folder); leave isolation out, or use worktree or folder" : null);
+
+/**
+ * Whether a teammate may have a computer (P1's guard): only the person's own surface turns one on, and it says so twice over - computer: true, or a
+ * tools list that names the computer. A model, a session and the assistant never do: a teammate that can drive a machine is the person's act alone.
+ * @param {any} i the call's input @param {boolean} person whether the caller is the person's own surface
+ */
+export const canTurnOnComputer = (i, person) => Boolean(person && i
+  && (i.computer === true || (Array.isArray(i.tools) && i.tools.includes("computer"))));
 
 /**
  * The isolation a new teammate starts with: the call's own, else folder for the person's surface and worktree for a model (its own branch,
@@ -256,6 +281,7 @@ export default {
   async start(ctx) {
     ctx.store.migrate(MIGRATIONS);
     const db = ctx.store.db;
+    backfillUids(db);
     // Rule 2 on upgrade: a duty made before Vyre recorded who it runs as is the owner's only when its own row shows the owner made it; any other is held off until a person turns it on (duties.js holdUnstamped).
     // With no kernel there is one person, the owner, and nothing changes.
     if (ctx.kernel && typeof ctx.kernel.owner === "string" && ctx.kernel.owner) {
@@ -265,7 +291,7 @@ export default {
 
     // ---------------------------------------------------------------- shapes
 
-    const shapeT = r => r && ({ agent: String(r.agent), project: String(r.project), role: String(r.role),
+    const shapeT = r => r && ({ agent: String(r.agent), uid: r.uid == null ? null : String(r.uid), project: String(r.project), role: String(r.role),
       shared: JSON.parse(String(r.shared)), brief: r.brief == null ? null : String(r.brief),
       instructions: r.instructions == null ? null : String(r.instructions), model: String(r.model), helper_model: String(r.helper_model),
       tools: JSON.parse(String(r.tools)), isolation: String(r.isolation), thread: r.thread == null ? null : String(r.thread),
@@ -273,6 +299,7 @@ export default {
       thread_charter: r.thread_charter == null ? null : Number(r.thread_charter),
       filler: r.filler == null ? null : String(r.filler),
       main_sha: r.main_sha == null ? null : String(r.main_sha), test_command: r.test_command == null ? null : String(r.test_command),
+      computer: Boolean(r.computer),
       retired_at: r.retired_at == null ? null : Number(r.retired_at) });
     const shapeR = r => r && ({ id: String(r.id), teammate: String(r.teammate), project: String(r.project),
       from_kind: String(r.from_kind), from: String(r.from_label), reply_to: r.reply_to == null ? null : String(r.reply_to),
@@ -281,7 +308,8 @@ export default {
       attempt: Number(r.attempt), model: r.model == null ? null : String(r.model), thread: r.thread == null ? null : String(r.thread), asker: r.asker == null ? null : String(r.asker), created: Number(r.created_at), started: r.started_at == null ? null : Number(r.started_at),
       finished: r.finished_at == null ? null : Number(r.finished_at) });
 
-    const byAgent = agent => shapeT(db.prepare("SELECT * FROM team_teammates WHERE agent = ?").get(agent));
+    // A teammate is found by its agent name (what a person reads) or by its stable uid (what a task, a Flow or a Playbook names it by, P1).
+    const byAgent = agent => shapeT(db.prepare("SELECT * FROM team_teammates WHERE agent = ? OR uid = ?").get(agent, agent));
     const byRole = (project, role) => shapeT(db.prepare("SELECT * FROM team_teammates WHERE project = ? AND role = ? AND retired_at IS NULL").get(project, role));
     const retiredRole = (project, role) => shapeT(db.prepare("SELECT * FROM team_teammates WHERE project = ? AND role = ? AND retired_at IS NOT NULL").get(project, role));
     const byThread = thread => shapeT(db.prepare("SELECT * FROM team_teammates WHERE thread = ?").get(thread));
@@ -355,6 +383,24 @@ export default {
       const K = ctx.kernel;
       if (!K || typeof K.chain !== "function") return null;
       try { const c = await K.chain(meta); const h = c && Array.isArray(c.hops) ? c.hops.find((/** @type {any} */ x) => x && x.actor && x.actor.kind === "person") : null; return h ? String(h.actor.id) : null; } catch { return null; }
+    };
+    /**
+     * Did the person's own words ask for a teammate of this role (P1's create-on-first-use)? The
+     * same question the registry asks before an asked tool, asked here for team.ask (whose reach is
+     * "anyone": a teammate chains to a teammate, and nobody else makes a teammate): the key
+     * team.act.target builds, an act_out ask via team, in this thread or the thread it descends
+     * from, used up once it has made one.
+     * @param {string} project the Project record's id @param {string} role @param {any} meta
+     */
+    const saidAdd = async (project, role, meta) => {
+      let lineage;
+      if (meta.thread) {
+        const l = await ctx.call("threads.lineage", { thread: String(meta.thread) }).catch(() => null);
+        if (l && l.data && Array.isArray(l.data.lineage)) lineage = l.data.lineage;
+      }
+      const r = await ctx.call("vault.said.match", { kind: "act_out", via: "team", to: [`team.add:${project}/${role}`], consume: true,
+        ...(meta.thread ? { thread: String(meta.thread) } : {}), ...(lineage ? { lineage } : {}), ...(meta.agent ? { agent: meta.agent } : {}) }).catch(() => null);
+      return Boolean(r && r.data && r.data.matched === true);
     };
     /** Whether a person may change this project's teammates (charters, duties): the owner, an admin, or someone on the project's team, as for team.ask. @param {string} person @param {string} project */
     const mustBeOnTeam = async (person, project) => {
@@ -961,21 +1007,90 @@ export default {
      */
     const insertTeammate = i => {
       const agent = agentName(i.role, i.slug);
+      // The stable id (P1): minted here, once, and never handed to another teammate. An undone
+      // teammate and a later one are two teammates, so the second gets its own id. It is never
+      // read from the call: a caller may not name a teammate's id.
+      const uid = newPrefixedId("tmt");
       const now = Date.now();
-      db.prepare(`INSERT INTO team_teammates (agent, project, role, shared, brief, instructions, model, helper_model, tools, isolation, main_sha, test_command, state, created_at, updated_at, added_by)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?, 'asleep', ?,?,?)`).run(agent, i.project, i.role, "[]", i.brief || null, i.instructions || null,
-        i.model || "teammate", i.helper_model || "helper", JSON.stringify(i.tools || []), i.isolation || "folder", i.main_sha || null, i.test_command || null, now, now, i.added_by || null);
+      db.prepare(`INSERT INTO team_teammates (agent, project, role, shared, brief, instructions, model, helper_model, tools, isolation, main_sha, test_command, state, created_at, updated_at, added_by, uid, computer)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?, 'asleep', ?,?,?,?,?)`).run(agent, i.project, i.role, "[]", i.brief || null, i.instructions || null,
+        i.model || "teammate", i.helper_model || "helper", JSON.stringify(i.tools || []), i.isolation || "folder", i.main_sha || null, i.test_command || null, now, now, i.added_by || null, uid, i.computer ? 1 : 0);
       ctx.events.emit("teammate.created", { agent, project: i.project, role: i.role });
       const row = byAgent(agent);
       void record("add", row);
       return row;
     };
 
+    /**
+     * The making of a teammate, shared by team.add and team.ask's create-on-first-use (P1): a role
+     * that is live already is an error, a retired role comes back as the same teammate (the same
+     * agent name, the same notes, the same uid), and a new role is a new row with a fresh uid. A
+     * worktree teammate brings the project's integrator along, and a project that is not a git repo
+     * falls back to the folder with a notice.
+     * @param {any} i the add's input, with `project` already the Project record's id
+     * @param {any} meta the call's own meta
+     * @param {string|null} addedBy the person on the call's own chain (never from input)
+     */
+    const createOrReviveTeammate = async (i, meta, addedBy) => {
+      const project = i.project;
+      // The Project is a record: its short name only names the agent, once.
+      const slug = (await refOf(project)).slug;
+      if (byRole(project, i.role)) throw new Error(`${slug} already has a teammate ${i.role}`);
+      const agent = agentName(i.role, slug);
+      const back = retiredRole(project, i.role);
+      if (back) {
+        // Bringing a retired teammate back: same agent, so its notes and history are still there, and
+        // the same uid: it is the same teammate coming back, not a new one. Its computer follows the
+        // person: the one who gave it keeps it (and may name it again), and nobody else can hand a
+        // teammate a machine (P1), so a model's revive leaves it with none.
+        const computer = isPerson(meta.caller) ? (i.computer ? 1 : (back.computer ? 1 : 0)) : 0;
+        db.prepare("UPDATE team_teammates SET retired_at = NULL, brief = COALESCE(?, brief), instructions = COALESCE(?, instructions), state = 'asleep', computer = ?, updated_at = ? WHERE agent = ?")
+          .run(i.brief || null, i.instructions || null, computer, Date.now(), agent);
+        ctx.events.emit("teammate.created", { agent, project, role: i.role, revived: true });
+        void record("add", byAgent(agent));
+        return { ...byAgent(agent), revived: true };
+      }
+      if (byAgent(agent)) throw new Error(`there is already an agent ${agent}`);
+      let isolation = addIsolation(i, isPerson(meta.caller));
+      let notice;
+      if (isolation === "worktree") {
+        const home = await projectHome(project);
+        const repo = home && await repoRoot(home);
+        const base = repo && await currentBranch(home);
+        if (!repo || !base) {
+          // Never git init on the person's behalf: fall back to sharing the project's folder,
+          // with why said plainly, rather than refusing outright and leaving them to guess a
+          // different isolation themselves (the lead's call, after an earlier pass of this
+          // that only refused: the message and the behavior have to agree).
+          isolation = "folder";
+          notice = !repo ? `${slug} isn't a git repo; teammates will share the folder`
+            : `${slug}'s repo has no branch checked out to start ${i.role} from; teammates will share the folder`;
+        } else {
+          const w = await ensureWorktree(repo, i.role, base);
+          if (!w.ok) throw new Error(`could not make ${i.role}'s worktree: ${w.stderr || "unknown git error"}`);
+          if (!byRole(project, INTEGRATOR_ROLE)) {
+            const iw = await ensureWorktree(repo, INTEGRATOR_ROLE, base);
+            if (iw.ok) {
+              insertTeammate({ project, slug, role: INTEGRATOR_ROLE, isolation: "worktree", added_by: addedBy,
+                brief: "Merges other teammates' finished work into this project's own branch once the tests pass.",
+                main_sha: await headSha(repo, B(base)), test_command: await detectTestCommand(repo) });
+              // One add made two teammates: say so, so the person sees the integrator it brought along.
+              notice = `${i.role} works in its own worktree, so an "${INTEGRATOR_ROLE}" teammate was added too: it merges finished work into ${base} once the tests pass`;
+            }
+            else ctx.log?.(`team: ${slug}'s integrator worktree failed, so it was not added: ${iw.stderr}`);
+          }
+        }
+      }
+      return { ...insertTeammate({ ...i, project, slug, isolation, added_by: addedBy }), ...(notice ? { notice } : {}) };
+    };
+
     ctx.tool("team.add", {
       description: "Add a teammate to a project: role, brief, and optionally instructions, tools and isolation. Makes agent <role>-<project>; `notice` says if isolation fell back.",
       input: { type: "object", required: ["project", "role"], properties: { project: { type: "string" }, role: { type: "string", description: "How sessions address it, e.g. \"design\"." },
         brief: { type: "string", description: "What work goes to this teammate." }, instructions: { type: "string" }, tools: { type: "array", items: { type: "string" } },
-        isolation: { type: "string", enum: ["worktree", "folder", "none"], description: "worktree: own git worktree and branch, brings an integrator teammate; falls back to folder (shared with other folder teammates) when the project is not a git repo." }, model: { type: "string" }, helper_model: { type: "string" } } },
+        isolation: { type: "string", enum: ["worktree", "folder", "none"], description: "worktree: own git worktree and branch, brings an integrator teammate; falls back to folder (shared with other folder teammates) when the project is not a git repo." },
+        model: { type: "string" }, helper_model: { type: "string" },
+        computer: { type: "boolean", description: "Give this teammate a computer of its own. The person's own act: a model, a session or the assistant may never turn one on." } } },
       // The person's act, and their agent's only on their own words: reach asked (the registry asks vault.said.match for team.add:<project>/<role>,
       // team.act.target), so a model, the assistant included, adds a teammate once when the person said to. A person's surface (the Deck's @role, the CLI)
       // is never asked. Never a teammate. The project check below stays as the second guard.
@@ -988,53 +1103,12 @@ export default {
         const project = needId(i.project);
         if (!NAME.test(i.role)) throw new Error("a role is lowercase letters, digits and dashes");
         if (i.role === INTEGRATOR_ROLE) throw Object.assign(new Error(`"${INTEGRATOR_ROLE}" is reserved: it comes on its own with a project's first isolation: worktree teammate`), { code: "denied" });
-        // The Project is a record: its short name only names the agent, once.
-        const slug = (await refOf(project)).slug;
-        if (byRole(project, i.role)) throw new Error(`${slug} already has a teammate ${i.role}`);
-        const agent = agentName(i.role, slug);
-        const back = retiredRole(project, i.role);
-        if (back) {
-          // Bringing a retired teammate back: same agent, so its notes and history are still there.
-          db.prepare("UPDATE team_teammates SET retired_at = NULL, brief = COALESCE(?, brief), instructions = COALESCE(?, instructions), state = 'asleep', updated_at = ? WHERE agent = ?")
-            .run(i.brief || null, i.instructions || null, Date.now(), agent);
-          ctx.events.emit("teammate.created", { agent, project, role: i.role, revived: true });
-          void record("add", byAgent(agent));
-          return { ...byAgent(agent), revived: true };
-        }
-        if (byAgent(agent)) throw new Error(`there is already an agent ${agent}`);
-        let isolation = addIsolation(i, isPerson(meta.caller));
-        let notice;
         // who added it, from the call's own chain (never input): the integrator this add may bring along runs a merge that needs its AI turn for them
         const addedBy = await personOnCall(meta);
-        if (isolation === "worktree") {
-          const home = await projectHome(project);
-          const repo = home && await repoRoot(home);
-          const base = repo && await currentBranch(home);
-          if (!repo || !base) {
-            // Never git init on the person's behalf: fall back to sharing the project's folder,
-            // with why said plainly, rather than refusing outright and leaving them to guess a
-            // different isolation themselves (the lead's call, after an earlier pass of this
-            // that only refused: the message and the behavior have to agree).
-            isolation = "folder";
-            notice = !repo ? `${slug} isn't a git repo; teammates will share the folder`
-              : `${slug}'s repo has no branch checked out to start ${i.role} from; teammates will share the folder`;
-          } else {
-            const w = await ensureWorktree(repo, i.role, base);
-            if (!w.ok) throw new Error(`could not make ${i.role}'s worktree: ${w.stderr || "unknown git error"}`);
-            if (!byRole(project, INTEGRATOR_ROLE)) {
-              const iw = await ensureWorktree(repo, INTEGRATOR_ROLE, base);
-              if (iw.ok) {
-                insertTeammate({ project, slug, role: INTEGRATOR_ROLE, isolation: "worktree", added_by: addedBy,
-                  brief: "Merges other teammates' finished work into this project's own branch once the tests pass.",
-                  main_sha: await headSha(repo, B(base)), test_command: await detectTestCommand(repo) });
-                // One add made two teammates: say so, so the person sees the integrator it brought along.
-                notice = `${i.role} works in its own worktree, so an "${INTEGRATOR_ROLE}" teammate was added too: it merges finished work into ${base} once the tests pass`;
-              }
-              else ctx.log?.(`team: ${slug}'s integrator worktree failed, so it was not added: ${iw.stderr}`);
-            }
-          }
-        }
-        return { ...insertTeammate({ ...i, project, slug, isolation, added_by: addedBy }), ...(notice ? { notice } : {}) };
+        // A computer is the person's act alone (P1): nobody else hands a teammate a machine, so the
+        // teammate that comes out of a model's add has none.
+        const computer = canTurnOnComputer(i, isPerson(meta.caller));
+        return createOrReviveTeammate({ ...i, project, computer }, meta, addedBy);
       },
     });
 
@@ -1363,7 +1437,7 @@ export default {
       run: async ({ project }) => {
         const live = serving(needId(project));
         const duties = live.flatMap(tm => dutyApi.list(tm.agent)).map(d => ({ id: d.id, teammate: d.teammate, title: d.title, hash: d.hash, enabled: d.enabled, started: d.started }));
-        return { roles: live.map(tm => ({ role: tm.role })), duties };
+        return { roles: live.map(tm => ({ role: tm.role, uid: tm.uid, computer: tm.computer })), duties };
       },
     });
 
@@ -1382,8 +1456,8 @@ export default {
         return rows.map(tm => {
           const queued = Number(/** @type {any} */ (db.prepare("SELECT COUNT(*) AS n FROM team_requests WHERE teammate = ? AND state = 'queued'").get(tm.agent)).n);
           const last = shapeR(db.prepare("SELECT * FROM team_requests WHERE teammate = ? AND state IN ('done','failed') ORDER BY finished_at DESC LIMIT 1").get(tm.agent));
-          return { agent: tm.agent, project: tm.project, role: tm.role, shared: tm.shared, brief: tm.brief, filler: tm.filler ? { kind: "agent", agent: tm.filler } : { kind: "default" }, state: tm.state, queued,
-            current_request: tm.current_request, last_result: last ? { request: last.id, state: last.state, result: last.result } : null };
+          return { agent: tm.agent, uid: tm.uid, project: tm.project, role: tm.role, shared: tm.shared, brief: tm.brief, filler: tm.filler ? { kind: "agent", agent: tm.filler } : { kind: "default" }, state: tm.state, queued,
+            computer: tm.computer, current_request: tm.current_request, last_result: last ? { request: last.id, state: last.state, result: last.result } : null };
         });
       },
     });
@@ -1448,14 +1522,15 @@ export default {
       run: async (i, meta) => {
         const choice = modelChoice(i.model);
         const project = await projectOf(meta, i);
-        const tm = byRole(project, i.to) || serving(project).find(x => x.role === i.to);
-        if (!tm) throw Object.assign(new Error(`${await slugOf(project)} has no teammate ${i.to} (team.list shows the roles)`), { code: "not_found" });
+        // The role asked for. No such role yet is not the end of the road: P1's create-on-first-use
+        // makes it, behind team.add's own checks (below, after every person and account guard).
+        let tm = byRole(project, i.to) || serving(project).find(x => x.role === i.to);
         const callerTm = callerTeammate(meta.agent);
         let via = [];
         if (callerTm) {
           const openReq = reqById(callerTm.current_request || "");
           const priorChain = openReq ? openReq.via : []; // every teammate already between the original caller and callerTm
-          if (priorChain.includes(tm.agent) || tm.agent === callerTm.agent) throw Object.assign(new Error(`a cycle: ${tm.agent} already waits on ${callerTm.agent} for this request; send it to another teammate, or let the first one finish`), { code: "denied" });
+          if (tm && (priorChain.includes(tm.agent) || tm.agent === callerTm.agent)) throw Object.assign(new Error(`a cycle: ${tm.agent} already waits on ${callerTm.agent} for this request; send it to another teammate, or let the first one finish`), { code: "denied" });
           // priorChain.length + callerTm itself is how many teammates are chained so far; refuse
           // before adding tm.agent as one more, so a chain never grows past MAX_VIA teammates.
           if (priorChain.length + 1 >= MAX_VIA) throw Object.assign(new Error(`requests may not chain past ${MAX_VIA} teammates deep; finish this one yourself or ask the person to split it`), { code: "denied" });
@@ -1488,21 +1563,56 @@ export default {
         if (ctx.kernel && (!forPerson || forPerson === "automation")) throw Object.assign(new Error(noPerson("Ask from your own signed-in Vyre. Nothing was queued.")), { code: "denied" });
         // a person's own request (anyone but the owner) runs on THEIR own AI account, in a session of its own (never the teammate's standing thread, which is on the owner's sign-in); one with none is refused here
         const mineAcct = await personAccount(forPerson, choice ? choice.provider : undefined, i.to).catch((/** @type {any} */ e) => { throw Object.assign(new Error(`${e.message} Nothing was queued.`), { code: e.code || "no_account" }); });
+        // P1's create-on-first-use: there is no teammate of that role yet, so this is team.add's own
+        // making, and it stands behind the same checks. Every person and account guard above has
+        // already passed, so a teammate is made only for a call that may serve it: nobody's
+        // teammate is created on the way to a refusal.
+        let made = null;
+        if (!tm) {
+          if (callerTm) throw Object.assign(new Error("a teammate cannot add teammates; that is the person's, or a session acting on their request"), { code: "denied" });
+          if (!NAME.test(String(i.to || ""))) throw Object.assign(new Error("a role is lowercase letters, digits and dashes (team.list shows the roles here)"), { code: "bad_input" });
+          if (i.to === INTEGRATOR_ROLE) throw Object.assign(new Error(`"${INTEGRATOR_ROLE}" is reserved: it comes on its own with a project's first isolation: worktree teammate (team.list shows the roles here)`), { code: "denied" });
+          // A retired teammate stays retired: an ask does not bring it back (team.add does). This is
+          // checked before the said-match, so the person's words are not spent on a refusal.
+          if (retiredRole(project, i.to)) throw Object.assign(new Error(`${await slugOf(project)} has no teammate ${i.to}: it was retired, and team.add brings it back`), { code: "not_found" });
+          if (!defaultEnabled(project)) throw Object.assign(new Error(`${await slugOf(project)} has no teammate ${i.to}, and this project's teammate default is off (team.default.set turns it on; team.list shows the roles)`), { code: "not_found" });
+          // The same said-check team.add stands behind: a model, a session or the assistant may only
+          // make a teammate the person's own words asked for (the same team.add:<project>/<role> ask,
+          // used up once). The person's own surface needs no words: they are the one asking.
+          if (!isPerson(meta.caller) && !await saidAdd(project, i.to, meta)) throw Object.assign(new Error(`no teammate ${i.to} here yet, and the person's own words have not asked for one: have the person say "set up a ${i.to} teammate for this project" in the chat, or run team.add themselves`), { code: "not_asked" });
+          const addedBy = await personOnCall(meta);
+          tm = await createOrReviveTeammate({ role: i.to, project }, meta, addedBy);
+          made = tm;
+          ctx.log?.(`team: ${tm.agent} was made on first use`);
+        }
         const filler0 = mineAcct ? null : await fillerOf(tm).catch(() => null);
         const creds0 = filler0 ? await use("agents.credentials", { agent: filler0.name }).catch(() => null) : null;
-        const checked = await use("threads.launch-check", { agent: tm.agent, agent_kind: "teammate", ...(forPerson ? { for_person: forPerson } : {}), ...(mineAcct ? { account: String(mineAcct.id), person: String(forPerson) } : {}), ...(creds0 && creds0.env ? { env: creds0.env } : {}), ...(creds0 && creds0.fallback ? { fallback: creds0.fallback } : {}) });
+        let checked;
+        try {
+          checked = await use("threads.launch-check", { agent: tm.agent, agent_kind: "teammate", ...(forPerson ? { for_person: forPerson } : {}), ...(mineAcct ? { account: String(mineAcct.id), person: String(forPerson) } : {}), ...(creds0 && creds0.env ? { env: creds0.env } : {}), ...(creds0 && creds0.fallback ? { fallback: creds0.fallback } : {}) });
+        } catch (e) {
+          // A teammate this call made is taken away again when its turn cannot run: a refused call
+          // leaves nothing behind, not even a teammate nobody asked for.
+          if (made) {
+            db.prepare("DELETE FROM team_teammates WHERE agent = ?").run(made.agent);
+            void record("remove", made);
+          }
+          throw e;
+        }
         const id = queueRequest({ teammate: tm.agent, project, from_kind, from, reply_to: meta.thread || null, via, text: i.text, refs: i.refs, priority, key: i.key, model: choice ? choice.label : null, asker: (checked && checked.asker) || forPerson || null });
+        // What the call made, when it made one: the person is told, not left to find it.
+        const made0 = made ? { made: { agent: made.agent, role: made.role, uid: made.uid, ...(made.notice ? { notice: made.notice } : {}) } } : {};
         if (i.wait) {
           const done = await new Promise(resolve => {
             const timer = setTimeout(() => { off(); resolve(null); }, ASK_WAIT_MS);
             const off = ctx.events.on("summon.finished", e => { if (e.payload.request === id) { clearTimeout(timer); off(); resolve(e); } });
           });
-          if (done) { const r = mustR(id); return { request: id, state: r.state, result: r.result, ...(r.model ? { model: r.model } : {}) }; }
+          if (done) { const r = mustR(id); return { request: id, state: r.state, result: r.result, ...(r.model ? { model: r.model } : {}), ...made0 }; }
         }
         const r = mustR(id);
         const position = r.state === "queued" ? db.prepare("SELECT COUNT(*) AS n FROM team_requests WHERE teammate = ? AND state = 'queued' AND (priority = 'urgent' AND NOT (? = 'urgent') OR created_at <= ?)")
           .get(tm.agent, r.priority, r.created).n : 0;
-        return { request: id, state: r.state, position: Number(position) || 0, ...(r.model ? { model: r.model } : {}) };
+        return { request: id, state: r.state, position: Number(position) || 0, ...(r.model ? { model: r.model } : {}), ...made0 };
       },
     });
 

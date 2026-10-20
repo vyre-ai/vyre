@@ -69,6 +69,19 @@ export async function boot(t) {
   return { root, d, stop, logs, tool, raw, project, launches };
 }
 
+/**
+ * The owner's own surface token: a call that carries it has the owner first on its chain, the way a
+ * person's own signed-in surface has. Used where a test needs a person on the call with a
+ * model-shaped caller label (the said-check applies to those, as it does for team.add).
+ * @param {any} d a started daemon
+ * @returns {Promise<{ token: string }>}
+ */
+export async function ownerToken(d) {
+  const OWNER = d.kernel.id.owner;
+  const chain = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-owner", person: OWNER, path: "direct", session: "s" });
+  return { token: (await d.kernel.surfaces.open(chain, {})).token };
+}
+
 export const GIT_ENV = { ...process.env, GIT_AUTHOR_NAME: "test", GIT_AUTHOR_EMAIL: "test@example.com", GIT_COMMITTER_NAME: "test", GIT_COMMITTER_EMAIL: "test@example.com" };
 export const git = (dir, args) => execFileSync("git", args, { cwd: dir, env: GIT_ENV, stdio: "pipe" }).toString();
 

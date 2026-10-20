@@ -14226,6 +14226,7 @@ Add a teammate to a project: role, brief, and optionally instructions, tools and
   - `project` string, required
   - `role` string, required: How sessions address it, e.g. "design".
   - `brief` string: What work goes to this teammate.
+  - `computer` boolean: Give this teammate a computer of its own. The person's own act: a model, a session or the assistant may never turn one on.
   - `helper_model` string
   - `instructions` string
   - `isolation` one of "worktree", "folder", "none": worktree: own git worktree and branch, brings an integrator teammate; falls back to folder (shared with other folder teammates) when the project is not a git repo.
