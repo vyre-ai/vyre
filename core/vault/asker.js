@@ -11,9 +11,11 @@ export const isAsker = caller => callerKind(/** @type {string} */ (caller)) === 
 /**
  * A model files a few grant requests at most: each shows on the owner's approvals list, and a flood is a way to get one approved unread. Counted per agent identity (modelKey: mcp:agent:kit and an agent label
  * on a person surface are one agent; every unnamed session is one), so a model does not get five per thread. Throws the refusal when the identity already has five waiting.
- * @param {any} db @param {unknown} caller
+ * @param {any} db @param {unknown} caller @param {string} [table]
  */
-export function requestCap(db, caller) {
+export function requestCap(db, caller, table = "vault_grant_requests") {
+  // the same cap for an agent's asks to send an item's secret to a new host (use.js, vault_use_requests)
+  if (table !== "vault_grant_requests" && table !== "vault_use_requests") throw new Error("no such request list");
   const mine = modelKey(String(caller));
-  if (/** @type {any[]} */ (db.prepare("SELECT by FROM vault_grant_requests").all()).filter(r => modelKey(String(r.by)) === mine).length >= 5) throw new Error("the owner has not answered this caller's earlier requests yet: 5 are waiting, and the owner approves or denies those first (vault.pending lists them)");
+  if (/** @type {any[]} */ (db.prepare(`SELECT by FROM ${table}`).all()).filter(r => modelKey(String(r.by)) === mine).length >= 5) throw new Error("the owner has not answered this caller's earlier requests yet: 5 are waiting, and the owner approves or denies those first (vault.pending lists them)");
 }

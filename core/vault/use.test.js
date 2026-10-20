@@ -40,22 +40,25 @@ async function mk(t, { gated = false } = {}) {
   const transport = async r => { net.calls.push({ host: r.url.hostname, path: r.url.pathname + r.url.search, address: r.address, method: r.method, headers: r.headers, body: r.body }); return net.script(r); };
 
   const gate = { items: new Map() };
+  /** The Switchboard's answer for a thread: who asked its running turn, and whether a person is at it. @type {Map<string, { asker: string | null, attended: boolean }>} */ const turns = new Map();
   const call = async (tool, input) => {
     if (tool === "gate.offer") return { data: { name: input.name } };
     if (tool === "gate.request") { const id = `h${gate.items.size + 1}`; gate.items.set(id, { id, state: "held", via: input.via, kind: input.kind, draft: input.content, final: null, by: null }); return { data: { id, state: "held", message: `Held as ${id}` } }; }
     if (tool === "gate.get") { const it = gate.items.get(input.id); return it ? { data: { ...it } } : { error: { code: "not_found", message: "nothing" } }; }
+    if (tool === "threads.turn-asker") return { data: turns.get(input.thread) || { asker: null, attended: false } };
     return { error: { code: "no_such_tool", message: tool } };
   };
   const approveGate = id => { const it = gate.items.get(id); it.state = "sending"; it.final = it.draft; it.by = OWNER; };
 
   // the kernel's answers: which agent holds Can use on which item, and whose chain a call carries
-  const grants = new Set();
+  const grants = new Set(), asks = new Set(), fills = new Set();
   /** @type {any} */ (v).access = {
     // the kernel's own vault grants (module releases, lent logins): none in this rig
     K: { owner: OWNER, space: "sp_test", vault: { grantsOn: () => [] }, chain: async meta => ({ hops: meta.hops || [] }) },
     items: () => [],
     modelName: (meta, caller) => String(meta.agent || (/(?:^|:)agent:([^:\s]+)/.exec(caller) || [])[1] || "assistant").toLowerCase(),
-    effectFor: async (name, item, action) => (action === "vault.read" && grants.has(`${name}:${item}`) ? "allow" : "deny"),
+    // Can use: allow for vault.read; a held act: ask; a lent login: allow for vault.fill only
+    effectFor: async (name, item, action) => (action === "vault.read" && grants.has(`${name}:${item}`) ? "allow" : action === "vault.read" && asks.has(`${name}:${item}`) ? "ask" : action === "vault.fill" && fills.has(`${name}:${item}`) ? "allow" : "deny"),
   };
 
   /** @type {Map<string, any>} */ const tools = new Map();
@@ -69,7 +72,7 @@ async function mk(t, { gated = false } = {}) {
   t.after(() => api.stop());
   const run = (name, input, caller = "mcp:agent:kit", meta = {}) => tools.get(name).run(input, { caller, ...meta });
   const ask = (input, caller = "mcp:agent:kit", meta = {}) => run("vault.request", input, caller, meta);
-  return { v, net, gate, approveGate, grants, use, run, ask, events, logs, audit: () => v.auditTrail({ limit: 500 }).entries };
+  return { v, net, gate, approveGate, grants, asks, fills, turns, use, run, ask, events, logs, audit: () => v.auditTrail({ limit: 500 }).entries };
 }
 
 const SECRET = `nw_${crypto.randomBytes(12).toString("hex")}+/"q`;
@@ -276,10 +279,106 @@ test("the asker's account: an agent running for member A finds and uses nothing 
   await assert.rejects(r.run("vault.use.env", { items: ["northwind-crm"], key: newIdentity().box.public }, "mcp:agent:kit", { token: "tok-b", hops: [person("per_memberb"), agentHop("ag_kit")] }), /this is the owner's vault/);
   assert.equal(r.net.calls.length, 0);
   // the owner's own assistant, on a turn for the owner, has the owner's reach (names and plain values only)
-  const own = await r.run("vault.use.find", {}, "mcp:agent:juno", { token: "tok-o", agent: "juno", agentKind: "assistant", hops: [person(OWNER), agentHop("ag_juno")] });
+  r.turns.set("th_owner", { asker: OWNER, attended: true });
+  const own = await r.run("vault.use.find", {}, "mcp:agent:juno", { token: "tok-o", agent: "juno", agentKind: "assistant", thread: "th_owner", hops: [person(OWNER), agentHop("ag_juno")] });
   assert.deepEqual(own.items.map(x => x.name).sort(), ["juniper-mail", "northwind-crm"]);
   assert.ok(!JSON.stringify(own).includes(SECRET) && !JSON.stringify(own).includes(OTHER));
   // a named agent of the owner's still needs its own grant
   const named = await r.run("vault.use.find", {}, "mcp:agent:juno", { token: "tok-o", agent: "juno", agentKind: "agent", hops: [person(OWNER), agentHop("ag_juno")] });
   assert.equal(named.items.length, 0);
+});
+
+test("review A: the owner's assistant gets the owner's items only on a turn the owner is at, never on a Flow, run_as or job turn", async t => {
+  const r = await mk(t);
+  await items(r);
+  const meta = thread => ({ agent: "juno", agentKind: "assistant", thread, hops: [person(OWNER), agentHop("ag_juno")] });
+  r.turns.set("th_chat", { asker: OWNER, attended: true });
+  r.turns.set("th_flow", { asker: OWNER, attended: false });   // a Flow step or a run_as run: the owner on its chain, nobody at it
+  assert.equal((await r.run("vault.use.find", {}, "mcp:agent:juno", meta("th_chat"))).items.length, 2);
+  assert.equal((await r.run("vault.use.find", {}, "mcp:agent:juno", meta("th_flow"))).items.length, 0);
+  assert.equal((await r.run("vault.use.find", {}, "mcp:agent:juno", meta(undefined))).items.length, 0, "no thread: no turn to be at");
+  r.turns.set("th_member", { asker: "per_membera", attended: true });
+  assert.equal((await r.run("vault.use.find", {}, "mcp:agent:juno", meta("th_member"))).items.length, 0, "a turn someone else asked");
+  await assert.rejects(r.ask({ method: "GET", url: "https://api.example.com/v1/x", headers: { "x-api-key": "{{vault:northwind-crm.NORTHWIND_API_KEY}}" } }, "mcp:agent:juno", meta("th_flow")), /no item called northwind-crm that you may use/);
+});
+
+test("review E: only allow is a grant; an ask, or a login lent to fill at a site, does not let an agent use an item", async t => {
+  const r = await mk(t);
+  await items(r);
+  r.asks.add("kit:northwind-crm");
+  r.fills.add("kit:juniper-mail");
+  assert.equal((await r.run("vault.use.find", {})).items.length, 0);
+  await assert.rejects(r.ask({ method: "GET", url: "https://api.example.com/v1/x?k={{vault:northwind-crm.NORTHWIND_API_KEY}}" }), /no item called northwind-crm that you may use/);
+  await assert.rejects(r.ask({ method: "GET", url: "https://mail.example.com/v1/x?k={{vault:juniper-mail.VALUE}}" }), /no item called juniper-mail that you may use/);
+  assert.equal(r.net.calls.length, 0);
+});
+
+test("review C: an agent has at most five host questions waiting; a host over 100 characters is refused; a rentable domain is marked", async t => {
+  const r = await mk(t);
+  await items(r);
+  r.grants.add("kit:northwind-crm");
+  const key = { "x-api-key": "{{vault:northwind-crm.NORTHWIND_API_KEY}}" };
+  for (let n = 1; n <= 5; n++) assert.ok((await r.ask({ method: "GET", url: `https://h${n}.example.org/x`, headers: key })).held);
+  await assert.rejects(r.ask({ method: "GET", url: "https://h6.example.org/x", headers: key }), /5 are waiting/);
+  assert.equal(r.use.pending().length, 5);
+  r.v.db.prepare("DELETE FROM vault_use_requests").run();
+  await assert.rejects(r.ask({ method: "GET", url: `https://${"a".repeat(60)}.${"b".repeat(40)}.example.org/x`, headers: key }), /longer than 100 characters/);
+  await r.ask({ method: "GET", url: "https://northwind-sync.workers.dev/x", headers: key });
+  assert.deepEqual(r.use.pending().map(p => [p.host, p.shared === true]), [["northwind-sync.workers.dev", true]]);
+});
+
+test("review D: compressed answers, numbers, deep encodings, a cut answer and a burst of uses never let a secret through", async t => {
+  const r = await mk(t);
+  await items(r);
+  await r.v.put({ name: "northwind-pin", kind: "secret", fields: { value: "48151623" }, hosts: ["https://api.example.com"] }, "cli");
+  r.grants.add("kit:northwind-crm"); r.grants.add("kit:northwind-pin");
+  const key = { "x-api-key": "{{vault:northwind-crm.NORTHWIND_API_KEY}}", "x-pin": "{{vault:northwind-pin.VALUE}}" };
+  const req = { method: "GET", url: "https://api.example.com/v1/x", headers: key };
+  await assert.rejects(r.ask({ ...req, headers: { ...key, "accept-encoding": "gzip" } }), /accept-encoding is set by the connection/);
+  r.net.script = () => ({ status: 200, headers: { "content-type": "application/json", "content-encoding": "gzip" }, body: Buffer.from("x") });
+  await assert.rejects(r.ask(req), /gzip-encoded.*withheld/);
+  assert.equal(r.net.calls.at(-1).headers["accept-encoding"], "identity");
+  const forms = {
+    pin: 48151623,
+    basic: Buffer.from(`alex:${SECRET}`).toString("base64"),
+    offset1: Buffer.from(`x${SECRET}`).toString("base64url"),
+    html: SECRET.replace(/"/g, "&quot;"),
+    unicode: [...SECRET].map(c => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`).join(""),
+    twice: encodeURIComponent(encodeURIComponent(SECRET)),
+    reversed: [...SECRET].reverse().join(""),
+    hex: Buffer.from(SECRET).toString("hex").toUpperCase(),
+  };
+  r.net.script = () => json(200, forms);
+  const got = await r.ask(req);
+  assert.equal(got.body.pin, "[hidden: VALUE]", "a number is hidden too");
+  for (const k of ["html", "unicode", "twice", "reversed", "hex"]) assert.equal(got.body[k], "[hidden: NORTHWIND_API_KEY]", k);
+  for (const k of ["basic", "offset1"]) assert.match(got.body[k], /\[hidden: NORTHWIND_API_KEY\]/, `${k}: the secret's base64 at its offset`);
+  const text = JSON.stringify(got);
+  for (const v of Object.values(forms)) assert.ok(!text.includes(String(v)), String(v).slice(0, 12));
+  // the transport cut the answer in the middle of the secret
+  r.net.script = () => ({ status: 200, headers: { "content-type": "text/plain" }, body: Buffer.from(`ok ${"x".repeat(50)} ${SECRET.slice(0, 15)}`), truncated: true });
+  const cut = await r.ask(req);
+  assert.ok(!String(cut.body).includes(SECRET.slice(0, 8)), "no piece of the secret is left at the cut");
+  // a burst: past the per-minute rate the item rests, and that is an alert in the audit
+  r.use.perMinute = 2;
+  r.use.uses.clear();
+  r.net.script = () => json(200, { ok: true });
+  await r.ask(req); await r.ask(req);
+  await assert.rejects(r.ask(req), e => e.code === "rate_limited");
+  assert.ok(r.audit().some(a => a.action === "use" && !a.ok && /more than 2 uses in a minute/.test(a.why)));
+  assert.ok(r.events.some(e => e.type === "vault.refused"));
+});
+
+test("small: an ungranted item with the same canonical name is not revealed; a value with .. never goes into an address", async t => {
+  const r = await mk(t);
+  await items(r);
+  await r.v.put({ name: "northwind_crm", kind: "secret", fields: { value: OTHER }, hosts: ["https://api.example.com"] }, "cli");
+  r.grants.add("kit:northwind-crm");
+  const ok = await r.ask({ method: "GET", url: "https://api.example.com/v1/x", headers: { "x-api-key": "{{vault:northwind-crm.NORTHWIND_API_KEY}}" } });
+  assert.equal(ok.status, 200, "the one this agent may use is used; the other is not mentioned");
+  await r.v.put({ name: "northwind-path", kind: "env-set", fields: { SEGMENT: "../admin" }, hosts: ["https://api.example.com"] }, "cli");
+  await r.run("vault.use.set", { name: "northwind-path", plain: ["SEGMENT"] }, "cli");
+  r.grants.add("kit:northwind-path");
+  await assert.rejects(r.ask({ method: "GET", url: "https://api.example.com/v1/{{vault:northwind-path.SEGMENT}}/list" }), /has "\.\." in it/);
+  assert.equal(r.net.calls.length, 1);
 });

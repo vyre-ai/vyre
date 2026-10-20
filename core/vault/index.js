@@ -353,7 +353,7 @@ export default {
       },
       presence("Approve a pending grant or pass", ({ id }) => {
         const u = /** @type {any} */ (vault).use ? /** @type {any} */ (vault).use.one(String(id)) : null;
-        if (u) return `Use ${quoted(u.item)} with ${String(u.host).slice(0, 120)}: its secrets may be sent there from now on`;
+        if (u) return `Use ${quoted(u.item)} with ${String(u.host)}: its secrets may be sent there from now on, and you trust that host with them fully`;
         const p = vault.pending();
         const g = p.grants.find(x => x.id === id);
         if (g) return grantPrompt(g, vault.row(g.name)?.vault === "personal");
