@@ -27,6 +27,7 @@ import { SCHEMES, TOKEN, verify } from "./verify.js";
 import { Deliveries, MIGRATIONS } from "./deliveries.js";
 import { startFlows as handToFlows } from "./flow-body.js";
 import { isPerson } from "../../lib/caller.js";
+import { roleAtLeast } from "../../lib/spaces/members.js";
 
 /**
  * Test seams, keyed by the VYRE_HOME a registry runs with: { now, flowsHost, space }. Production never sets them.
@@ -113,7 +114,7 @@ export default {
     const flowsHost = () => seam.flowsHost || ctx.flowsHost || null;
     const homeSpace = () => seam.space || (ctx.kernel && typeof ctx.kernel.space === "string" ? ctx.kernel.space : null);
     /** Did an owner or an admin approve it? A member's own Flow does not open a door to the internet. @param {any} h @param {any} approver */
-    const staffApproved = (h, approver) => Boolean(approver && approver.kind === "person" && h && typeof h.roleOf === "function" && ["owner", "admin"].includes(h.roleOf(String(approver.id))));
+    const staffApproved = (h, approver) => Boolean(approver && approver.kind === "person" && h && typeof h.roleOf === "function" && roleAtLeast(String(h.roleOf(String(approver.id))), "admin"));
     /** Is this Flow route's Flow on, still asking for an address, and approved by an owner or an admin? @param {any} route */
     const flowLive = async route => {
       const host = flowsHost(), h = host && route.space ? host.get(route.space) : null;

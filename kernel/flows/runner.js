@@ -720,13 +720,11 @@ export class FlowRunner {
 
   /**
    * An inbound web call. The host (the Ingress door) has already authenticated it and labelled its trust; the body is data and the run is tainted
-   * unless the host says `member`. `key` makes a retried delivery the same run. `flow` binds the call to one Flow by id (its own web address, core/hooks): only that Flow's trigger that asked for an
-   * address answers, and the path is not read.
+   * unless the host says `member`. `key` makes a retried delivery the same run. `flow` binds it to one Flow by id (its own address, core/hooks): only a trigger that asked for an address answers.
    * @param {string} path @param {{ body?: any, key?: string, trust?: 'member'|'external'|'untrusted', flow?: string }} [req]
    */
   async handleWeb(path, req = {}) {
-    const byId = typeof req.flow === "string" && req.flow ? req.flow : null;
-    const f = (await this.#triggerFlows()).find(x => x.flow.trigger.on === "web" && (byId ? x.id === byId && x.flow.trigger.address === true : x.flow.trigger.path === path));
+    const f = (await this.#triggerFlows()).find(x => x.flow.trigger.on === "web" && (typeof req.flow === "string" && req.flow ? x.id === req.flow && x.flow.trigger.address === true : x.flow.trigger.path === path));
     if (!f) throw Object.assign(new Error("no Flow answers that address"), { code: "not_found" });
     const trust = req.trust || "untrusted";
     return this.#start(f, { kind: "web", key: req.key || newId("web_"), input: req.body ?? {}, path: f.flow.trigger.path }, { trust, data: req.body ?? {} });

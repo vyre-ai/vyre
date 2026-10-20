@@ -19,7 +19,7 @@ export type Loaded = { items: VItem[]; locked: boolean; /** Mine only: the membe
 /** What the Add sheet saves: the tool to call and its input, built by add-model.js and env-model.js. */
 export type AddCall = { tool: string; input: Record<string, unknown>; plain?: string[] };
 /** An item's rules (core/vault/use.js, vault.use.find): which fields are plain, their values in full, and whether an agent's script may have it. */
-export type Rules = { plain: Record<string, string | null>; scripts: boolean };
+export type Rules = { plain: Record<string, string | null>; scripts: boolean; usedWith: string[] };
 export type Suggestion = { app: string; fields: { name: string; secret: boolean; help?: string }[]; source: "space" | "ai" | "none"; why?: "no_account" | "no_answer" };
 
 export interface VaultData {
@@ -38,6 +38,8 @@ export interface VaultData {
   rules?(item: VItem): Promise<Rules>;
   /** Whether an agent's script may have the item (Allowed in scripts: vault.use.find reads it, vault.use.set changes it). */
   scripts?: { load(item: VItem): Promise<boolean>; set(item: VItem, on: boolean): Promise<void> };
+  /** The hosts the person allows an item's secrets to go to, besides the ones written on it (Used with: vault.use.find reads them, vault.use.set replaces the list). */
+  usedWith?: { set(item: VItem, hosts: string[]): Promise<void> };
   /** Save an item's fields again (Edit): every field, names in their one form, values as given. */
   update(scope: Scope, item: VItem, fields: Record<string, string>, plain: string[]): Promise<void>;
   remove(scope: Scope, item: VItem): Promise<void>;
@@ -69,8 +71,9 @@ export function sampleData(): VaultData {
     real: false,
     load: async (scope) => ({ items: items.filter((v) => (scope === "mine") === (v.sp === "mine")), locked: false, owner: true }),
     read: async (_s, v, field) => v.values?.[field] ?? "",
-    rules: async (v) => ({ plain: Object.fromEntries((v.fields ?? []).filter((f) => f.plain).map((f) => [f.name, v.values?.[f.name] ?? ""])), scripts: false }),
+    rules: async (v) => ({ plain: Object.fromEntries((v.fields ?? []).filter((f) => f.plain).map((f) => [f.name, v.values?.[f.name] ?? ""])), scripts: false, usedWith: [] }),
     scripts: { load: async () => false, set: async () => {} },
+    usedWith: { set: async () => {} },
     unlock: async () => {}, create: async () => {}, lock: async () => {},
     add: async (scope, call, folder) => {
       const i = call.input as { name?: string; kind?: string; fields?: Record<string, string>; details?: { provider?: string }; module?: string; need?: string };
@@ -138,10 +141,10 @@ export function realData(call: Call): VaultData {
   };
   const deviceKeys = deviceKeyStore({ get: kvGet, set: kvSet });
   async function rulesOf(item: VItem): Promise<Rules> {
-    if (!(await isOwner())) return { plain: {}, scripts: false };
-    const r = await ask<{ items?: { name: string; scripts?: boolean; fields?: { name: string; plain?: string | null; secret?: boolean }[] }[] }>("vault.use.find", { q: item.id, limit: 50 });
+    if (!(await isOwner())) return { plain: {}, scripts: false, usedWith: [] };
+    const r = await ask<{ items?: { name: string; scripts?: boolean; used_with?: string[]; fields?: { name: string; plain?: string | null; secret?: boolean }[] }[] }>("vault.use.find", { q: item.id, limit: 50 });
     const it = (r.items ?? []).find((x) => x.name === item.id);
-    return { plain: Object.fromEntries((it?.fields ?? []).filter((x) => !x.secret).map((x) => [x.name, x.plain ?? null])), scripts: Boolean(it?.scripts) };
+    return { plain: Object.fromEntries((it?.fields ?? []).filter((x) => !x.secret).map((x) => [x.name, x.plain ?? null])), scripts: Boolean(it?.scripts), usedWith: (it?.used_with ?? []).map(String) };
   }
   return {
     real: true,
@@ -199,6 +202,7 @@ export function realData(call: Call): VaultData {
       async load(item) { return (await rulesOf(item)).scripts; },
       async set(item, on) { await ask("vault.use.set", { name: item.id, scripts: on }); },
     },
+    usedWith: { async set(item, hosts) { await ask("vault.use.set", { name: item.id, hosts }); } },
     async update(scope, item, fields, plain) {
       if (await isOwner()) {
         const r = rows[item.id];

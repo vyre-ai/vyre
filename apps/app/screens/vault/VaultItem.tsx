@@ -10,6 +10,7 @@ import { canonical, clashes, fieldLabel, placeholder, secretHint, toDotenv, type
 import { FieldsEditor } from "./FieldsEditor";
 import { ItemSharing } from "./ItemSharing";
 import { ScriptsSetting } from "./ScriptsSetting";
+import { UsedWith } from "./UsedWith";
 import { MoveItem } from "./MoveItem";
 import { levelWord } from "./share-model.js";
 import type { VItem } from "./redesign.js";
@@ -117,6 +118,8 @@ export function VaultItem({ item, scope, data, owner, needs, events, onChanged, 
           <Text tone="label">{`An agent or Flow that can use this writes a placeholder, like ${first ? placeholder(item.id, first.name) : "{{vault:Item.FIELD}}"}. Vyre fills in the value when it sends, so the model never sees a secret. It can read the plain fields.`}</Text>
           {fields.length ? <Card flush>{fields.map((f) => <Row key={f.name} dense title={<Text mono selectable>{placeholder(item.id, f.name)}</Text>} sub={f.plain ? "Plain" : "Secret"} />)}</Card> : null}
         </Sec>
+
+        {owner && data.usedWith && rules && item.kind !== "api-credential" ? <Sec title="Used with"><UsedWith api={data.usedWith} item={item} hosts={rules.usedWith} onChanged={loadRules} /></Sec> : null}
 
         {owner && data.scripts && item.kind !== "api-credential" ? <Sec title="Scripts"><ScriptsSetting api={data.scripts} item={item} /></Sec> : null}
 

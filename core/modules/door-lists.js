@@ -150,7 +150,7 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "google.mail.search", "google.mail.send", "google.members.email", "google.open", "google.remove", "google.test",
   "microsoft.add", "microsoft.calendar.create", "microsoft.calendar.list", "microsoft.check", "microsoft.drive.read", "microsoft.drive.search", "microsoft.mail.read", "microsoft.mail.search", "microsoft.mail.send", "microsoft.members.email", "microsoft.remove",
   "hands-desktop.act", "hands-desktop.apps", "hands-desktop.screenshot", "hands-desktop.tree",
-  "hooks.close", "hooks.delivery", "hooks.enable", "hooks.list", "hooks.open", "hooks.status",
+  "hooks.close", "hooks.delivery", "hooks.enable", "hooks.flow", "hooks.flow.renew", "hooks.flow.sign", "hooks.flow.test", "hooks.list", "hooks.open", "hooks.status",
   "identity.card", "identity.create", "identity.discover", "identity.github.link", "identity.lock", "identity.migrate", "identity.status", "identity.unlock",
   "import.cancel", "import.plan", "import.scan", "import.sessions.list", "import.sessions.run", "import.start", "import.status", "import.stop",
   "learn.accept", "learn.add", "learn.check", "learn.edit", "learn.lessons", "learn.relax", "learn.retire", "learn.signals", "learn.skill-dismiss", "learn.skill-install",
