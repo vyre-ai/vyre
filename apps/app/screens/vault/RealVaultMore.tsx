@@ -281,8 +281,8 @@ function SharedPage({ reload }: Props) {
         </View>
       </Sec>
       <AcceptSheet open={accepting} onClose={() => setAccepting(false)} onDone={() => { load(); reload(); }} />
-      <SharedVaultsSection />
-      <EmergencySection reload={reload} />
+      {/* The Vault shows one folders concept, Shared's folders (named vaults, vault.named.*). The older shared vaults (vault.vaults.*, SharedVaultsSection) are left off the screen
+          until the backend merges the two; emergency access is on the Advanced page. */}
     </View>
   );
 }

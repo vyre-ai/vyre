@@ -896,10 +896,10 @@ export function register({ vault, tool, internal, call, said, deps = {}, log }) 
     if (can.includes("reveal") && await may(it.name, "vault.edit")) can.push("edit");
     return can;
   };
-  tool("vault.me.shared.list", SHARED_SURFACES, "The items the owner shared with you that you can use: name, kind, description, hosts and what you may do (use, reveal, edit), never a value.", obj({}), async (_input, meta) => {
+  tool("vault.me.shared.list", SHARED_SURFACES, "The items the owner shared with you that you can use: name, kind, description, hosts, field names and what you may do (use, reveal, edit), never a value.", obj({}), async (_input, meta) => {
     const { may } = await asMember(meta);
     const out = [];
-    for (const it of /** @type {any} */ (vault).list().items) { const can = await canOf(may, it); if (can.length) out.push({ name: it.name, kind: it.kind, can, ...(it.description ? { description: it.description } : {}), ...(it.hosts && it.hosts.length ? { hosts: it.hosts } : {}) }); }
+    for (const it of /** @type {any} */ (vault).list().items) { const can = await canOf(may, it); if (can.length) out.push({ name: it.name, kind: it.kind, can, ...(it.description ? { description: it.description } : {}), ...(it.hosts && it.hosts.length ? { hosts: it.hosts } : {}), fields: it.fields || [], ...(it.details && Array.isArray(it.details.plain) ? { plain: it.details.plain } : {}) }); }
     return { items: out };
   });
   // The vaults shared with a member, with the credentials in each that she can use. A vault is the kernel's record; she holds one by a grant on it (a whole vault shared once) and sees what her chain may read.

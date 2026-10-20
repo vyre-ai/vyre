@@ -42,6 +42,46 @@ only opens the vault, and a secret still needs its own proof to be released.
 
 Your master password is the root of this vault. A server copy of that key lets an agent use an item by name while you are away: the value goes into the request, and the agent gets the response. A space has its own vault on the same rule. If rotating that key fails when a member leaves, Vyre retries it and the row shows in Needs you. See [Master password](master-password.md).
 
+## In the Vyre app: an .env you can share safely
+
+The Vault page has two places. **Mine** is only yours. **Shared** is the Space's: its people and
+agents use what is in its folders. An item is a name and a list of fields, each named like an
+environment variable: the item `GHL Sales` with `GHL_API_KEY` and `GHL_LOCATION_ID`.
+
+- **Field names are one name whatever the case.** `ghl api-key`, `Ghl_Api_Key` and `GHL_API_KEY`
+  are shown and used as `GHL_API_KEY`. An item cannot hold two fields with one name.
+- **Values are kept exactly as you give them.** Nothing is trimmed. A value that starts or ends
+  with a space or a new line gets a quiet note and a **Remove it** button.
+- **Secret or plain.** A secret stays hidden until you reveal it, and then shows its length and
+  last four characters so you can check it against the app. A plain field, like an id or an
+  address, shows in full.
+- **Search** finds an item by its name or any field's name: `LOCATION_ID` finds `GHL Sales`.
+
+**Add** has three ways in:
+
+1. **Paste from .env.** Paste `KEY=value` lines, or drop an .env file. Vyre groups them into items
+   by their first word (`GHL_*`, `TWILIO_*`), guesses ids and addresses as plain, and shows a
+   preview where you rename, move a field, untick and mark plain or secret.
+2. **Blank item.** A name, and fields you name.
+3. **Pick an app.** What Vyre's modules need, the apps Vyre knows, and the apps your Space added
+   before. For any other app, type its name: your own AI account suggests the fields, and is sent
+   the app's name only. The suggestion is kept for the next person in the Space. With no AI account,
+   you get a blank item.
+
+AI accounts are added in Settings, AI accounts, and app sign-ins in Connections, not here.
+
+When a module needs a key it does not have, the Vault says so at the top ("Comms needs Twilio:
+Auth token.") and **Add it** opens that app's fields.
+
+An item's page shows its fields, **Copy as .env**, who can use it (**Can use it, without seeing
+it**, **Can see it**, **Can change it**), what uses it and when it was last used. An agent or a Flow
+that can use it writes a placeholder such as `{{vault:GHL-Sales.GHL_API_KEY}}`; Vyre fills in the
+value when it sends, so the model never sees a secret. **Move to Shared** puts an item in a
+folder, and **Move to Mine** takes it back. **Advanced** holds the rarer tools: import from
+another password manager, health and breach checks, passes for outside agents, browsers,
+emergency access, SSH keys, devices, the recovery kit and backups, and every item with its
+history.
+
 ## Store an item
 
 1. Run `put` with the item's name, kind and the origins it may be sent to:

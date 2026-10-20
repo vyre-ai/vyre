@@ -117,3 +117,19 @@ test("saving a site on a login keeps its own url: only urls is written, with eve
   assert.equal(siteUpdate({ id: "clio", sites: ["https://a.example"] }, "https://a.example").input.fields.urls, "https://a.example");
   assert.throws(() => siteUpdate({ id: "clio" }, "http://b.example"));
 });
+
+test("search finds an item by any field's name, in any spelling: typing LOCATION_ID finds GHL Sales", () => {
+  const items = [v({ id: "ghl", sp: "mine", name: "GHL Sales", fields: [{ name: "GHL_API_KEY", plain: false }, { name: "GHL_LOCATION_ID", plain: true }] }), v({ id: "tw", sp: "mine", name: "Twilio", fields: [{ name: "TWILIO_AUTH_TOKEN", plain: false }] })];
+  for (const q of ["LOCATION_ID", "location id", "location_id", "ghl_location"]) assert.deepEqual(visible(items, "mine", q).map((i) => i.id), ["ghl"], q);
+  assert.deepEqual(visible(items, "mine", "auth token").map((i) => i.id), ["tw"]);
+  assert.deepEqual(visible(items, "mine", "twilio").map((i) => i.id), ["tw"], "the name still finds it");
+  assert.deepEqual(visible(items, "mine", "nothing_like_it").map((i) => i.id), []);
+});
+
+test("Shared's folders narrow the list and are counted", () => {
+  const team = { id: "t", name: "Team" };
+  const items = [v({ id: "a", sp: "shared", folder: team }), v({ id: "b", sp: "shared", folder: { id: "b", name: "Billing" } }), v({ id: "c", sp: "shared", folder: team })];
+  assert.deepEqual(visible(items, "shared", "", { kind: "folder", folder: "Team" }).map((i) => i.id), ["a", "c"]);
+  assert.deepEqual(navCounts(items).folders, { Team: 2, Billing: 1 });
+  assert.equal(navEmpty({ kind: "folder", folder: "Team" }), "Nothing in Team yet.");
+});

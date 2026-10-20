@@ -8,7 +8,7 @@ status: draft
 
 # Secret field
 
-One row for a secret: the name's value as a mask, with Reveal and Copy at the end. It is the one way the Vault, sending services, firm keys and MCP keys show a value, so
+One row for a secret: the name's value as a mask, with Reveal and Copy at the end. It is the one way the Vault, sending services, work accounts and MCP keys show a value, so
 they all behave the same. For now a reveal is a click (no Touch ID), and an agent is never given the value.
 
 | Surface | Implementing file | Status |
@@ -24,6 +24,7 @@ A 12-dot mask in mono, then Reveal and Copy as ghost buttons. Under it one 12/16
 
 - **Hidden.** The mask. The line says "Hidden until you reveal it. Every reveal is logged."
 - **Shown.** The value in mono, selectable; Reveal becomes Hide. The line counts down: "Shown for N seconds, then hidden again." It hides itself at 60 seconds.
+  With `hint`, a second line under the value lets a person check it without copying it. The Vault passes its length and last four characters ("40 characters, ends in a1b2").
 - **Copied.** The value goes to the clipboard; the line says it is emptied in 30 seconds, and it is.
 - **Failed.** The line says why (the value could not be read).
 

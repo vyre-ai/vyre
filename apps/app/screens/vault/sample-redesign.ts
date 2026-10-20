@@ -1,35 +1,45 @@
-// The Vault's sample world for the redesigned screen: made-up values, in the ten groups, with where each is used, who has it and what happened to it. A real source (vault.* and vault.me.*) replaces this.
+// The Vault's sample world: made-up items of the Juniper Studio Space, each a name and fields named like an .env, in Mine and in Shared's folders, with where each is used, who can
+// use it and what happened to it. Every value is invented. A real source (vault.* and vault.me.*) replaces this.
 import type { VItem } from "./redesign.js";
 
 export type Event = { id: string; item: string; who: string; what: string; when: string };
 
+const TEAM = { id: "team", name: "Team" }, BILLING = { id: "billing", name: "Billing" };
+const f = (name: string, plain = false) => ({ name, plain });
+
 export const SAMPLE_ITEMS: VItem[] = [
-  { id: "f1", sp: "juniper", group: "Any API key", name: "Juniper signing key", detail: "Firm-wide", secret: "jun-sign-7Hq2-Lm41-Vz", daysLeft: 120, lastUsedDays: 2, usedBy: [{ kind: "flow", name: "Engagement letters" }, { kind: "agent", name: "Kit" }], shared: [{ who: "kit", level: "use" }, { who: "chris", level: "edit" }] },
-  { id: "s1", sp: "juniper", group: "Email and sending", name: "Resend (updates.juniper.example)", detail: "Email sending", secret: "re_9Kq2Lz81Tm4pXb7", daysLeft: 9, lastUsedDays: 1, usedBy: [{ kind: "flow", name: "Intake confirmation" }, { kind: "flow", name: "Weekly digest" }, { kind: "connection", name: "Resend" }], shared: [{ who: "kit", level: "use" }] },
-  { id: "k1", sp: "juniper", group: "Any API key", sharedWithMe: true, name: "Stripe (read only)", detail: "rk_live_...", secret: "rk_live_51Hx9Qa2d7uPz", daysLeft: null, lastUsedDays: 0, usedBy: [{ kind: "agent", name: "Kit" }, { kind: "project", name: "Billing review" }], shared: [{ who: "kit", level: "use" }] },
-  { id: "k2", sp: "juniper", group: "Any API key", name: "Old analytics key", detail: "analytics.example.com", secret: "an-0042-old-key-0x", daysLeft: -3, lastUsedDays: 140, usedBy: [], shared: [] },
-  { id: "p1", sp: "juniper", group: "Phone and texts", name: "Firm line (Twilio)", detail: "+1 415 555 0140", secret: "AC83b1-twilio-auth-5f2e", daysLeft: null, lastUsedDays: 4, usedBy: [{ kind: "flow", name: "Missed-call text back" }], shared: [{ who: "juno", level: "use" }] },
-  { id: "l1", sp: "juniper", group: "Logins", name: "Gmail", detail: "intake@juniperstudio.example.com", secret: "Mt7!hQ2-sail-9Rb", daysLeft: null, lastUsedDays: 0, usedBy: [{ kind: "connection", name: "Gmail" }, { kind: "agent", name: "Kit" }, { kind: "agent", name: "Juno" }], shared: [{ who: "kit", level: "use" }, { who: "juno", level: "use" }] },
-  { id: "l2", sp: "juniper", group: "Logins", name: "Clio", detail: "alex@juniperstudio.example.com", secret: "clio-4Gp-Lm81-Zq", daysLeft: null, lastUsedDays: 1, usedBy: [{ kind: "agent", name: "Kit" }], shared: [{ who: "kit", level: "use" }] },
-  { id: "m1", sp: "juniper", group: "Code and hosting", name: "Claude Desktop (Alex)", detail: "Connects Claude Desktop to this Space", secret: "vyre_mcp_Qn83-aT71-Zc09", daysLeft: 60, lastUsedDays: 0, usedBy: [], shared: [] },
-  { id: "n1", sp: "juniper", group: "SSH keys", name: "Office NAS", detail: "ssh admin@nas.local", secret: "ssh-ed25519 AAAAC3Nza...", daysLeft: null, lastUsedDays: 30, usedBy: [], shared: [{ who: "chris", level: "edit" }] },
-  { id: "a1", sp: "juniper", group: "AI models", name: "Anthropic", detail: "Claude models for the Space", secret: "sk-ant-api03-sample-0000", daysLeft: null, lastUsedDays: 0, usedBy: [{ kind: "agent", name: "Kit" }], shared: [{ who: "kit", level: "use" }] },
-  { id: "g1", sp: "juniper", group: "Google and Microsoft", sharedWithMe: true, name: "Google service account", detail: "Acts as intake@juniperstudio.example.com", secret: "{sample service account}", daysLeft: 11, lastUsedDays: 1, usedBy: [{ kind: "connection", name: "Gmail" }], shared: [] },
-  { id: "t1", sp: "juniper", group: "Messaging", name: "Telegram bot", detail: "Front desk alerts", secret: "123456789:sample-telegram-bot-token-0000", daysLeft: null, lastUsedDays: 6, usedBy: [], shared: [] },
-  { id: "q1", sp: "juniper", group: "Secure notes", name: "Wi-Fi at the office", detail: "Note", secret: "juniper-guest-2026", daysLeft: null, lastUsedDays: 40, usedBy: [], shared: [] },
-  { id: "c1", sp: "mine", kind: "connection", group: "Apps you connected", name: "Clio", detail: "alex@juniperstudio.example.com", secret: "", daysLeft: null, lastUsedDays: 1, usedBy: [], shared: [] },
-  { id: "o1", sp: "mine", group: "Logins", name: "Passport portal", detail: "alex.rivera", sites: [], secret: "Pp-7731-bluff-Tn", daysLeft: null, lastUsedDays: 2, usedBy: [{ kind: "agent", name: "Juno" }], shared: [{ who: "juno", level: "use" }] },
-  { id: "o2", sp: "mine", group: "Logins", name: "Airline account", detail: "alex@example.com", sites: ["https://airline.example"], secret: "Fly-93k-Zorro-p", daysLeft: null, lastUsedDays: null, usedBy: [], shared: [] },
-  { id: "o3", sp: "mine", group: "AI models", name: "Claude sign-in", detail: "My AI sign-in", secret: "sk-ant-oat-0000-sample", daysLeft: 25, lastUsedDays: 0, usedBy: [{ kind: "project", name: "Estate plan for Lee" }], shared: [] },
-  { id: "o4", sp: "mine", group: "Code and hosting", name: "GitHub connection", detail: "My MCP connection", secret: "ghp_sample0000000000", daysLeft: 6, lastUsedDays: 3, usedBy: [{ kind: "connection", name: "GitHub" }], shared: [] },
+  { id: "GHL-Sales", sp: "mine", group: "Any API key", name: "GHL Sales", detail: "GHL_API_KEY, GHL_LOCATION_ID", secret: "", daysLeft: null, lastUsedDays: 0,
+    fields: [f("GHL_API_KEY"), f("GHL_LOCATION_ID", true)], values: { GHL_API_KEY: "pit-7f2a-91c4-sample-4b1e", GHL_LOCATION_ID: "loc_Juniper01" },
+    usedBy: [{ kind: "flow", name: "Lead follow-up" }, { kind: "agent", name: "Kit" }], shared: [{ who: "kit", level: "use" }] },
+  { id: "Airline-account", sp: "mine", kind: "login", group: "Logins", name: "Airline account", detail: "alex@example.com", sites: ["https://airline.example"], secret: "", daysLeft: null, lastUsedDays: 12,
+    fields: [f("username", true), f("password"), f("totp")], values: { username: "alex@example.com", password: "Fly-93k-Zorro-p", totp: "JBSWY3DPEHPK3PXP" }, usedBy: [], shared: [] },
+  { id: "Office-wifi", sp: "mine", kind: "note", group: "Secure notes", name: "Office wifi", detail: "Note", secret: "", daysLeft: null, lastUsedDays: 40,
+    fields: [f("text")], values: { text: "juniper-guest-2026" }, usedBy: [], shared: [] },
+  { id: "Twilio", sp: "shared", folder: TEAM, provider: "twilio", group: "Phone and texts", name: "Twilio", detail: "TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER", secret: "", daysLeft: null, lastUsedDays: 1,
+    fields: [f("TWILIO_ACCOUNT_SID", true), f("TWILIO_AUTH_TOKEN"), f("TWILIO_FROM_NUMBER", true)],
+    values: { TWILIO_ACCOUNT_SID: "AC00000000sample0000000000000000", TWILIO_AUTH_TOKEN: "made-up-auth-token-00000000000000", TWILIO_FROM_NUMBER: "+14155550140" },
+    usedBy: [{ kind: "flow", name: "Missed-call text back" }, { kind: "agent", name: "Juno" }], shared: [{ who: "juno", level: "use" }, { who: "chris", level: "edit" }] },
+  { id: "Resend", sp: "shared", folder: TEAM, group: "Email and sending", name: "Resend", detail: "RESEND_API_KEY, RESEND_FROM", secret: "", daysLeft: 9, lastUsedDays: 0,
+    fields: [f("RESEND_API_KEY"), f("RESEND_FROM", true)], values: { RESEND_API_KEY: "made-up-resend-key-0000000000", RESEND_FROM: "Juniper Studio <hello@juniper.example>" },
+    usedBy: [{ kind: "flow", name: "Welcome email" }, { kind: "flow", name: "Weekly digest" }], shared: [{ who: "kit", level: "use" }] },
+  { id: "Stripe", sp: "shared", folder: BILLING, group: "Any API key", sharedWithMe: true, name: "Stripe", detail: "STRIPE_SECRET_KEY, STRIPE_ACCOUNT_ID", secret: "", daysLeft: null, lastUsedDays: 0,
+    fields: [f("STRIPE_SECRET_KEY"), f("STRIPE_ACCOUNT_ID", true)], values: { STRIPE_SECRET_KEY: "made-up-stripe-key-000000000000", STRIPE_ACCOUNT_ID: "acct_Northwind01" },
+    usedBy: [{ kind: "agent", name: "Kit" }, { kind: "project", name: "Billing review" }], shared: [{ who: "kit", level: "use" }] },
+  { id: "Old-analytics", sp: "shared", folder: BILLING, group: "Any API key", name: "Old analytics", detail: "ANALYTICS_KEY", secret: "", daysLeft: -3, lastUsedDays: 140,
+    fields: [f("ANALYTICS_KEY")], values: { ANALYTICS_KEY: "an-0042-old-key-0x" }, usedBy: [], shared: [] },
 ];
 
 export const SAMPLE_EVENTS: Event[] = [
-  { id: "e1", item: "l1", who: "kit", what: "Used it to send a reply", when: "Today 9:12" },
-  { id: "e2", item: "l1", who: "alex", what: "Revealed the value", when: "Yesterday 16:40" },
-  { id: "e3", item: "l1", who: "alex", what: "Changed the password (version 3)", when: "12 Oct" },
-  { id: "e4", item: "k1", who: "kit", what: "Used it for a payment lookup", when: "Today 8:05" },
-  { id: "e5", item: "s1", who: "Intake confirmation", what: "Used it to send 14 emails", when: "Today 7:30" },
+  { id: "e1", item: "GHL-Sales", who: "kit", what: "Used it in Lead follow-up", when: "Today 9:12" },
+  { id: "e2", item: "GHL-Sales", who: "alex", what: "Revealed GHL_API_KEY", when: "Yesterday 16:40" },
+  { id: "e3", item: "Twilio", who: "juno", what: "Used it to send a text", when: "Yesterday 11:02" },
+  { id: "e4", item: "Stripe", who: "kit", what: "Used it for a payment lookup", when: "Today 8:05" },
+  { id: "e5", item: "Resend", who: "Welcome email", what: "Used it to send 14 emails", when: "Today 7:30" },
 ];
 
 export const SAMPLE_PEOPLE = ["kit", "juno", "chris", "iris"];
+
+/** The sample world's unfilled need, so the Vault's "This needs a key" ask is drawn too (the shape of vault.need). */
+export const SAMPLE_NEEDS = [
+  { module: "comms", id: "sending", provider: "sending-service", purpose: "Send your Flows' email through your own sending service", state: "missing", how: "field" },
+];

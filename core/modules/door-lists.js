@@ -281,6 +281,7 @@ export const SELF_GATED = Object.freeze(new Set([
   "vault.ssh.add", "vault.ssh.approvals", "vault.ssh.approve", "vault.ssh.forget", "vault.ssh.generate", "vault.ssh.keys", "vault.state",
   "vault.sweep", "vault.tagged", "vault.totp", "vault.unlink", "vault.unlock", "vault.unlock-passphrase", "vault.untag", "vault.update", "vault.used-by", "vault.uses",
   "vault.vaults.create", "vault.vaults.list", "vault.vaults.rotate", "vault.vaults.sync",
+  "vault.template.suggest", "vault.templates",
 ]));
 
 /** The hooks the session's own harness calls (harness.\*, and threads.bind, the SessionStart bind), not the model: never gated, so a member's session starts and its hooks run. */

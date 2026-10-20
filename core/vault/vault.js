@@ -36,6 +36,7 @@ import { normalize as normalizeApiCredential } from "./api-request.js";
 import { parseFile as parseImport, plan as planImport } from "./import.js";
 import { REMIND_MIGRATION } from "./remind.js";
 import { KINDS, PERSONAL_KINDS, defaultField, checkFields, cleanDetails, derivedDetails } from "../../lib/vault-kinds/kinds.js";
+import { fieldIn } from "../../lib/env-name.js";
 import { findEnvFiles, readEnv, rewriteEnv, isEnvName, gitState } from "./envfiles.js";
 import { FILL_MIGRATION, FILL_KEY_MIGRATION } from "./fill.js";
 import { totp } from "./totp.js";
@@ -1398,7 +1399,7 @@ export class Vault {
         name: r.name, kind: r.kind, description: r.description, fields: json(r.fields, []),
         ...(r.url ? { url: r.url } : {}), hosts: json(r.hosts, []), rotate: Boolean(r.rotate), ...(r.rotate ? { why: r.rotate } : {}),
         ...(r.origin ? { origin: r.origin } : {}), updated: r.updated, vault: r.vault || AGENTS,
-        ...(r.details && r.details !== "{}" ? { details: json(r.details, {}) } : {}),
+        ...(r.details && r.details !== "{}" ? { details: json(r.details, {}) } : {}), ...(r.named ? { folder: String(r.named) } : {}),
         grants: grants.filter(g => g.item === r.name).map(g => ({ module: g.module, ...(g.watcher ? { watcher: g.watcher } : {}), ...(g.project ? { project: g.project } : {}) })),
       }));
     const personal = this.hasAccount() ? (this.pvk ? "unlocked" : "locked") : "none";
@@ -1528,7 +1529,7 @@ export class Vault {
     if (r.kind === "passkey") { this.audit("release", name, who, false, "passkey"); throw new Error(`${name} is a passkey; it signs inside the vault and is never handed out`); }
     if (r.kind === "api-credential") { this.audit("release", name, who, false, "api-credential"); throw new Error(`${name} is an api-credential; it is used only by vault.request and is never handed out`); }
     const f = await this.fields(r);
-    const want = field || defaultField(r.kind, json(r.fields, []));
+    const want = fieldIn(Object.keys(f), field || defaultField(r.kind, json(r.fields, [])) || "");   // a field is named case-insensitively (lib/env-name.js): ghl_api_key finds GHL_API_KEY
     if (!want) { this.audit("release", name, who, false, "no field named"); throw new Error(`${name} is ${r.kind === "env-set" ? "an env-set" : `a ${r.kind}`}; name the field you want`); }
     if (!(want in f)) { this.audit("release", name, who, false, `no field ${want}`); throw new Error(`${name} has no field ${want}`); }
     this.audit("release", name, who, true, field ? `field ${field}` : null);
@@ -1548,7 +1549,7 @@ export class Vault {
       const f = await this.fields(r);
       if (r.kind === "env-set" && !it.field) Object.assign(env, f);
       else {
-        const want = it.field || defaultField(r.kind, json(r.fields, []));
+        const want = fieldIn(Object.keys(f), it.field || defaultField(r.kind, json(r.fields, [])) || "");
         if (!want || !(want in f)) throw new Error(`${it.name} has no field ${want || "(name one)"}`);
         env[it.env || envName(it.name)] = f[want];
       }

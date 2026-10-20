@@ -83,7 +83,9 @@ export function register({ ctx, vault, tool }) {
       return { module: n.module, id: n.id, kind: n.kind, provider: n.provider, purpose: n.purpose, item: n.item,
         ...(n.multiple ? { multiple: true, items: mine.map(i => ({ name: i.name, state: one(n, i.name) })) } : {}),
         group: n.group ?? null, optional: Boolean(n.optional), state,
-        how: p ? p.how : null, fields: formFields(p), help: p ? p.help : null, ...(p && p.next ? { next: { tool: p.next.tool } } : {}) };
+        how: p ? p.how : null, fields: formFields(p), help: p ? p.help : null, ...(p && p.next ? { next: { tool: p.next.tool } } : {}),
+        // the module's own check that a filled need works (its manifest's need.test), for the Vault's "Test it": a tool name and what it asks the person, never a value
+        ...(n.test && typeof n.test.tool === "string" ? { test: { tool: n.test.tool, ...(n.test.asks ? { asks: n.test.asks } : {}) } } : {}) };
     });
   };
 

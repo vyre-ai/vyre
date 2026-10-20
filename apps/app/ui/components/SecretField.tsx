@@ -12,8 +12,9 @@ export const SECRET_CLIPBOARD_MS = 30_000;
  * and empties the clipboard 30 seconds later. `read` fetches the value only at the click, so a screen holds no value before then. An agent is never given this component's value.
  * See docs/design/system/components/secret-field.md.
  */
-export function SecretField({ label, read, onAudit, revealMs = SECRET_REVEAL_MS }: {
+export function SecretField({ label, read, onAudit, revealMs = SECRET_REVEAL_MS, hint }: {
   label: string; read: () => string | Promise<string>; onAudit?: (what: "reveal" | "copy") => void; revealMs?: number;
+  /** A line under a revealed value that lets a person check it without copying it (the Vault: its length and last four characters). */ hint?: (value: string) => string;
 }) {
   const [shown, setShown] = useState<string | null>(null);
   const [left, setLeft] = useState(0);
@@ -52,6 +53,7 @@ export function SecretField({ label, read, onAudit, revealMs = SECRET_REVEAL_MS 
           <Button kind="ghost" size="sm" icon="copy" label="Copy" onPress={copy} />
         </View>
       </View>
+      {shown !== null && hint ? <Text size="caption" tone="label">{hint(shown)}</Text> : null}
       <Text size="caption" tone="label">{note || (shown !== null ? `Shown for ${left} seconds, then hidden again. Agents never see it.` : "Hidden until you reveal it. Every reveal is logged.")}</Text>
     </View>
   );

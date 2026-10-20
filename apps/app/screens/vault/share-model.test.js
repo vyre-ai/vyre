@@ -9,8 +9,8 @@ const agents = [{ id: "kit", kind: "agent", name: "Kit", instructors: ["alex", "
 const groups = [{ id: "billing", kind: "group", name: "Billing", people: ["chris", "dana"], agents: ["kit"] }];
 
 test("the three levels and their words", () => {
-  assert.deepEqual(LEVELS.map(l => l[1]), ["Fill in", "Read", "Edit and rotate"]);
-  assert.equal(levelWord("use"), "Fill in"); assert.equal(levelWord("edit"), "Edit and rotate");
+  assert.deepEqual(LEVELS.map(l => l[1]), ["Can use it, without seeing it", "Can see it", "Can change it"]);
+  assert.equal(levelWord("use"), "Can use it, without seeing it"); assert.equal(levelWord("edit"), "Can change it");
 });
 
 test("an agent can only be given Fill in, and so can anyone for an app connection; a person or a group holds all three on an item", () => {
@@ -49,8 +49,8 @@ test("the login note and who else can instruct the agent; none without an agent"
 });
 
 test("the connection note names the agents it is shared with, and says what still waits", () => {
-  assert.equal(connectionNote("Clio", [{ id: "kit", level: "use" }], agents), "Kit can act in Clio as you, and only fill in. Anything that sends or changes data still waits for your yes.");
-  assert.equal(connectionNote("Clio", [{ id: "kit", level: "use" }, { id: "juno", level: "use" }], agents), "Kit and Juno can act in Clio as you, and only fill in. Anything that sends or changes data still waits for your yes.");
+  assert.equal(connectionNote("Clio", [{ id: "kit", level: "use" }], agents), "Kit can act in Clio as you, and only use it, without seeing it. Anything that sends or changes data still waits for your yes.");
+  assert.equal(connectionNote("Clio", [{ id: "kit", level: "use" }, { id: "juno", level: "use" }], agents), "Kit and Juno can act in Clio as you, and only use it, without seeing it. Anything that sends or changes data still waits for your yes.");
   assert.match(connectionNote("Clio", [], agents), /^An agent you share it with can act in Clio as you/);
 });
 

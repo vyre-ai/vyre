@@ -1,4 +1,4 @@
-// The Vault's share sheet and its list of who has what: people, groups and agents at Fill in, Read or Edit and rotate (agents and app connections: Fill in only; agents: only those you may instruct).
+// The Vault's share sheet and its list of who has what: people, groups and agents at Can use it, Can see it or Can change it (agents and app connections: Can use it only; agents: only those you may instruct).
 // It holds no state of its own about the grants: the page hands in `shares` and the handlers, so the sample world, a Space item and a member's own connection all use the same sheet. The rules are
 // in share-model.js.
 import { useState } from "react";
@@ -57,7 +57,7 @@ export function ShareSheet({ open, onClose, title, shares, dir, me, onAdd, onLev
         <Field name="Find a person, group or agent" value={q} onChangeText={setQ} placeholder="Search" />
         {connection ? null : section("People", pool.people)}
         {connection ? null : section("Groups", pool.groups)}
-        {section("Agents", pool.agents, "Agents can only fill in. They use it without ever seeing the value, and every use is logged. Only agents you can instruct are listed.")}
+        {section("Agents", pool.agents, "Agents can use it, without seeing it. Every use is logged. Only agents you can instruct are listed.")}
         {connection ? section("People", pool.people) : null}
         <Footnote icon="shield">Anything an agent sends, pays or deletes still waits for a yes. You can take access back at any time.</Footnote>
         <View className="flex-row gap-s2"><Button kind="primary" label="Done" onPress={onClose} /></View>

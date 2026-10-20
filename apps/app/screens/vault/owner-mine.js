@@ -10,3 +10,17 @@ export const isOwnerRefusal = e => Boolean(e) && ((e.code === "denied" && /the o
 
 /** The scope whose tools a call uses: the owner's Mine is the Space vault. @param {boolean} owner @param {"space" | "mine"} scope @returns {"space" | "mine"} */
 export const toolScope = (owner, scope) => (owner ? "space" : scope);
+
+/**
+ * The owner's vault in its two places (the owner has one store, vault.list): Mine is every item in no folder, which only the owner holds unless the owner lets someone use one;
+ * Shared is every item in one of the Space's folders (a named vault: core/vault/tools/named.js, the `folder` vault.list gives) or in a vault shared from elsewhere (a name with a
+ * slash, core/vault/shared.js). An item moves between them only by the owner's explicit Move (vault.named.move).
+ * @template {{ name: string, folder?: string }} T @param {T[]} rows @returns {{ mine: T[], shared: T[] }}
+ */
+export function splitOwner(rows) {
+  const isShared = (/** @type {T} */ r) => Boolean(r.folder) || String(r.name).includes("/");
+  return { mine: rows.filter((r) => !isShared(r)), shared: rows.filter(isShared) };
+}
+
+/** The scope a screen asks for, as the store it reads: the owner's Mine and Shared are two parts of vault.list; a member's are vault.me.list and vault.me.shared.list. @param {boolean} owner @param {"mine" | "shared"} scope */
+export const storeOf = (owner, scope) => (owner ? (scope === "mine" ? "owner-mine" : "owner-shared") : scope === "mine" ? "member-own" : "member-shared");

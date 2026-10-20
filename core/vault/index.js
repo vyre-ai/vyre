@@ -47,6 +47,7 @@ import * as historyTools from "./tools/history.js";
 import * as agentTools from "./tools/agents.js";
 import { Access } from "./access.js";
 import * as needsTools from "./tools/needs.js";
+import * as templateTools from "./tools/templates.js";
 import * as connectionTools from "./tools/connections.js";
 import { isDeviceGroupId } from "./devices.js";
 import * as saidTools from "./said.js";
@@ -597,6 +598,8 @@ export default {
     agentTools.register({ vault, tool });
     // What modules need from the Vault, and the one way to fill it (ADR 0028, decision 9a).
     needsTools.register({ ctx, vault, tool });
+    // App templates for the Add sheet (tools/templates.js): field names only, suggested by the owner's own AI account from the app's name alone.
+    templateTools.register({ ctx, vault, tool });
     // Every connection and which surface may use it (ADR 0028, decision 9b).
     const conns = connectionTools.register({ ctx, vault, tool });
     // Google and mcp start after the vault, so their rows sync on first read and on their events.

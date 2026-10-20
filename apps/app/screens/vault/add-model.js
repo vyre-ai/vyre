@@ -1,168 +1,183 @@
 // @ts-check
-// The Vault's Add sheet as rules: what the picker lists (the providers catalog, core/vault/providers.js, plus the kinds with no provider), which form each pick shows, and the vault.put
-// (or SSH) call a filled form makes. Pure, so Node tests it. Nothing here holds or returns a value except the call it builds for the person's own Save.
-import { PROVIDERS, checkServiceAccount } from "../../../../core/vault/providers.js";
-import { GROUPS, PROVIDER_GROUP } from "./redesign.js";
+// The Vault's Add sheet as rules. Three ways in: Paste from .env (env-model.js), a Blank item, and Pick an app. An app is a template only when Vyre itself declares it: a module's
+// need (vault.need, its manifest's needs.credentials), the provider catalog (core/vault/providers.js), or a template this Space kept from an earlier suggestion (vault.templates).
+// Any other app: the person types its name and their own AI account suggests the fields (vault.template.suggest, sent the name only); with no account, a blank item.
+// AI accounts (Settings, AI accounts), app sign-ins (Connections) and three expert kinds (Advanced) are not offered here. Pure, so Node tests it. Values pass through only on
+// their way to the person's own Save, byte-exact.
+import { PROVIDERS } from "../../../../core/vault/providers.js";
+import { NAME_RE, canonical, fieldProblems, itemCall, slugOf } from "./env-model.js";
 
-/** The rule for a name in the vault: letters, digits, dot, dash and underscore. */
-export const NAME_RE = /^[A-Za-z0-9._-]{1,128}$/;
+export { NAME_RE, slugOf };
 
-/** @typedef {{ id: string, group: string, label: string, blurb: string, icon: string, words: string, slug: string }} Entry */
-/** @typedef {{ name: string, label: string, secret: boolean, optional?: boolean, multiline?: boolean, hint?: string }} FormField */
-/** @typedef {{ id: string, title: string, how: "field"|"file"|"oauth"|"login"|"ssh"|"import", fields: FormField[], file?: { name: string, label: string }, help: string|null, signIn?: string }} Form */
+/** @typedef {import("./env-model.js").DField} DField */
+/** @typedef {import("./env-model.js").Draft} Draft */
+/** @typedef {{ name: string, label: string, secret: boolean, optional?: boolean, help?: string }} TField a template's field: `name` is the name it is saved under */
+/**
+ * @typedef {{ id: string, label: string, line: string, source: "need" | "app" | "space", provider?: string, need?: { module: string, id: string, multiple?: boolean },
+ *   fields: TField[], help: string | null, extra: boolean, test?: { tool: string, asks?: string } }} Template
+ *   `extra`: the person may add another field (a need's fields are the module's own and nothing else)
+ */
 
-/** How each catalog provider reads in the picker: the short name, one line on what it can do, an icon, search words, and the name it is saved under. A provider the catalog gains with no row here fails the test. */
-const PICK = /** @type {Record<string, { label: string, blurb: string, icon: string, words?: string, slug?: string }>} */ ({
-  anthropic: { label: "Anthropic", blurb: "Let agents use Claude models with your own API key.", icon: "spark", words: "claude api" },
-  "claude-setup-token": { label: "Claude sign-in token", blurb: "Run Claude sessions on your Claude plan.", icon: "spark", words: "setup-token subscription" },
-  openai: { label: "OpenAI", blurb: "Chat models and speech from OpenAI.", icon: "spark", words: "gpt chatgpt whisper" },
-  deepgram: { label: "Deepgram", blurb: "Turn speech into text.", icon: "mic", words: "voice transcription" },
-  elevenlabs: { label: "ElevenLabs", blurb: "Read text aloud in a natural voice.", icon: "mic", words: "voice speech" },
-  "imap-smtp": { label: "Email account", blurb: "Read and send mail from any mailbox, by IMAP and SMTP.", icon: "mail", words: "imap smtp mailbox", slug: "mail" },
-  "sending-service": { label: "Sending service", blurb: "Send mail through Resend, Mailgun, Postmark, SendGrid or SMTP.", icon: "send", words: "resend mailgun postmark sendgrid smtp", slug: "sending" },
-  twilio: { label: "Twilio", blurb: "Send texts and place calls from your own number.", icon: "phone", words: "sms text voice call" },
-  "google-oauth": { label: "Google (sign in)", blurb: "Mail, calendar and files for one Google account.", icon: "globe", words: "gmail calendar drive workspace", slug: "google" },
-  "google-dwd": { label: "Google service account", blurb: "A key file that acts for people in your Google Workspace.", icon: "key", words: "workspace json delegation", slug: "google-service-account" },
-  "google-apps-script": { label: "Google Apps Script", blurb: "Send and read mail through a web app you own.", icon: "file", words: "script web app", slug: "google-apps-script" },
-  github: { label: "GitHub (token)", blurb: "Work with repositories using a personal access token.", icon: "term", words: "git pat repo", slug: "github" },
-  "github-oauth": { label: "GitHub (sign in)", blurb: "Connect GitHub without making a token.", icon: "term", words: "git device", slug: "github" },
-  dropbox: { label: "Dropbox", blurb: "Let files and agents read your Dropbox with an access token.", icon: "file", words: "files storage cloud", slug: "dropbox" },
-  cloudflare: { label: "Cloudflare", blurb: "Manage DNS and sites on your domains.", icon: "server", words: "dns domain" },
-  "mcp-bearer": { label: "MCP server token", blurb: "Let Vyre call a tool server that asks for a bearer token.", icon: "link", words: "mcp bearer tools", slug: "mcp-server" },
-  telegram: { label: "Telegram bot", blurb: "Message people and groups from a bot.", icon: "chat", words: "bot botfather chat" },
-});
+/** A catalog provider that is an AI account: those live in Settings, AI accounts. @param {{ capabilities: readonly string[] }} p */
+export const isAiAccount = (p) => p.capabilities.includes("llm");
+/** A catalog provider that is an app sign-in, or a key for an app that has one: those live in Connections. @param {{ name: string, how: string }} p */
+export const isSignIn = (p) => p.how === "oauth" || Object.prototype.hasOwnProperty.call(PROVIDERS, `${p.name}-oauth`);
+/** Expert kinds, added from Advanced: a service-account key file, an Apps Script web app, and a bare MCP bearer token. */
+export const ADVANCED_KINDS = /** @type {const} */ (["google-dwd", "google-apps-script", "mcp-bearer"]);
+/** Whether the Add sheet offers a catalog provider. @param {string} name */
+export function offered(name) {
+  const p = Object.prototype.hasOwnProperty.call(PROVIDERS, name) ? PROVIDERS[name] : null;
+  return !!p && p.how === "field" && !isAiAccount(p) && !isSignIn(p) && !(/** @type {readonly string[]} */ (ADVANCED_KINDS)).includes(name);
+}
 
-/** The kinds with no provider. */
-const OWN = /** @type {Entry[]} */ ([
-  { id: "login", group: "Logins", label: "Website login", blurb: "A site's address, username, password and one-time code.", icon: "globe", words: "password username totp 2fa site account", slug: "" },
-  { id: "ssh", group: "SSH keys", label: "SSH key", blurb: "Make a key on your server, or add one you already have.", icon: "term", words: "ssh private public deploy key server", slug: "ssh-key" },
-  { id: "note", group: "Secure notes", label: "Secure note", blurb: "Private text only you and the people you share it with can read.", icon: "file", words: "text memo", slug: "" },
-  { id: "api-key", group: "Any API key", label: "Any API key", blurb: "A key or token from a service that is not listed here.", icon: "key", words: "token secret generic other", slug: "" },
-]);
-
-/** The last row: bringing items in from another password manager (the Import screen). */
-export const IMPORT_ENTRY = /** @type {Entry} */ ({ id: "import", group: "Import", label: "Import from another password manager", blurb: "1Password, Bitwarden, Chrome, Dashlane or an .env file.", icon: "download", words: "1password bitwarden lastpass chrome csv", slug: "" });
-
-/** Every provider row the picker has: the order written above, then any the catalog gained since. @returns {Entry[]} */
-const providerEntries = () => [...new Set([...Object.keys(PICK), ...Object.keys(PROVIDERS)])].filter((n) => PROVIDERS[n]).map((n) => PROVIDERS[n]).map((p) => {
-  const s = PICK[p.name];
-  return { id: p.name, group: PROVIDER_GROUP[p.name] ?? "Any API key", label: s?.label ?? p.label, blurb: s?.blurb ?? "", icon: s?.icon ?? "key", words: `${p.label} ${s?.words ?? ""}`, slug: s?.slug ?? p.name };
-});
-
-/** The names in the catalog that the picker does not know how to show: a test keeps this empty. */
-export const unplaced = () => Object.keys(PROVIDERS).filter((n) => !PICK[n] || !PROVIDER_GROUP[n]);
+/** A field's label without its aside in brackets, capitalised. @param {string} l */
+const short = (l) => String(l).replace(/\s*\(.*$/, "").replace(/^./, (c) => c.toUpperCase());
+/** A module's name as people read it. @param {string} m */
+const moduleWord = (m) => String(m).replace(/[-_]+/g, " ").replace(/^./, (c) => c.toUpperCase());
+/** @param {{ name: string, label: string, secret: boolean, optional?: boolean }} f @returns {TField} */
+const fromCatalog = (f) => ({ name: f.name, label: short(f.label), secret: f.secret, ...(f.optional ? { optional: true } : {}), ...(/\(/.test(f.label) ? { help: f.label.replace(/^[^(]*\(|\)$/g, "") } : {}) });
 
 /**
- * The rows of the picker. Mine is the member's own vault (vault.me.put): no sign-in flows, which are the Space's connections, and no SSH keys or import, which are the Space vault's.
- * @param {"space"|"mine"} [scope] @returns {Entry[]}
+ * @typedef {{ module: string, id: string, provider: string, purpose: string, state: string, item?: string | null, optional?: boolean, multiple?: boolean, how?: string | null,
+ *   fields?: { name: string, label: string, secret: boolean, optional?: boolean }[], help?: string | null, test?: { tool: string, asks?: string } }} Need one row of vault.need
+ * @typedef {{ app: string, fields: { name: string, secret: boolean, help?: string }[] }} Saved one of vault.templates
  */
-export function entriesFor(scope = "space") {
-  const all = [...providerEntries(), ...OWN];
-  const rows = scope === "mine" ? all.filter((e) => e.id !== "ssh" && PROVIDERS[e.id]?.how !== "oauth") : [...all, IMPORT_ENTRY];
-  return rows;
+
+/** A need's fields as vault.need gives them, else the catalog's. @param {Need} n @returns {{ name: string, label: string, secret: boolean, optional?: boolean }[]} */
+const fieldsOf = (n) => (n.fields ?? /** @type {{ name: string, label: string, secret: boolean, optional?: boolean }[]} */ ([...PROVIDERS[n.provider].fields]));
+
+/** The template for one module's need: its own fields, saved through vault.connect. @param {Need} n @returns {Template | null} */
+export function needTemplate(n) {
+  if (!offered(n.provider)) return null;
+  const p = PROVIDERS[n.provider];
+  return { id: `need:${n.module}:${n.id}`, label: `${p.label.replace(/\s*\(.*$/, "")} for ${moduleWord(n.module)}`, line: n.purpose, source: "need", provider: n.provider,
+    need: { module: n.module, id: n.id, ...(n.multiple ? { multiple: true } : {}) }, fields: fieldsOf(n).map(fromCatalog), help: n.help ?? p.help, extra: false, ...(n.test ? { test: n.test } : {}) };
 }
 
-/** Rows that match every word typed, in the label, the line, the group or the search words. @param {Entry[]} entries @param {string} q */
-export function searchEntries(entries, q) {
-  const words = q.toLowerCase().split(/\s+/).filter(Boolean);
-  return words.length ? entries.filter((e) => words.every((w) => `${e.label} ${e.blurb} ${e.group} ${e.words}`.toLowerCase().includes(w))) : entries;
-}
-
-/** The picker's sections in the order the list and the panel use, with the Import row last; a group with no match is left out. @param {Entry[]} entries */
-export function pickerGroups(entries) {
-  return [...GROUPS, "Import"].map((name) => ({ name, items: entries.filter((e) => e.group === name) })).filter((g) => g.items.length);
-}
-
-/** The name a pick starts with: lowercase, and still the person's to change. @param {Entry} e */
-export const startName = (e) => e.slug;
-
-/** A name as the vault keeps it: spaces become dashes, anything else not allowed is dropped. @param {string} typed */
-export const slugOf = (typed) => typed.trim().replace(/\s+/g, "-").replace(/[^A-Za-z0-9._-]/g, "").slice(0, 128);
-
-/** @param {string} id @returns {Form|null} */
-export function formOf(id) {
-  if (id === "import") return { id, title: IMPORT_ENTRY.label, how: "import", fields: [], help: null };
-  if (id === "login") return { id, title: "Website login", how: "login", help: null, fields: [
-    { name: "url", label: "Web address", secret: false, optional: true, hint: "https://drive.juniper.example" },
-    { name: "username", label: "Username", secret: false },
-    { name: "password", label: "Password", secret: true },
-    { name: "totp", label: "One-time code secret (optional)", secret: true, optional: true, hint: "The setup key a site shows next to its QR code" }] };
-  if (id === "ssh") return { id, title: "SSH key", how: "ssh", help: null, fields: [] };
-  if (id === "note") return { id, title: "Secure note", how: "field", help: null, fields: [{ name: "value", label: "Note", secret: true, multiline: true }] };
-  if (id === "api-key") return { id, title: "Any API key", how: "field", help: null, fields: [{ name: "value", label: "API key", secret: true }] };
-  const p = PROVIDERS[id];
-  if (!p) return null;
-  const title = PICK[id]?.label ?? p.label;
-  if (p.how === "oauth") return { id, title, how: "oauth", fields: [], help: p.help, signIn: title.replace(/\s*\(sign in\)/, "") };
-  const file = p.how === "file" ? p.fields.find((f) => f.name === "json") : undefined;
-  return { id, title, how: p.how, help: p.help, ...(file ? { file: { name: file.name, label: file.label } } : {}),
-    fields: orderFields(id, p.fields.filter((f) => f !== file)).map((f) => ({ name: f.name, label: f.optional && !(FIRST[id] ?? []).includes(f.name) ? optionalLabel(f.label) : f.label, secret: f.secret, ...(f.optional ? { optional: true } : {}) })) };
-}
-
-/** Fields a provider's own console shows first, in its order, even where the catalog marks one optional (Twilio: account number, auth token, the number texts come from). The rest follow, required before optional. @type {Record<string, string[]>} */
-const FIRST = { twilio: ["account", "value", "from"] };
-
-/** @typedef {{ name: string, label: string, secret: boolean, optional?: boolean }} OrderField */
-/** @param {string} id @param {OrderField[]} fields @returns {OrderField[]} */
-const orderFields = (id, fields) => {
-  const first = FIRST[id] ?? [];
-  const lead = first.map((n) => fields.find((f) => f.name === n)).filter((/** @type {OrderField | undefined} */ f) => f !== undefined);
-  const rest = fields.filter((f) => !first.includes(f.name));
-  return [.../** @type {OrderField[]} */ (lead), ...rest.filter((f) => !f.optional), ...rest.filter((f) => f.optional)];
-};
-
-/** "API key id (only if ...)" becomes "API key id (optional, only if ...)"; a label with no aside gets " (optional)". @param {string} l */
-const optionalLabel = (l) => (/\(/.test(l) ? l.replace("(", "(optional, ") : `${l} (optional)`);
-
-/** A field's label without its aside in brackets. @param {string} l */
-const short = (l) => l.replace(/\s*\(.*$/, "").replace(/^./, (c) => c.toUpperCase());
-
-/** What is wrong with a filled form, by field, in words the person can act on. A secret's value is never in the words. @param {Form} f @param {string} name @param {Record<string, string>} v @param {string} [file] */
-export function problemsOf(f, name, v, file = "") {
-  /** @type {Record<string, string>} */ const out = {};
-  if (!name.trim()) out.name = "Give it a name."; else if (!NAME_RE.test(name.trim())) out.name = "A name is letters, digits, dot, dash and underscore.";
-  const p = PROVIDERS[f.id];
-  if (f.file && !file) out[f.file.name] = "Drop the key file here, or choose it.";
-  if (f.file && file) { try { checkServiceAccount(file); } catch (e) { out[f.file.name] = e instanceof Error ? e.message : "That file is not a service-account key."; } }
-  for (const x of f.fields) {
-    const got = (v[x.name] ?? "").trim();
-    if (!got) { if (!x.optional) out[x.name] = `${short(x.label)} is needed.`; continue; }
-    const pat = p?.fields.find((q) => q.name === x.name)?.pattern;
-    if (pat && !new RegExp(pat).test(got)) out[x.name] = `The ${short(x.label).toLowerCase()} does not look right for ${f.title}. Check it and paste it again.`;
-    if (f.how === "login" && x.name === "url" && !/^(?:https?:\/\/)?[a-z0-9.-]+\.[a-z]{2,}(?::\d+)?(?:[/?#]|$)/i.test(got)) out.url = "That is not a web address.";
+/**
+ * Every app the Add sheet offers, in order: what Vyre's modules need, the catalog's apps, then this Space's own templates. Never an AI account or a sign-in.
+ * @param {{ needs?: Need[], saved?: Saved[] }} [o] @returns {Template[]}
+ */
+export function templates({ needs = [], saved = [] } = {}) {
+  /** @type {Template[]} */ const out = [];
+  for (const n of needs) { const t = needTemplate(n); if (t) out.push(t); }
+  for (const p of Object.values(PROVIDERS)) {
+    if (!offered(p.name)) continue;
+    out.push({ id: `app:${p.name}`, label: p.label.replace(/\s*\(.*$/, ""), line: `Fields for ${p.label.replace(/\s*\(.*$/, "")}`, source: "app", provider: p.name, fields: p.fields.map(fromCatalog), help: p.help, extra: true });
   }
+  for (const s of saved) out.push({ id: `space:${s.app.toLowerCase()}`, label: s.app, line: "Used before in this Space", source: "space", fields: s.fields.map((f) => ({ name: canonical(f.name), label: canonical(f.name), secret: f.secret !== false, ...(f.help ? { help: f.help } : {}) })), help: null, extra: true });
   return out;
 }
 
-/** The host of a link the person typed, lower case, or "". @param {string} url */
-const hostOf = (url) => { const m = /^(?:https?:\/\/)?([a-z0-9.-]+\.[a-z]{2,})(?::\d+)?(?:[/?#]|$)/i.exec(url.trim()); return m ? m[1].toLowerCase() : ""; };
+/** Templates whose name, line or field names hold every word typed. @param {Template[]} list @param {string} q */
+export function searchTemplates(list, q) {
+  const words = String(q).toLowerCase().split(/\s+/).filter(Boolean);
+  return words.length ? list.filter((t) => words.every((w) => `${t.label} ${t.line} ${t.fields.map((f) => `${f.label} ${canonical(f.name)}`).join(" ")}`.toLowerCase().includes(w))) : list;
+}
+
+let seq = 0;
+const fid = () => `t${++seq}`;
+
+/** A template as an item being added: its fields in order, required first, secret ones secret, values empty. @param {Template} t @returns {Draft} */
+export function draftOf(t) {
+  const fields = [...t.fields.filter((f) => !f.optional), ...t.fields.filter((f) => f.optional)];
+  return { id: t.id, name: t.source === "need" ? "" : t.label, fields: fields.map((f) => ({ id: fid(), key: f.name, value: "", secret: f.secret, on: true, label: f.label, ...(f.help ? { help: f.help } : {}), ...(f.optional ? { optional: true } : {}) })) };
+}
+
+/** A blank item: one field to name. @returns {Draft} */
+export const blankDraft = () => ({ id: "blank", name: "", fields: [{ id: fid(), key: "", value: "", secret: true, on: true }] });
+
+/** One more field for "Add another field". @returns {DField} */
+export const newField = () => ({ id: fid(), key: "", value: "", secret: true, on: true });
+
+/** A suggestion (vault.template.suggest) as a draft: its fields when there are any, else a blank item named after the app. @param {{ app: string, fields: { name: string, secret: boolean, help?: string }[] }} s @returns {Draft} */
+export function suggestionDraft(s) {
+  if (!s.fields.length) return { ...blankDraft(), name: s.app };
+  return { id: `space:${s.app.toLowerCase()}`, name: s.app, fields: s.fields.map((f) => ({ id: fid(), key: canonical(f.name), value: "", secret: f.secret !== false, on: true, ...(f.help ? { help: f.help } : {}) })) };
+}
+
+/** What a failed suggestion says, by its reason; the sheet shows a blank item under it. @param {"no_account" | "no_answer" | undefined} why */
+export const suggestionNote = (why) => (why === "no_account" ? "Connect your own AI account in Settings, AI accounts, and Vyre suggests the fields. For now, add them yourself." : "Vyre has no suggestion for that app. Add its fields yourself.");
+
+/** A name for a need with several accounts: lowercase letters, digits and dashes. @param {string} typed */
+const labelOf = (typed) => slugOf(typed).toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
 
 /**
- * The call a filled form makes: vault.put with the kind and fields the catalog says (and the provider as a detail, so the item sits in its group). In Mine it is vault.me.put, which takes no details.
- * Null when the form needs more than a call (a sign-in, an import).
- * @param {Form} f @param {string} name @param {Record<string, string>} v @param {{ scope?: "space"|"mine", file?: string, sshMode?: "make"|"existing", sshFile?: string, description?: string }} [o]
- * @returns {{ tool: string, input: Record<string, unknown> } | { error: string } | null}
+ * The save for a filled template. A module's need: vault.connect with the need's own field names (the module reads them), checked by the catalog on the server. A catalog app:
+ * vault.put with its kind and the provider as a detail. A Space template or a blank item: an env-set (env-model.js itemCall). Values exactly as given; an optional field left
+ * empty is left out.
+ * @param {Template | null} t @param {Draft} d @param {{ member?: boolean }} [o]
+ * @returns {{ tool: string, input: Record<string, unknown> } | { error: string }}
  */
-export function callOf(f, name, v, o = {}) {
-  if (f.how === "oauth" || f.how === "import") return null;
-  const nm = name.trim();
-  if (f.how === "ssh") {
-    if (!NAME_RE.test(nm)) return { error: "A name is letters, digits, dot, dash and underscore." };
-    if (o.sshMode === "existing") return o.sshFile?.trim() ? { tool: "vault.ssh.add", input: { name: nm, file: o.sshFile.trim() } } : { error: "Type where the key file is on your server." };
-    return { tool: "vault.ssh.generate", input: { name: nm, ...(o.description?.trim() ? { description: o.description.trim() } : {}) } };
-  }
-  const bad = Object.values(problemsOf(f, nm, v, o.file))[0];
+export function saveCall(t, d, { member = false } = {}) {
+  if (!t || t.source === "space") return itemCall(d, { member });
+  const filled = d.fields.filter((f) => f.on && !(f.optional && !f.value));
+  const bad = Object.values(fieldProblems(filled))[0];
   if (bad) return { error: bad };
-  const tool = o.scope === "mine" ? "vault.me.put" : "vault.put";
-  /** @type {Record<string, string>} */ const fields = {};
-  for (const x of f.fields) { const got = (v[x.name] ?? "").trim(); if (got && !(f.how === "login" && x.name === "url")) fields[x.name] = x.multiline ? (v[x.name] ?? "") : got; }
-  if (f.file && o.file) fields[f.file.name] = o.file;
-  if (f.how === "login") {
-    const host = hostOf(v.url ?? "");
-    if (host && o.scope === "mine") fields.url = v.url.trim();
-    return { tool, input: { name: nm, kind: "login", fields, ...(host && o.scope !== "mine" ? { url: v.url.trim(), hosts: [host] } : {}) } };
+  if (t.source === "need" && t.need) {
+    if (member) return { error: "A module's key is added by the Space's owner." };
+    /** @type {Record<string, string>} */ const fields = {};
+    for (const f of filled) fields[f.key] = f.value;
+    const label = t.need.multiple ? labelOf(d.name) : "";
+    if (t.need.multiple && !label) return { error: "Give this account a name, like work or sales." };
+    return { tool: "vault.connect", input: { module: t.need.module, need: t.need.id, fields, ...(label ? { label } : {}) } };
   }
-  const p = PROVIDERS[f.id];
-  const kind = p ? p.kinds[0] : f.how === "field" && f.id === "note" ? "note" : "api-key";
-  return { tool, input: { name: nm, kind, fields, ...(p && o.scope !== "mine" ? { details: { provider: p.name } } : {}) } };
+  const p = t.provider ? PROVIDERS[t.provider] : null;
+  if (!p) return itemCall(d, { member });
+  const name = slugOf(d.name);
+  if (!NAME_RE.test(name)) return { error: "Give the item a name." };
+  const own = new Set(p.fields.map((f) => f.name));
+  /** @type {Record<string, string>} */ const fields = {};
+  for (const f of filled) {
+    // the catalog's own fields keep the names the modules read; a field the person added is named in its one form
+    const key = own.has(f.key) ? f.key : canonical(f.key);
+    const pat = p.fields.find((x) => x.name === key)?.pattern;
+    if (pat && !new RegExp(pat).test(f.value)) return { error: `The ${String(f.label || canonical(key)).toLowerCase()} does not look right for ${t.label}${f.value !== f.value.trim() ? ": it has a space or a new line at one end" : ""}. Check it and paste it again.` };
+    fields[key] = f.value;
+  }
+  const plain = filled.filter((f) => !f.secret).map((f) => (own.has(f.key) ? f.key : canonical(f.key)));
+  return member ? { tool: "vault.me.put", input: { name, kind: p.kinds[0], fields } } : { tool: "vault.put", input: { name, kind: p.kinds[0], fields, details: { provider: p.name, plain } } };
+}
+
+/** A login: its web address, username, password and an optional one-time code secret. @returns {Draft} */
+export const loginDraft = () => ({ id: "login", name: "", fields: [
+  { id: fid(), key: "url", label: "Web address", value: "", secret: false, on: true, optional: true },
+  { id: fid(), key: "username", label: "Username", value: "", secret: false, on: true },
+  { id: fid(), key: "password", label: "Password", value: "", secret: true, on: true },
+  { id: fid(), key: "totp", label: "One-time code secret", value: "", secret: true, on: true, optional: true, help: "The setup key a site shows next to its QR code" }] });
+
+/** A note: one multiline field. @returns {Draft} */
+export const noteDraft = () => ({ id: "note", name: "", fields: [{ id: fid(), key: "text", label: "Note", value: "", secret: true, on: true }] });
+
+/** The host of a web address, lower case, or "". @param {string} url */
+const hostOf = (url) => { const m = /^(?:https?:\/\/)?([a-z0-9.-]+\.[a-z]{2,})(?::\d+)?(?:[/?#]|$)/i.exec(String(url).trim()); return m ? m[1].toLowerCase() : ""; };
+
+/**
+ * The save for a login or a note. A login's address names the site it may be filled on (hosts); its username and password are kept exactly as typed.
+ * @param {"login" | "note"} kind @param {Draft} d @param {{ member?: boolean }} [o] @returns {{ tool: string, input: Record<string, unknown> } | { error: string }}
+ */
+export function kindCall(kind, d, { member = false } = {}) {
+  const name = slugOf(d.name);
+  if (!NAME_RE.test(name)) return { error: "Give it a name." };
+  const v = Object.fromEntries(d.fields.map((f) => [f.key, f.value]));
+  const tool = member ? "vault.me.put" : "vault.put";
+  if (kind === "note") return v.text ? { tool, input: { name, kind: "note", fields: { text: v.text } } } : { error: "Write the note." };
+  if (!v.username || !v.password) return { error: "A login needs a username and a password." };
+  const url = String(v.url ?? "").trim(), host = hostOf(url);
+  if (url && !host) return { error: "That is not a web address." };
+  const fields = { username: v.username, password: v.password, ...(v.totp ? { totp: v.totp } : {}), ...(member && url ? { url } : {}) };
+  return { tool, input: { name, kind: "login", fields, ...(!member && host ? { url, hosts: [host] } : {}) } };
+}
+
+/**
+ * What the Vault asks for at its top: a module's need that is not filled ("Comms needs a Twilio key: Auth token, Account number"), with the template a tap opens. Only what the
+ * Add sheet offers; an AI account or a sign-in is asked for where it lives.
+ * @param {Need[]} needs @returns {{ id: string, text: string, template: string }[]}
+ */
+export function needPrompts(needs) {
+  return needs.filter((n) => n.state === "missing" && !n.optional && offered(n.provider)).map((n) => {
+    const p = PROVIDERS[n.provider];
+    const wants = fieldsOf(n).filter((f) => !f.optional).map((f) => short(f.label));
+    return { id: `${n.module}:${n.id}`, text: `${moduleWord(n.module)} needs ${p.label.replace(/\s*\(.*$/, "")}: ${wants.join(", ")}.`, template: `need:${n.module}:${n.id}` };
+  });
 }

@@ -19,7 +19,7 @@ const TONE = { ok: "ok", warn: "warn", err: "err", plain: "plain" } as const;
 type Item = { id: string; name: string; sub: string; group: "Apps" | "Logins" | "Keys"; app?: { account: string; how: string; state: "ok" | "warn" | "err"; stateWord: string }; shares: Share[] };
 const ITEMS0: Item[] = [
   { id: "clio", name: "Clio", sub: "alex@juniperstudio.example.com", group: "Apps", app: { account: "alex@juniperstudio.example.com", how: "You connected it", state: "ok", stateWord: "Connected" }, shares: [{ id: "kit", level: "use" }] },
-  { id: "google", name: "Google Workspace", sub: "Acts as alex@juniperstudio.example.com", group: "Apps", app: { account: "alex@juniperstudio.example.com", how: "Provided by the firm key. Only your own mailbox, calendar and Drive", state: "ok", stateWord: "Provisioned" }, shares: [] },
+  { id: "google", name: "Google Workspace", sub: "Acts as alex@juniperstudio.example.com", group: "Apps", app: { account: "alex@juniperstudio.example.com", how: "Your work account, provided by your company. Only your own mailbox, calendar and Drive", state: "ok", stateWord: "Provisioned" }, shares: [] },
   { id: "notion", name: "Notion", sub: "Juniper Studio workspace", group: "Apps", app: { account: "Juniper Studio", how: "You connected it", state: "warn", stateWord: "Connect again" }, shares: [] },
   { id: "gmail", name: "Gmail", sub: "intake@juniperstudio.example.com", group: "Logins", shares: [{ id: "billing", level: "use" }, { id: "chris", level: "reveal" }, { id: "kit", level: "use" }] },
   { id: "stripe", name: "Stripe (read only)", sub: "Restricted key, read only", group: "Keys", shares: [{ id: "kit", level: "use" }] },

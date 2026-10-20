@@ -61,7 +61,10 @@ test("providers: every entry has the catalog's shape, and fits its kinds", () =>
 
 test("providers: field checks name the field, never the value", () => {
   const secret = "sk-" + hex(20);
-  assert.deepEqual(checkProviderFields(PROVIDERS.openai, { value: ` ${secret} ` }), { value: secret });
+  assert.deepEqual(checkProviderFields(PROVIDERS.openai, { value: secret }), { value: secret });
+  // byte-exact (the owner's rule, 20 Oct 2026): a pasted space is never trimmed away behind the person's back; the shape check refuses it in words instead
+  assert.throws(() => checkProviderFields(PROVIDERS.openai, { value: ` ${secret} ` }), /space or a new line at one end/);
+  assert.deepEqual(checkProviderFields(PROVIDERS.deepgram, { value: "dg key \n" }), { value: "dg key \n" }, "a value with no shape check is kept exactly as given, its space and new line too");
   const msgs = [];
   for (const [p, f] of [["openai", {}], ["openai", { value: "nope-" + secret }], ["openai", { value: secret, extra: "1" }],
     ["imap-smtp", { imap_host: "imap.northwind.test", imap_port: "993", smtp_host: "smtp.northwind.test", smtp_port: "465", username: "kit", password: secret, security: "ssl" }]]) {

@@ -1,14 +1,14 @@
-// The Vault's navigation, shared by the sidebar's Vault panel (Mine and Space, the groups, Expiring, Shared with me) and the page (the list it shows): which vault is open, which pick narrows it, and the
+// The Vault's navigation, shared by the sidebar's Vault panel (Mine and Shared, Expiring, Shared's folders) and the page (the list it shows): which vault is open, which pick narrows it, and the
 // counts the page last worked out. A store, so the two can sit in different parts of the shell and still agree.
 import { create } from "zustand";
 import { ALL, type Nav } from "./redesign.js";
 import type { Scope } from "./redesign-data";
 
-/** The width at which the shell shows the Vault as a sidebar panel (the same as Files); narrower, and on a phone, the page keeps its own Mine and Space switch. */
+/** The width at which the shell shows the Vault as a sidebar panel (the same as Files); narrower, and on a phone, the page keeps its own Mine and Shared switch. */
 export const VAULT_PANEL_MIN = 760;
 
-export type Counts = { all: number; groups: Record<string, number>; expiring: number; shared: number };
-export const NO_COUNTS: Counts = { all: 0, groups: {}, expiring: 0, shared: 0 };
+export type Counts = { all: number; groups: Record<string, number>; folders: Record<string, number>; expiring: number; shared: number };
+export const NO_COUNTS: Counts = { all: 0, groups: {}, folders: {}, expiring: 0, shared: 0 };
 
 type State = {
   scope: Scope; nav: Nav; counts: Counts;

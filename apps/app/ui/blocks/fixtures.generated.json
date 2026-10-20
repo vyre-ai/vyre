@@ -4187,6 +4187,76 @@
     }
    }
   },
+  "vault-mine": {
+   "title": "Vault: Mine, an item open",
+   "screens": {
+    "full": {
+     "component": "vault-mine"
+    },
+    "compact": {
+     "component": "vault-mine"
+    },
+    "glance": {
+     "component": "vault-mine"
+    }
+   }
+  },
+  "vault-shared": {
+   "title": "Vault: Shared, in folders",
+   "screens": {
+    "full": {
+     "component": "vault-shared"
+    },
+    "compact": {
+     "component": "vault-shared"
+    },
+    "glance": {
+     "component": "vault-shared"
+    }
+   }
+  },
+  "vault-add": {
+   "title": "Vault: Add, three ways in",
+   "screens": {
+    "full": {
+     "component": "vault-add"
+    },
+    "compact": {
+     "component": "vault-add"
+    },
+    "glance": {
+     "component": "vault-add"
+    }
+   }
+  },
+  "vault-paste": {
+   "title": "Vault: a pasted .env, grouped",
+   "screens": {
+    "full": {
+     "component": "vault-paste"
+    },
+    "compact": {
+     "component": "vault-paste"
+    },
+    "glance": {
+     "component": "vault-paste"
+    }
+   }
+  },
+  "vault-advanced": {
+   "title": "Vault: Advanced",
+   "screens": {
+    "full": {
+     "component": "vault-advanced"
+    },
+    "compact": {
+     "component": "vault-advanced"
+    },
+    "glance": {
+     "component": "vault-advanced"
+    }
+   }
+  },
   "skills-real": {
    "title": "Skills (real box shapes)",
    "screens": {

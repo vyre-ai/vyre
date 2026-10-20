@@ -1,6 +1,6 @@
 // The living gallery: every block and a few whole screens, drawn from generated fixtures (apps/app/ui/blocks/fixtures.generated.json) with no box behind them. The picture tests
 // load /gallery?f=<id>&form=full|compact|glance and take a picture of #fixture; /gallery?f=all lists everything for a person to read.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import { AgentComputerPane, ConversationHeader, ConversationList, NewAgentDialog, convosFrom, ShellStates, ShellSample, SpaceTileSheet, BlockScreen, BackgroundTasksCard, Card, ChatCard, ChatForkPanel, Chip, ChoiceHero, ChoiceList, CodeDisplay, CodeField, FlowCanvas, FlowStep, InviteShare, LaterPlannerNote, Markdown, NeedsYouCard, PanelCapabilityRows, PasswordField, ProviderRow, ProviderSignInButton, RecoveryKeySheet, ServerUrlField, SlashChips, Stack, ThemeProvider, Text, useAppearance, useUiTheme } from "@vyre/ui";
@@ -37,6 +37,12 @@ import { sampleChats, sampleConvoChats } from "../screens/chats/chats-model.js";
 import { PreviewCard } from "../src/chat/PreviewCard";
 import { SitesList } from "../screens/sites/SitesList";
 import { EmergencyView } from "../screens/vault/RealVaultMore";
+import VaultRedesign from "../screens/vault/VaultRedesign";
+import VaultAdvanced from "../screens/vault/VaultAdvanced";
+import { AddBody } from "../screens/vault/AddSheet";
+import { sampleData } from "../screens/vault/redesign-data";
+import { SAMPLE_NEEDS } from "../screens/vault/sample-redesign";
+import { useVaultNav } from "../screens/vault/vault-nav";
 import { DesignChangesView } from "../screens/design/DesignChanges";
 import { FieldPaneDemo, ModelMapDemo, StarterDemo, TypeSetupDemo } from "../screens/records-setup/SetupDemos";
 import { DRAFTS } from "../screens/records-setup/data";
@@ -72,6 +78,14 @@ function fromQuery(raw?: string): Record<string, any> | null {
     const s = JSON.parse(atob(raw.replace(/-/g, "+").replace(/_/g, "/")));
     return s && s.v === 2 && s.layout && s.blocks && typeof s.blocks === "object" ? s : null;
   } catch { return null; }
+}
+
+/** The Vault on its sample world, in one of its two places. The place is set once the page is up, so nothing changes another component while it draws. */
+function VaultDemo({ scope }: { scope: "mine" | "shared" }) {
+  const [data] = useState(sampleData);
+  const [ready, setReady] = useState(false);
+  useEffect(() => { useVaultNav.getState().setScope(scope); setReady(true); }, [scope]);
+  return ready ? <VaultRedesign data={data} /> : null;
 }
 
 /** Whole screens that are components, not block screens: drawn from sample data so a picture of them needs no box. */
@@ -133,6 +147,16 @@ function Sample({ name }: { name: string }) {
       n("b1", "branch", "draft", 2, 4, "done"), n("b2", "subflow", "Run the Flow inner_note", 2, 5, "running"), n("j", "create", "Create a filing note", 0, 6)];
     const edges: CanvasEdge[] = [{ from: "t", to: "p", kind: "next" }, { from: "p", to: "a1", kind: "lane" }, { from: "a1", to: "a2", kind: "next" }, { from: "p", to: "b1", kind: "lane" }, { from: "b1", to: "b2", kind: "next" }, { from: "p", to: "j", kind: "next" }];
     return <Card flush><FlowCanvas nodes={nodes} edges={edges} /></Card>;
+  }
+  // The Vault from its sample world: Mine with an item open, Shared's folders, the Add sheet's three ways in, a pasted .env's preview, and the Advanced page.
+  if (name === "vault-mine" || name === "vault-shared") return <VaultDemo scope={name === "vault-mine" ? "mine" : "shared"} />;
+  if (name === "vault-add" || name === "vault-paste") {
+    return <Card><AddBody open scope="mine" member={false} busy={false} problem="" onClose={() => {}} onSave={() => {}} needs={SAMPLE_NEEDS as never} saved={[]} folders={[]}
+      initialPaste={name === "vault-paste" ? "GHL_API_KEY=pit-7f2a-91c4-sample-4b1e\nGHL_LOCATION_ID=loc_Juniper01 \nTWILIO_ACCOUNT_SID=AC00000000sample0000000000000000\nTWILIO_AUTH_TOKEN=made-up-auth-token-00000000000000\nPORT=3000\n" : undefined} /></Card>;
+  }
+  if (name === "vault-advanced") {
+    setBoxOverride(async (tool) => (tool === "vault.list" ? { items: [], locked: false, personal: "none" } : {}));
+    return <VaultAdvanced />;
   }
   if (name === "vault-emergency") {
     const day = 86_400_000, t0 = Date.parse("2026-10-04T00:00:00Z");

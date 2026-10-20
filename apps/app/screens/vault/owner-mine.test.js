@@ -19,3 +19,14 @@ test("the owner's Mine uses the Space vault tools; a member's Mine stays on vaul
   assert.equal(toolScope(false, "mine"), "mine", "member: Mine is her own vault");
   assert.equal(toolScope(false, "space"), "space");
 });
+
+test("the owner's Mine and Shared show different stores: items in no folder, and items in a Space folder or shared from elsewhere", async () => {
+  const { splitOwner, storeOf } = await import("./owner-mine.js");
+  const rows = [{ name: "GHL-Sales" }, { name: "Twilio", folder: "vault_team" }, { name: "partner/Stripe" }, { name: "Airline-account" }];
+  const { mine, shared } = splitOwner(rows);
+  assert.deepEqual(mine.map((r) => r.name), ["GHL-Sales", "Airline-account"]);
+  assert.deepEqual(shared.map((r) => r.name), ["Twilio", "partner/Stripe"]);
+  assert.equal(mine.filter((r) => shared.includes(r)).length, 0, "no item is in both");
+  assert.notEqual(storeOf(true, "mine"), storeOf(true, "shared"), "the switch changes what the owner reads");
+  assert.notEqual(storeOf(false, "mine"), storeOf(false, "shared"));
+});

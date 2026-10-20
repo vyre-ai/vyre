@@ -120,10 +120,11 @@ export function checkProviderFields(p, given) {
       continue;
     }
     if (typeof v !== "string") throw new Error(`${f.name} must be text`);
-    const s = v.trim();
-    if (!s && !f.optional) throw new Error(`${p.label} needs ${f.label.toLowerCase()} (${f.name})`);
-    if (f.pattern && s && !new RegExp(f.pattern).test(s)) throw new Error(`${f.name} does not look like a ${p.label} ${f.label.toLowerCase()}`);
-    if (s) out[f.name] = s;
+    // A value is kept byte-exact (the owner's rule, 20 Oct 2026): never trimmed here. A value that is only spaces is no value; one with a space at an end fails a shape check in
+    // words, so the person removes it on the Vault screen, which warns about it before the save.
+    if (!v.trim()) { if (!f.optional) throw new Error(`${p.label} needs ${f.label.toLowerCase()} (${f.name})`); continue; }
+    if (f.pattern && !new RegExp(f.pattern).test(v)) throw new Error(`${f.name} does not look like a ${p.label} ${f.label.toLowerCase()}${v !== v.trim() ? ": it has a space or a new line at one end" : ""}`);
+    out[f.name] = v;
   }
   return out;
 }
