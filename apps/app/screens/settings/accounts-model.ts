@@ -89,14 +89,13 @@ export function providerStatus(accounts: Account[]): { connected: boolean; statu
 }
 
 /**
- * Every provider as one row, each drawn the same way, from sessions.accounts.list's rows and nothing else. A member keeps keys in their own Vault (the server's key shortcut is the owner's), so a
- * member's rows offer the sign-in only.
+ * Every provider as one row, each drawn the same way, from sessions.accounts.list's rows and nothing else. A member keeps keys in their own Vault (the member key path, onboard.agent.key), so a member's key is added there and never through the owner's key shortcut.
  */
 export function providerBlocks(rows: Account[], member = false): ProviderBlock[] {
   return providerOrder(rows).map((id) => {
     const accounts = rows.filter((a) => a.provider === id);
     const how = CONNECT[id] ?? { signIn: false, key: null };
-    return { id, name: providerName(id), vendor: providerVendor(id), ...providerStatus(accounts), accounts, signIn: how.signIn, key: member ? null : how.key };
+    return { id, name: providerName(id), vendor: providerVendor(id), ...providerStatus(accounts), accounts, signIn: how.signIn, key: how.key };
   });
 }
 

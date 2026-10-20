@@ -4058,7 +4058,7 @@ export default {
       fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
       return dir;
     };
-    ctx.provide("accountKey", keyOfAccount(accountEnv)); // one API-key account's key, for the inference door's model list (one request, never returned)
+    ctx.provide("accountKey", keyOfAccount(accountEnv)); ctx.provide("accountHome", accountHome); // one API-key account's key, for the inference door's model list (one request, never returned); a login account's own folder, for the door's sign-in drivers
     const sb = new Switchboard({
       db: ctx.store.db, call: ctx.call, root,
       transcripts: transcriptFolders((ctx.config && ctx.config.transcripts) || [], root),

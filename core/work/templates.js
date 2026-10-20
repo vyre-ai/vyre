@@ -225,7 +225,26 @@ export function createTemplates({ kernel, hub, flows, log = () => {} }) {
     return goLive(svc(), { template, version: Number(version) }, { as: { kind: "person", id: String(i.approver), space: kernel().space } });
   }
 
-  return { define, list, get: async (/** @type {any} */ chain, /** @type {any} */ i) => shape(await pick(chain, i.template, i.version), true), goLive, test, start, fromProject, library, install, changeDraft, changeTitle, changeApply, briefOf };
+  /**
+   * A Playbook stage opens in the Flow builder: the stage's Flow (kernel/flows/stage-flow.js) for this version, made from the version's stage when it is not there yet. The Playbook's owner or an
+   * admin, who may change its stages; the Flow is made and turned on as them. @param {any} chain @param {{ template: string, version?: number, stage: string }} i
+   */
+  async function stageFlow(chain, i) {
+    const person = personOf(chain);
+    const rec = await pick(chain, i.template, i.version);
+    const owner = rec.data.owner && rec.data.owner.actor ? rec.data.owner.actor.id : null;
+    if (owner !== person.id && !isAdmin(person)) throw fail("not_allowed", "only the Playbook's owner or an admin opens its stages to change them");
+    const b = bodyOf(rec), stages = compile(b);
+    const at = stages.findIndex((/** @type {any} */ s) => s.name === String(i.stage || ""));
+    if (at < 0) throw fail("not_found", `${b.name} version ${rec.data.version} has no stage ${i.stage}`);
+    const f = flows();
+    if (!f || !f.flows || !f.flows.runner) throw fail("unavailable", "Flows are not running in this Space yet; try again in a minute");
+    const sf = await f.flows.runner.stageFlow({ type: "project", typeLabel: b.name, stage: stages[at], next: stages[at + 1] ? stages[at + 1].name : null, template: rec.data.template, version: rec.data.version, approver: { kind: "person", id: person.id, space: person.space } });
+    if (!sf || !sf.id || sf.paused) throw fail("bad_state", "this stage's Flow is turned off; turn it on in Flows");
+    return { id: sf.id, version: sf.version };
+  }
+
+  return { define, list, get: async (/** @type {any} */ chain, /** @type {any} */ i) => shape(await pick(chain, i.template, i.version), true), goLive, test, start, fromProject, library, install, changeDraft, changeTitle, changeApply, briefOf, stageFlow };
 }
 
 const obj = (/** @type {any} */ properties = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties, required });
@@ -272,6 +291,7 @@ export function registerTemplateTools({ ctx, templates: t, chainOf: chainOfHome 
   inSpace("work.template.golive", { description: "Put a draft version of a template live: the template's owner or an admin, in their own name. The version that was live is retired; projects already running keep the version they started with.", input: obj({ template: { type: "string" }, version: { type: "integer" } }, ["template", "version"]), run: run((c, i) => t.goLive(c, i)) });
   inSpace("work.template.test", { description: "Dry-run a template version, changing nothing: shows each stage, task, doer, brief, checklist and who may move a stage early.", input: obj({ template: { type: "string" }, version: { type: "integer" }, sample: { type: "object", description: "sample project fields that fill the briefs, such as { name }" } }, ["template"]), callers: CALLERS, run: run((c, i) => t.test(c, i)) });
   inSpace("work.template.from-project", { description: "Make a draft template from a project that ran one, keeping its pinned stages, briefs and filled roles.", input: obj({ project: { type: "string", description: "the project's short name" }, name: { type: "string", description: "name for the new template" } }, ["project"]), callers: CALLERS, run: run((c, i) => t.fromProject(c, i)) });
+  inSpace("work.template.stage-flow", { description: "Open one stage of a Playbook (a project template version) as its Flow, for the Flow builder: { id, version } of the stage's Flow, made from the stage if it is not there yet. The Playbook's owner or an admin.", input: obj({ template: { type: "string" }, version: { type: "integer" }, stage: { type: "string", description: "the stage's name" } }, ["template", "stage"]), callers: CALLERS, run: run((c, i) => t.stageFlow(c, i)) });
   inSpace("work.template.library", { description: "The project templates the Kits ship (id, name, stages, tasks). work.template.install makes one a draft in this Space.", input: obj({}), callers: CALLERS, run: async (_i, extra) => { await chainOf(extra); return { templates: t.library().map(({ body: _b, ...rest }) => rest) }; } });
   inSpace("work.template.install", { description: "Add a library template (id from work.template.library) to this Space as a draft version.", input: obj({ id: { type: "string" } }, ["id"]), callers: CALLERS, run: run((c, i) => t.install(c, i)) });
   inSpace("work.start-project", { description: "Start a project from a live template: creates the project, its teammates from the roles, the pinned stages, and the first stage's tasks with briefs.", input: obj({ template: { type: "string" }, name: { type: "string", description: "the new project's name" }, client: { type: "string", description: "the client's record address" }, repo: { type: "string" }, slug: { type: "string" }, version: { type: "integer", description: "template version to pin; the live one by default" } }, ["template", "name"]), callers: [...CALLERS, "module"], run: run((c, i) => t.start(c, i)) });

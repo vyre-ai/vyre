@@ -14,6 +14,8 @@ import { usePhone } from "../places/Page";
 import { FlowHistory, RunLines, TryIt } from "./FlowHistory";
 import { FlowTests } from "./FlowTests";
 import { FlowLimits } from "./FlowLimits";
+import { FlowAiAccounts } from "./FlowAiAccounts";
+import { hasAiStep } from "./runs-on-model.js";
 import { openEngineer } from "../engineer/openEngineer";
 import { Frame, Sec } from "../places/Frame";
 import { FlowCode } from "./FlowCode";
@@ -23,7 +25,7 @@ import { ExplainCard } from "./ExplainCard";
 import { canRetry, canStop, retryLimits, startRefusal } from "./run-model";
 import { RunSteps } from "./RunSteps";
 import { listReal, setPausedReal, approveReal, proposeReal, cardReal, getReal, graphReal, explainReal, healthReal, runReal, runsReal, type Card as FlowCard, type Graph, type RunRow, type RealFlow as RealFlowRow } from "./real";
-import { filterRuns, retryFromRefusal, APPROVE_LABEL, PROPOSE_LABEL, approvalPath, explainText, healthBanner, shownWarnings, shrunkNote, titleOf, versionWaits } from "./real-model.js";
+import { filterRuns, retryFromRefusal, APPROVE_LABEL, PROPOSE_LABEL, approvalPath, explainText, healthBanner, shownWarnings, shrunkNote, stageLine, titleOf, versionWaits } from "./real-model.js";
 
 const when = (ms: number | null) => (ms ? dayTimeOf(ms) : "");
 const STATE: Record<string, { note: string; tone: "accent" | "ok" | "warn" | "plain" }> = {
@@ -60,7 +62,7 @@ export function RealFlow({ id }: { id: string }) {
   const phone = usePhone();
   const [runFilter, setRunFilter] = useState<"all" | "failed" | "waiting">("all");
   const [runQuery, setRunQuery] = useState("");
-  const [tab, setTab] = useState<"steps" | "runs" | "settings">("steps");
+  const [tab, setTab] = useState<"steps" | "runs" | "settings" | "ai">("steps");
   const [row, setRow] = useState<RealFlowRow | null>(null);
 
   useEffect(() => {
@@ -124,17 +126,20 @@ export function RealFlow({ id }: { id: string }) {
   const picked_run = runs.find((r) => r.id === runId);
   const shownRuns = filterRuns(runs.map((r) => ({ ...r, when: when(r.started_at) })), runFilter, runQuery);
   const hb = healthBanner(health);
+  // a Playbook stage runs when a record enters it: no Run now and no Try it
+  const stageWords = stageLine(def);
 
   return (
     <Frame back="/u/apps" title={meta.title} sub={`${g.trigger} · v${meta.version}`}>
       <View className="gap-s2 pb-s3">
         <Text size="page" strong>{sentenceParts(g.trigger, (g.nodes || []).filter((x: any) => x.kind !== "trigger").map((x: any) => String(x.label))).map((p, i) => <Text key={i} size="page" strong tone={p.token ? "accent" : "default"}>{p.text}</Text>)}</Text>
         <Text size="caption" tone="label">{[meta.title, row?.project ? `in ${row.project}` : "Personal", `version ${meta.version}`].join(" · ")}</Text>
+        {stageWords ? <Text tone="muted">{stageWords}</Text> : null}
         <View className="flex-row flex-wrap items-center gap-s3">
           <Switch label={row?.paused ? "Off" : "On"} on={!row?.paused} onChange={async (on) => { try { await setPausedReal(id, !on); setN((x) => x + 1); } catch (e) { showToast(e instanceof Error ? e.message : "That did not work."); } }} />
           <Button kind="secondary" size="sm" icon="chat" label="Change it in chat" onPress={() => openEngineer(router, { source: "flow", ref: id, words: "" })} />
-          {def ? <Button kind={tryOpen ? "secondary" : "ghost"} size="sm" icon="play" label="Try it" onPress={() => setTryOpen(!tryOpen)} /> : null}
-          {!waiting ? <Button kind="primary" size="sm" icon="play" label={busy ? "Starting" : "Run now"} disabled={busy} onPress={runNow} /> : null}
+          {def && !stageWords ? <Button kind={tryOpen ? "secondary" : "ghost"} size="sm" icon="play" label="Try it" onPress={() => setTryOpen(!tryOpen)} /> : null}
+          {!waiting && !stageWords ? <Button kind="primary" size="sm" icon="play" label={busy ? "Starting" : "Run now"} disabled={busy} onPress={runNow} /> : null}
         </View>
       </View>
       {tryOpen ? <View className="pb-s3">{def ? <TryIt id={id} flow={def} steps={(g.nodes || []).filter((n: any) => n.kind !== "trigger").map((n: any) => ({ id: String(n.id), label: String(n.label) }))} /> : null}</View> : null}
@@ -149,7 +154,8 @@ export function RealFlow({ id }: { id: string }) {
         </Sec>
       ) : null}
       {hb && hb.tone === "quiet" ? <Text tone="muted">{hb.text}</Text> : null}
-      <Tabs items={[["steps", "Steps"], ["runs", "Runs"], ["settings", "Settings"]]} value={tab} onChange={setTab} />
+      <Tabs items={[["steps", "Steps"], ["runs", "Runs"], ...(hasAiStep(def) ? [["ai", "AI accounts"] as ["ai", string]] : []), ["settings", "Settings"]]} value={tab} onChange={setTab} />
+      {tab === "ai" && def && hasAiStep(def) ? <View className="gap-s4 pt-s3"><FlowAiAccounts id={id} flow={def} onSaved={() => setN((x) => x + 1)} /></View> : null}
       {tab === "steps" ? (
         <View className={phone ? "gap-s4 pt-s3" : "flex-row items-start gap-s5 pt-s3"}>
           <View className="min-w-0 flex-1 gap-s4">

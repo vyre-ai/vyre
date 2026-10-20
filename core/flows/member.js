@@ -253,7 +253,8 @@ export function approvalNotice(card, flow) {
   const lines = ["It runs as you, with your role only: never with the owner's authority."];
   const trigger = startsBy(flow);
   if (trigger !== "manual") lines.push("It starts by itself. If you leave the team it pauses and the owner is told.");
-  if ((Array.isArray(e.model_steps) && e.model_steps.length) || (Array.isArray(e.code) && e.code.length)) lines.push("Its AI steps use the Space's AI credentials and count against the Space's daily allowance (200,000 tokens a day for all Flows together; an owner or admin can change it).");
+  // whose AI account: the person it runs as (its maker, you), on the account picked under Runs on, never the owner's (kernel/flows/runs-as.js)
+  if (Array.isArray(e.model_steps) && e.model_steps.length) lines.push("Its AI steps run on your own AI account (the one you pick under Runs on, else your default key), never the owner's. With none connected they stop and nothing is sent. They also count against the Space's daily allowance (200,000 tokens a day for all Flows together; an owner or admin can change it).");
   if (Array.isArray(e.outward) && e.outward.length) lines.push("Anything it sends or changes outside asks you first, every time.");
   return lines.join(" ");
 }

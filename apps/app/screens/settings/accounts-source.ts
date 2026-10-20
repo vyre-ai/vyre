@@ -22,9 +22,11 @@ export function accountsSource(call: Call) {
     /** The code the provider's page showed. */
     paste: (flow: string, code: string) => ask("sessions.accounts.signin", { flow, code: code.trim() }),
     /** An API key as an account under one provider (the owner's): the server checks it with the provider and keeps it in the Vault; only the account comes back. Throws the line to show when the key is not one. */
-    addKey: (provider: string, key: string, label = "", baseUrl = "") => {
+    addKey: (provider: string, key: string, label = "", baseUrl = "", member: { password?: string } | null = null) => {
       const k = keyInputFor(provider, key, label, baseUrl);
       if ("problem" in k) return Promise.reject(new Error(k.problem));
+      // a member's key goes to HER OWN Vault through the member key path (the host's onboard.agent.key, which may ask for her Vault's password: code need_password), never the owner's key tool
+      if (member) { const own: Record<string, string> = { ...k.input }; delete own.name; return ask<{ account?: string; provider?: string; label?: string }>("onboard.agent.key", { ...own, ...(member.password ? { password: member.password } : {}) }).catch(scrub(k.input.key)); }
       return ask<{ account?: string; provider?: string; label?: string }>("sessions.accounts.key", k.input).catch(scrub(k.input.key));
     },
     /** A new key for an API-key account: checked with the provider first (nothing kept), then put in place of the old one in the Vault item the account names, so the account and every order that names it stay. */

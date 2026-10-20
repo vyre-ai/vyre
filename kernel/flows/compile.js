@@ -13,6 +13,7 @@ import { decorate } from "./places.js";
 import { secretsIn } from "./no-secrets.js";
 import { checkRides } from "./rides.js";
 import { boundsOf, sendsOf } from "./standing.js";
+import { isStageFlow, compileStageFlow } from "./stage-flow.js";
 
 /**
  * What the compiler knows about a Space.
@@ -138,6 +139,8 @@ export function compileFlow(flow, cat) {
 
 /** @param {any} flow @param {Catalog} cat @returns {ReturnType<typeof compileFlow>} */
 function compileRaw(flow, cat) {
+  // A Playbook stage: its to-dos are made by the stages module under its own chain, once per entry, so the generic step checks do not apply (kernel/flows/stage-flow.js).
+  if (isStageFlow(flow)) return /** @type {any} */ (compileStageFlow(flow, cat));
   /** @type {any[]} */ const errors = checkFlow(flow);
   for (const x of secretsIn(flow)) errors.push({ path: x.path, message: `this looks like ${x.kind}: a Flow never holds a key, a password or a token. Put it in the Vault and name the Connection instead (the Vault uses it; the Flow only names it)` });
   // A "Call a service" step that names a Connection is written out as the service step it stands for before anything reads it; what is stored is the written-out Flow (connection-step.js).

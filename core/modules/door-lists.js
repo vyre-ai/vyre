@@ -257,7 +257,7 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "work.call", "work.chat.history-import", "work.chat.keys.begin", "work.chat.keys.finish", "work.chat.keys.lock", "work.chat.keys.status", "work.chat.upgrade-move",
   "work.know.accept", "work.project.create", "work.project.members", "work.project.move", "work.project.move-plan", "work.project.ref", "work.project.rename",
   "work.team.add", "work.template.define", "work.template.from-project", "work.template.get", "work.template.golive", "work.template.install", "work.template.list",
-  "work.template.test", "work.tools",
+  "work.template.stage-flow", "work.template.test", "work.tools",
 ]));
 
 /** The vault's tools: gated by the vault itself (core/vault/member-gate.js), which refuses a member in its own words. */

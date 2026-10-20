@@ -9,7 +9,7 @@ import { createStages } from "../stages.js";
 export const ALEX = { kind: "person", id: "per_alex", space: SPACE };
 export const BOB = { kind: "person", id: "per_bob", space: SPACE };
 
-/** @param {{ store?: 'memory'|'records', ports?: any, limits?: any, policy?: any, settings?: any, cat?: any, kernel?: string, movers?: boolean }} [o] */
+/** @param {{ store?: 'memory'|'records', ports?: any, limits?: any, policy?: any, settings?: any, cat?: any, kernel?: string, movers?: boolean, stageFlows?: boolean }} [o] */
 export async function world(o = {}) {
   const clock = { t: Date.UTC(2026, 9, 3, 12, 0, 0) };
   const which = "real"; // the one kernel there is: the real gateway, tasks and chains (the Fake is gone)
@@ -38,6 +38,8 @@ export async function world(o = {}) {
   const stages = createStages({ kernel, catalog: () => cat, chain: () => kernel.moduleChain({ module: "stages", approver: ALEX }), clock: () => clock.t, hook: which === "real", emit: (type, data) => stageEvents.push({ type, data }), gates: runner.gatePort(), isAdmin: who => who.id === ALEX.id,
     // movers: an agent's stage task is assigned by the person who moved the record there, as the daemon wires it (core/daemon/flows-host.js chainFor)
     ...(o.movers ? { chainFor: p => kernel.moduleChain({ module: "flows", approver: { kind: "person", id: p, space: SPACE } }) } : {}),
+    // stageFlows: each stage runs as its stored Flow, made and turned on as ALEX (the Kit's installer here), as the daemon wires it (core/daemon/flows-host.js flows.forStage)
+    ...(o.stageFlows ? { flows: { forStage: q => runner.stageFlow({ ...q, approver: ALEX }) } } : {}),
     ports: { roles: (space, role) => (role === "attorney" ? [ALEX, BOB] : role === "manager" ? [BOB] : []) } });
   /** @type {Array<() => void>} */ const offs = [];
   offs.push(kernel.onEvent(e => stages.onEvent(e), "stages"));

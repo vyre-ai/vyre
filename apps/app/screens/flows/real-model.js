@@ -91,3 +91,13 @@ export function retryFromRefusal(flow, ledger, stepId) {
   const last = sent.length ? Math.max(...sent) : -1;
   return at <= last ? "That run already sent something; start a new run to send again." : null;
 }
+
+/**
+ * A Playbook stage's Flow (kernel/flows/stage-flow.js) says what it is in plain words, and has no Run now or Try it: it runs when a record enters its stage. null for any other Flow.
+ * @param {any} flow the stored definition @returns {string | null}
+ */
+export const stageLine = (flow) => {
+  const p = flow && flow.playbook;
+  if (!p || typeof p.stage !== "string" || typeof p.type !== "string") return null;
+  return `A Playbook stage. It runs when a ${p.template ? "project" : p.type} enters ${p.stage}. Its steps are the stage's to-dos, and the last one moves it on when they are done.`;
+};

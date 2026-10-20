@@ -88,7 +88,7 @@ test("one list: every provider is a row of the same shape, in a fixed order, its
   ]);
   assert.deepEqual(blocks.map((p) => [p.signIn, p.key]), [[true, "anthropic-compatible"], [true, null], [true, null], [false, "openrouter"], [false, "openai-compatible"]], "sign-in where the provider has one, a key where keys are supported");
   assert.deepEqual(blocks[1].accounts.map((a) => a.id), ["a2", "a3"], "each account sits under its own provider");
-  assert.deepEqual(m.providerBlocks([], true).map((p) => p.key), [null, null, null, null, null], "a member keeps keys in their own Vault, so no key shortcut");
+  assert.deepEqual(m.providerBlocks([], true).map((p) => p.key), m.providerBlocks([]).map((p) => p.key), "a member can add a key too, to her own Vault");
 });
 
 test("Claude just signed in reads Connected, because every place reads the same rows", { skip: !strip }, async () => {
@@ -123,6 +123,18 @@ test("Use an API key under a provider: its own kind, a key of another provider i
   const none = box();
   await assert.rejects(accountsSource(none.call).addKey("openrouter", "nope"), /does not look like an API key/);
   assert.deepEqual(none.seen, [], "a key that is not one is never sent");
+});
+
+test("a member's API key goes to her own Vault through the member key path, never the owner's key tool, with her Vault's password only when given", { skip: !strip }, async () => {
+  const { accountsSource } = await import("./accounts-source.ts");
+  const OR = "sk-or-v1-fake0000000000000000";
+  const b = box({ "onboard.agent.key": { data: { account: "ac_m", provider: "openrouter", label: "Mine" } } });
+  assert.deepEqual(await accountsSource(b.call).addKey("openrouter", OR, "Mine", "", { password: "a long password" }), { account: "ac_m", provider: "openrouter", label: "Mine" });
+  assert.deepEqual(b.seen.map((x) => x.tool), ["onboard.agent.key"], "never sessions.accounts.key, which keeps keys in the owner's Vault");
+  assert.deepEqual(b.seen[0].input, { kind: "openrouter", key: OR, label: "Mine", password: "a long password" });
+  const locked = box({ "onboard.agent.key": { error: { code: "need_password", message: "Your password, to open your own Vault." } } });
+  await assert.rejects(accountsSource(locked.call).addKey("openrouter", OR, "", "", {}), (e) => /** @type {any} */ (e).code === "need_password");
+  assert.equal(locked.seen[0].input.password, undefined, "no password is sent until she gives one");
 });
 
 test("Replace key: checked with the provider first, then put into the Vault item the account already names, keeping its hosts", { skip: !strip }, async () => {

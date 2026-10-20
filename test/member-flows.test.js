@@ -133,11 +133,11 @@ test("a member sets up, approves inside the bound, and starts Flows of her own, 
   const mine = await until(async () => (await d.kernel.gateway.ask.list(bob, { state: ["waiting", "ready", "working", "needs_check"] })).find((/** @type {any} */ x) => x.title === "Carry on?") || null, "her task card");
   assert.equal(mine.doer.id, BOB, "the yes comes to her");
 
-  // an AI step: allowed, and the notice says in words that it runs on the Space's allowance, not on her own sign-in
+  // an AI step: allowed, and the notice says in words that it runs on her own AI account, never the owner's, and counts against the Space's allowance
   const ai = await svc.define(bob, { flow: { ...find("bobs_ai"), steps: [{ id: "k", kind: "classify", input: "hello", labels: ["new client", "spam"] }] } });
   assert.ok(ai.ok, JSON.stringify(ai));
   const aap = await svc.approve(bob, { id: ai.id, version: ai.version, hash: ai.hash });
-  assert.match(aap.notice, /AI steps use the Space's AI credentials.*daily allowance.*200,000 tokens a day/s, aap.notice);
+  assert.match(aap.notice, /AI steps run on your own AI account.*never the owner's.*daily allowance.*200,000 tokens a day/s, aap.notice);
 
   // a second member cannot read or change her Flow through the Records door, and cannot approve it by hand
   await d.kernel.gateway.grants.setRole(chainOf(owner), { person: CAROL, role: "member" }, { presence: { method: "stand-in" } });

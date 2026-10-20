@@ -25,6 +25,7 @@ import { FlowRunner } from "./runner.js";
 import { KitManager, MemoryKitStore, RecordsKitStore, KIT_TYPES, installCard, diffKits } from "./kits.js";
 import { MemoryFlowStore } from "./store.js";
 import { createStages, taskIdOf } from "./stages.js";
+import { isStageFlow } from "./stage-flow.js";
 import { Proposals, proposerOf } from "./proposals.js";
 import { graph, paintRun, seeAsCode, fromCode, flowChanges } from "./canvas.js";
 import { compileFlow } from "./compile.js";
@@ -80,7 +81,9 @@ export function createFlows(o) {
   const store = o.store || new MemoryFlowStore();
   const runner = new FlowRunner({ kernel: o.kernel, store, catalog: o.catalog, chains: o.chains, clock: o.clock, emit: o.emit, ports: o.ports, limits: o.limits, policy: o.policy, settings: o.settings });
   const kits = new KitManager({ kernel: o.kernel, runner, store: o.kitStore || new MemoryKitStore(), catalog: o.catalog, chains: o.chains, clock: o.clock, installerRole: o.installerRole, ports: o.ports });
-  const stages = o.stages && o.chains.forModule ? createStages({ kernel: o.kernel, catalog: o.catalog, chain: () => o.chains.forModule({ module: "stages", approver: o.stages.approver }), ports: o.ports, clock: o.clock, emit: o.emit, gates: runner.gatePort(), isAdmin: o.proposals && o.proposals.isAdmin }) : null;
+  const stages = o.stages && o.chains.forModule ? createStages({ kernel: o.kernel, catalog: o.catalog, chain: () => o.chains.forModule({ module: "stages", approver: o.stages.approver }), ports: o.ports, clock: o.clock, emit: o.emit, gates: runner.gatePort(), isAdmin: o.proposals && o.proposals.isAdmin,
+    // each stage runs as its stored Flow, made and turned on as the person the module works for
+    flows: { forStage: (/** @type {any} */ q) => runner.stageFlow({ ...q, approver: /** @type {any} */ (o.stages).approver }) } }) : null;
   const proposals = o.proposals ? new Proposals({ kernel: o.kernel, runner, store, chain: o.proposals.chain, chains: o.chains, catalog: o.catalog, applyTypes: o.proposals.applyTypes, kinds: o.proposals.kinds, isAdmin: o.proposals.isAdmin, clock: o.clock, log: m => (o.emit ? o.emit("proposal.log", { m }) : undefined) }) : null;
   /** The stages module this Space runs: made here, or attached by the host that makes it. @type {any} */ let stagesRef = stages;
   /** The catalog, with the words of the Flows a sub-flow step can name (name -> label), so a step reads "Run Write the inner note", never an id. */
@@ -373,7 +376,9 @@ export function createFlows(o) {
       // the lanes of a parallel step are runs of their own: their steps are painted on this run's picture, and each lane is listed with its state
       const lanes = [];
       for (const l of Object.values(r.steps || {})) for (const id of (/** @type {any} */ (l).children || [])) { const k = show(await runner.getRun(id)); if (k && k.parent && k.parent.lane) lanes.push({ lane: k.parent.lane, run: k.id, state: k.state, steps: k.steps }); }
-      const shown = lanes.length ? { ...r, steps: Object.assign({}, ...lanes.map(k => k.steps), r.steps) } : r;
+      // a Playbook stage's run keeps one ledger step per to-do (`task:<title>`): painted on the stage Flow's own steps
+      const staged = r.gate && v && isStageFlow(v.flow) ? { ...r, steps: Object.fromEntries(Object.entries(r.steps || {}).map(([k, x]) => [(v.flow.steps.find((/** @type {any} */ s) => s.kind === "assign" && `task:${s.title}` === k) || { id: k }).id, x])) } : r;
+      const shown = lanes.length ? { ...staged, steps: Object.assign({}, ...lanes.map(k => k.steps), staged.steps) } : staged;
       return { run: r, painted: v ? paintRun(v.flow, shown, await cat()) : null, ...(lanes.length ? { lanes: lanes.map(({ lane, run, state }) => ({ lane, run, state })) } : {}) };
     },
     // The Space's daily AI allowance for Flow steps: anyone in the Space may read it; an owner or an admin sets it.

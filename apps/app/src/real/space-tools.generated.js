@@ -309,5 +309,6 @@ export const TOOLS_WITH_SPACE = [
  "work.template.install",
  "work.template.library",
  "work.template.list",
+ "work.template.stage-flow",
  "work.template.test"
 ];

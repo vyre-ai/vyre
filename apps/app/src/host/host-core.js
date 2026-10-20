@@ -123,7 +123,8 @@ export function createHost(o) {
     // every kind the owner can add; the provider an account of it is made for (an OpenAI-style key, xAI's included, is an openai-compatible account at its address)
     const provider = { "anthropic-compatible": "claude", openrouter: "openrouter", "openai-compatible": "openai-compatible" }[/** @type {"anthropic-compatible" | "openrouter" | "openai-compatible"} */ (i.kind)];
     if (!provider) throw bad("That kind of key is not supported here.", "bad_kind");
-    // A member's key goes through the team server's member door, which carries these calls only once sec53 has signed them and they are green; until then a member is told to ask the owner.
+    // A member's key goes through the team server's member door into HER OWN Vault, and the account the server makes names that item with her as its person (sessions_accounts.person, own_vault): it is lent
+    // only for her own turns. The app turns this path on (src/host/index.ts memberKeyPath); a host made without it tells a member to ask the owner.
     if (!o.memberKeyPath) throw bad("Ask the owner to add this account.", "ask_owner");
     if (!o.memberKeys) throw unsupported();
     /** @type {(tool: string, input?: any) => Promise<any>} */

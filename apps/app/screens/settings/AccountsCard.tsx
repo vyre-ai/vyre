@@ -43,6 +43,9 @@ export function AiAccountsList({ source = realAccounts }: { source?: AccountsApi
   const [code, setCode] = useState("");
   // "Use an API key": the key typed here goes once to the server's key tool and is cleared; it is never kept or shown again
   const [key, setKey] = useState("");
+  // a member's key goes to her own Vault: its password is asked for only when her Vault is locked or new (need_password)
+  const [pw, setPw] = useState("");
+  const [needPw, setNeedPw] = useState(false);
   const [assistant, setAssistant] = useState<{ name: string; entries: RouteEntry[] } | null>(null);
   const [picking, setPicking] = useState(false);
   const run = useRef(0);
@@ -55,7 +58,7 @@ export function AiAccountsList({ source = realAccounts }: { source?: AccountsApi
   useEffect(() => { load(); return () => { run.current++; }; }, [load]);
   useEffect(() => { void showingJoined().then(setMember).catch(() => setMember(false)); }, []);
 
-  const clear = () => { setOpen(null); setKey(""); setLabel(""); setBase(""); setCode(""); };
+  const clear = () => { setOpen(null); setPw(""); setNeedPw(false); setKey(""); setLabel(""); setBase(""); setCode(""); };
   const act = async (id: string, fn: () => Promise<unknown>, done?: string) => {
     setBusy(id); setProblem("");
     try { await fn(); setConfirming(""); if (done) showToast(done); load(); } catch (e) { setProblem(say(e)); } finally { setBusy(""); }
@@ -171,11 +174,12 @@ export function AiAccountsList({ source = realAccounts }: { source?: AccountsApi
               </View>
             )
           ) : keyOpen ? (() => {
-            const saveKey = () => void act("key", () => (keyOpen.mode === "replace" ? source.replaceKey(keyOpen.account, key) : source.addKey(p.id, key, label, base)).then(clear), keyOpen.mode === "replace" ? "The key is replaced." : `${p.name} is connected.`);
+            const saveKey = () => void act("key", () => (keyOpen.mode === "replace" ? source.replaceKey(keyOpen.account, key) : source.addKey(p.id, key, label, base, member ? { password: pw } : null)).then(clear).catch((e) => { if ((e as { code?: string })?.code === "need_password") setNeedPw(true); throw e; }), keyOpen.mode === "replace" ? "The key is replaced." : `${p.name} is connected.`);
             return (
             <View className="gap-s2">
               <Field label={keyOpen.mode === "replace" ? `New key for ${keyOpen.account.label}` : `${p.name} API key`} value={key} onChangeText={setKey} kind="password" help={ACCOUNTS_COPY.keyHelp} autoFocus onSubmit={() => { if (key.trim() && busy !== "key") saveKey(); }} onKey={(k) => { if (k === "Escape") cancel(); }} />
               {keyOpen.mode === "key" ? <Field name="A name for it" value={label} onChangeText={setLabel} placeholder="A name, like work (optional)" /> : null}
+              {member && needPw ? <Field label="Your Vault password" value={pw} onChangeText={setPw} kind="password" help="The key goes to your own Vault, and only your own chats and Flows use it." /> : null}
               {keyOpen.mode === "key" && p.key === "openai-compatible" ? <Field name="Address (optional)" value={base} onChangeText={setBase} placeholder="https://api.openai.com/v1" help="Where the key is sent. Leave it empty for OpenAI. An xAI key goes to xAI by itself." /> : null}
               <View className="flex-row flex-wrap gap-s2">
                 <Button size="sm" label={busy === "key" ? "Checking" : keyOpen.mode === "replace" ? "Replace key" : "Add key"} disabled={busy === "key" || !key.trim()}

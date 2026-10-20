@@ -189,11 +189,22 @@ test("accounts: each person has their own default on a provider", async () => {
   assert.equal(a.resolve({ provider: "codex", person: "per_owner" }).id, o1.id, "which left the owner's alone");
 });
 
-test("accounts: a member has one sign-in account of their own; keys are not limited, and the owner is not capped", async () => {
+test("accounts: a member has one sign-in account of their own per provider, several in all; keys are not limited, and the owner is not capped", async () => {
   const a = fresh();
-  await a.add({ provider: "codex", label: "Bob login", kind: "login", person: "per_bob" });
-  await assert.rejects(() => a.add({ provider: "grok", label: "Bob second login", kind: "login", person: "per_bob" }), e => e.code === "too_many");
-  await a.add({ provider: "codex", label: "Bob key", vault_item: "bob-key", person: "per_bob" });
+  const codex = await a.add({ provider: "codex", label: "Bob login", kind: "login", person: "per_bob" });
+  await assert.rejects(() => a.add({ provider: "codex", label: "Bob second codex login", kind: "login", person: "per_bob" }), e => e.code === "too_many");
+  const grok = await a.add({ provider: "grok", label: "Bob grok login", kind: "login", person: "per_bob" });
+  const key = await a.add({ provider: "openrouter", label: "Bob key", vault_item: "bob-key", person: "per_bob", own_vault: true });
+  await a.add({ provider: "codex", label: "Bob codex key", vault_item: "bob-key-2", person: "per_bob" });
+  // each is his alone: his turns resolve them, nobody else's turn (the owner's included) ever does
+  assert.equal(a.resolve({ provider: "codex", person: "per_bob" }).id, codex.id);
+  assert.equal(a.resolve({ provider: "grok", person: "per_bob" }).id, grok.id);
+  assert.equal(a.resolve({ provider: "openrouter", person: "per_bob" }).id, key.id);
+  for (const other of ["per_eve", "per_owner"]) for (const [p, x] of [["codex", codex], ["grok", grok], ["openrouter", key]]) {
+    assert.throws(() => a.resolve({ provider: p, person: other, account: x.id }), /no account/, `${other} cannot name Bob's ${p} account`);
+    const r = a.resolve({ provider: p, person: other });
+    assert.ok(!r || r.person !== "per_bob", `${other}'s own resolution never lands on Bob's ${p} account`);
+  }
   await a.add({ provider: "codex", label: "Eve login", kind: "login", person: "per_eve" });
   await a.add({ provider: "codex", label: "Owner 1", kind: "login" });
   await a.add({ provider: "grok", label: "Owner 2", kind: "login" });
