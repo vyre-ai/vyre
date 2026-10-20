@@ -169,6 +169,19 @@ test("every other step kind the engine has stores, checks and comes back", () =>
   assert.equal(flat(fromDefinition(def).steps).some((s) => s.kind === "advanced"), false);
 });
 
+test("an AI step keeps the model picked from the person's own models (provider/model), and checks and comes back with it; with none it keeps none", () => {
+  const d = { name: "AI", trigger: { kind: "form", path: "intake" }, steps: [
+    { id: "classify1", kind: "classify", input: "{message}", labels: "Urgent, Routine", model: "openrouter/x-ai/grok-4.7" },
+    { id: "extract2", kind: "extract", input: "{message}", fields: [{ name: "Amount", kind: "number" }], model: "claude/lab-deep-2" },
+    { id: "classify3", kind: "classify", input: "{message}", labels: "A, B" },
+  ] };
+  const def = toDefinition(d);
+  assert.deepEqual([def.steps[0].model, def.steps[1].model, "model" in def.steps[2]], ["openrouter/x-ai/grok-4.7", "claude/lab-deep-2", false]);
+  assert.deepEqual(checkFlow(def), [], "the engine takes a step's model");
+  assert.deepEqual(fromDefinition(def).steps.map((s) => s.model), ["openrouter/x-ai/grok-4.7", "claude/lab-deep-2", undefined]);
+  assert.deepEqual(toDefinition(fromDefinition(def)), def);
+});
+
 test("Find or create a record: match, create-only fields and optional update compile to an upsert and come back", () => {
   const step = { id: "upsert1", kind: "upsert", type: "client", matchFields: [{ field: "email", value: "{email}" }], fields: [{ field: "name", value: "{name}" }], updateFields: [{ field: "plan", value: "Gold" }] };
   const d = { name: "Find", trigger: { kind: "form", path: "intake" }, steps: [step, { id: "email2", kind: "email", to: "{steps.upsert1.record.data.email}", subject: "Hi", body: "Hello" }] };

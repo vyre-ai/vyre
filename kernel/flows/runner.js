@@ -1901,7 +1901,7 @@ export class FlowRunner {
     const need = { action: "model.call", resource: `vyre://${ctx.cat.space}/model/*` };
     return this.#effect(ctx, s, key, need, async () => {
       if (ctx.dry) return { dry: true, label: null };
-      const m = this.ports.model || { provider: "default", model: "default" };
+      const m = typeof s.model === "string" && /^[a-z][a-z0-9-]{0,39}\/[A-Za-z0-9][A-Za-z0-9._:\/\[\]-]{0,119}$/.test(s.model) ? { provider: s.model.slice(0, s.model.indexOf("/")), model: s.model.slice(s.model.indexOf("/") + 1) } : this.ports.model || { provider: "default", model: "default" };   // the step's own model (provider/model, the one picker's key), else the Space's
       // AI is metered: a step may spend little, a run a bit more, a Space a day's worth (an admin sets it; kernel/flows `flows.budget`). Refused plainly before anything is sent.
       await this.#aiGuard(ctx);
       const text = String(val(s.input) ?? "").slice(0, 16_000);
@@ -1926,7 +1926,7 @@ export class FlowRunner {
     return this.#effect(ctx, s, key, need, async () => {
       const names = s.fields.map((/** @type {any} */ f) => f.name);
       if (ctx.dry) return { dry: true, fields: Object.fromEntries(names.map((/** @type {string} */ n) => [n, null])) };
-      const m = this.ports.model || { provider: "default", model: "default" };
+      const m = typeof s.model === "string" && /^[a-z][a-z0-9-]{0,39}\/[A-Za-z0-9][A-Za-z0-9._:\/\[\]-]{0,119}$/.test(s.model) ? { provider: s.model.slice(0, s.model.indexOf("/")), model: s.model.slice(s.model.indexOf("/") + 1) } : this.ports.model || { provider: "default", model: "default" };   // the step's own model (provider/model, the one picker's key), else the Space's
       await this.#aiGuard(ctx);
       const text = String(val(s.input) ?? "").slice(0, 16_000);
       const spec = s.fields.map((/** @type {any} */ f) => `${f.name} (${f.kind || "text"})${f.description ? `: ${f.description}` : ""}`).join("\n");
