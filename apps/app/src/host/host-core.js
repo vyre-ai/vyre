@@ -17,7 +17,7 @@ import { resolveInviteLink } from "../../../../lib/invite-link.js";
 import { createAddServer } from "../real/add-server.js";
 import { trail } from "./trail.js";
 import { modelOf } from "../models/model-choice.js";
-import { proofBody, proofBytes } from "../../modules/vyre-signer/presence-proof.js";
+import { proofBody, proofBytes, sha256b64 } from "../../modules/vyre-signer/presence-proof.js";
 import { createMasterRecord, openMasterRecord, rewrapIdentity } from "./master-web.js";
 import { makeDeviceKey } from "./device-key.js";
 import * as C from "../../../../kernel/identity/chain.js";
@@ -51,6 +51,16 @@ const unb64 = (/** @type {string} */ s) => { const t = s.replace(/-/g, "+").repl
  * the pairing the app already does with a server's ticket (it returns the pairing it made), the claim of the space's name (the paired server names its own space and the directory gets the record, signed by this identity), a call to the paired server, reading and accepting a join link through the team's own server, and forgetting a pairing.
  * @typedef {{ client: any, mintPairCode: typeof import("@vyre/relay-client/pair-install.js").mintPairCode, createSetupKey: typeof import("@vyre/relay-client/setup.js").createSetupKey, setupFingerprint: typeof import("@vyre/relay-client/setup.js").setupFingerprint, relay: string, connect: (o: any) => Promise<any>, pair: (qr: string, ctx: { pageKey?: unknown }, who: { id: string, name: string, pin: any, key: any }) => Promise<{ box: string, route: string, relay: string, name: string } | null>, claim: (who: { id: string, name: string, eid: string, ops: unknown[], key: any }, o: { name: string, route: { relay: string, route: string, box: string } }) => Promise<string>, call: (name: string, input: any, box: string) => Promise<any>, join?: (link: string, who: { id: string, name: string, pin: any, key: any }) => Promise<{ card: any, accept: () => Promise<any>, close: () => void }>, ask?: (address: string, note: string, who: { id: string, name: string, pin: any, key: any }) => Promise<any>, askStatus?: (address: string, who: { id: string, name: string, pin: any, key: any }) => Promise<any>, forget: (box: string) => Promise<void>, pairings?: () => Promise<{ box: string, route: string, relay?: string, name?: string }[]> }} SpacePorts
  */
+
+/** JSON with object keys sorted at every depth and no spaces: what a tool-level presence proof's input hash is taken over (core/presence/index.js canonical, byte for byte). @param {any} v @returns {string} */
+const presenceCanonical = (v) => {
+  if (Array.isArray(v)) return "[" + v.map((x) => (x === undefined || typeof x === "function" ? "null" : presenceCanonical(x))).join(",") + "]";
+  if (v && typeof v === "object" && typeof v.toJSON !== "function") {
+    const keys = Object.keys(v).filter((k) => v[k] !== undefined && typeof v[k] !== "function").sort();
+    return "{" + keys.map((k) => JSON.stringify(k) + ":" + presenceCanonical(v[k])).join(",") + "}";
+  }
+  return JSON.stringify(v) ?? "null";
+};
 
 /** One stage-trail line per change (no code, no key, no name): what the first-run proof prints when the screen does not get where it should. */
 let lastTrace = "";
@@ -1330,7 +1340,8 @@ export function createHost(o) {
     /**
      * The person's yes, with no prompt (v0.6.5, password only): while the person is unlocked, this signs a presence proof of the `session` class with the identity key the opened record holds
      * (kernel/seal/proof.js SESSION: the same bytes and checks as every other proof, accepted by a server whose `presence` setting is silent). Locked, there is no key and nothing signs (null). The card's fields are
-     * checked against its hash first, so a proof is only ever for the act the card shows. @returns {{ signPresence: (card: any) => Promise<any> } | null}
+     * checked against its hash first, so a proof is only ever for the act the card shows. `signTool` is the same yes for a tool call (the registry's `own` presence method, core/presence): the x-vyre-presence header for
+     * exactly this tool and input. @returns {{ signPresence: (card: any) => Promise<any>, signTool: (tool: string, input: any) => Promise<string> } | null}
      */
     sessionSigner: () => {
       const seed = held;
@@ -1343,6 +1354,15 @@ export function createHost(o) {
         const rand = (o.random || ((/** @type {number} */ n) => crypto.getRandomValues(new Uint8Array(n))))(8);
         const body = proofBody({ ...card, person: card.person || k.id }, { keyId: key.eid, now: o.now ? o.now() : Date.now(), nonce: b64u(rand), signer: "session" });
         return { ...body, signature: b64u(await key.sign(proofBytes(body))) };
+      },
+      signTool: async (/** @type {string} */ tool, /** @type {any} */ input) => {
+        if (held !== seed) throw bad("Unlock with your password first.", "locked");
+        const key = await fromSeed(seed);
+        const ts = o.now ? o.now() : Date.now();
+        const nonce = b64u((o.random || ((/** @type {number} */ n) => crypto.getRandomValues(new Uint8Array(n))))(16));
+        const hash = sha256b64(presenceCanonical(input ?? {}));
+        const sig = b64u(await key.sign(new TextEncoder().encode(`vyre-presence-v1\n${tool}\n${hash}\n${ts}\n${nonce}`)));
+        return `own pub=${key.publicKey} ts=${ts} nonce=${nonce} sig=${sig}`;
       } };
     },
   };

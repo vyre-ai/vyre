@@ -9,3 +9,9 @@ export async function sessionSigner(): Promise<Signer | null> {
   if (!hostWanted()) return null;
   try { return (getHost().sessionSigner() as Signer | null) ?? null; } catch { return null; }
 }
+
+/** The person's yes for one tool call, as the x-vyre-presence header the registry's `own` method reads, or null while locked (or where hardware keys are asked for). */
+export async function sessionPresence(tool: string, input: Record<string, unknown>): Promise<string | null> {
+  if (process.env.EXPO_PUBLIC_VYRE_PRESENCE === "prompt" || !hostWanted()) return null;
+  try { const s = getHost().sessionSigner() as { signTool?: (t: string, i: unknown) => Promise<string> } | null; return s?.signTool ? await s.signTool(tool, input) : null; } catch { return null; }
+}

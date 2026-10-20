@@ -26,6 +26,8 @@ jobs:
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
       - run: npm ci
       - run: node scripts/gen-allow.mjs
+      # the living gallery (docs/design/gallery and the picture harness's fixtures) is generated here too, so a new family needs no hand edit
+      - run: node scripts/gen-gallery
       # The generated docs are built here, on the platform CI checks them on, because a Mac builds some entries (documents.*) differently.
       - run: node scripts/gen-agent-docs.mjs && node scripts/gen-docs-reference && node scripts/gen-architecture-map.mjs
       # The site pages are generated from scripts/gen-site.mjs. Regenerate them here and keep only the pages that really changed: the generator stamps today's date into the sitemap and the dated lines, which is not a change.
@@ -55,6 +57,8 @@ jobs:
             docs/index.json
             docs/reference
             docs/agents
+            docs/design/gallery
+            apps/app/ui/blocks/fixtures.generated.json
             docs/architecture/map.md
             site-changed.txt
             site-gen.tgz

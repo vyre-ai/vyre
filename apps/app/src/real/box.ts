@@ -144,6 +144,12 @@ export async function tool<T = unknown>(name: string, given: Record<string, unkn
       r = await call<T>(name, input, { kernelProof: proofHeader(out.proof) }).catch((e: Error) => ({ error: { code: "offline", message: e.message } }) as const);
     } finally { useApproval.getState().hide(); }
   }
+  // The person's own key says yes for a tool that needs their presence (v0.6.5, password only): while they are unlocked, no card and no prompt. The server takes it only while its `presence` setting is silent; a
+  // refusal leaves the ask for the card below, as before. An agent never reaches here: this is the person's own app.
+  if (r.error?.code === "presence_required") {
+    const header = await (await import("./session-signer")).sessionPresence(name, input);
+    if (header) { const again = await call<T>(name, input, { presence: header }).catch((e: Error) => ({ error: { code: "offline", message: e.message } }) as const); if (!again.error || again.error.code !== "presence_required") r = again; }
+  }
   // On the phone, whose own key is the person's: a signed yes over exactly the act the box named (x-vyre-yes). A device cannot answer its own card, so the phone says yes itself. The key asks Face ID or the
   // fingerprint; a reveal, a copy or a code signs the wish to reuse it for five minutes too.
   if (r.error?.code === "presence_required" && Platform.OS !== "web") {

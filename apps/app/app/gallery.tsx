@@ -22,6 +22,8 @@ import { ComputersView } from "../screens/spaces/ComputersSection";
 import { memberLine } from "../screens/spaces/computers-model.js";
 import { AccessView } from "../screens/assistants/AssistantAccess";
 import { SignInView } from "../screens/now/SignInAgain";
+import { SignInStep, SpacesStep } from "../screens/first-run/SignInSteps";
+import { UnlockScreen } from "../screens/unlock/UnlockScreen";
 import { ForkRows } from "../screens/chat-tools/ChatToolsSheet";
 import { NoticeAnswered } from "../screens/shell/PhoneApprovals";
 import { FlowDraftNote } from "../src/chat/FlowDraftNote";
@@ -298,6 +300,10 @@ function Sample({ name }: { name: string }) {
   }
   if (name === "flow-ai-step") return <FlowBuilder draft={{ name: "Sort new messages", trigger: { kind: "form", path: "intake" }, steps: [{ id: "classify1", kind: "classify", input: "{message}", labels: "Urgent, Routine", model: "openrouter/x-ai/grok-4.7" }] } as any} onChange={() => {}} options={{ ...SAMPLE_OPTIONS, models: sampleGroups() } as any} initialOpen="classify1" />;
   if (name === "chat-tools-fork") return <View style={{ gap: 12 }}><Card><ForkRows otherPlace="server" onFork={() => {}} onForkTo={() => {}} /></Card><Card><ForkRows otherPlace="mac" onFork={() => {}} onForkTo={() => {}} /></Card><Card><ForkRows otherPlace={null} onFork={() => {}} onForkTo={() => {}} /></Card></View>;
+  // The first-run sign-in and the unlock cover, from sample values and with nothing moving behind them (so the same picture is drawn each time): a space, a username and a password, or GitHub then only the password; and the password that opens a locked app.
+  if (name === "signin-screen") return <SignInStep space="tess" onSpace={() => {}} spaceBad={false} username="ada" onUsername={() => {}} password="correct horse battery" onPassword={() => {}} busy={false} canSubmit onSubmit={() => {}} onGithub={() => {}} />;
+  if (name === "signin-github") return <SpacesStep found={[{ id: "spc_tess", name: "tess", role: "owner" }, { id: "spc_kit", name: "kit-studio", role: "member" }]} password="correct horse battery" onPassword={() => {}} busy={false} onSubmit={() => {}} />;
+  if (name === "unlock-screen") return <View style={{ height: 520 }}><UnlockScreen view="unlock" still greeting="Welcome back" onDone={() => {}} /></View>;
   if (name === "signin-card") {
     const site = { id: "connectors:li", title: "Sign in to app.example.com again", detail: "HTTP 401: the login ran out. Sign in on the site, then check again.", at: 1, buttons: [{ label: "Check it now", tool: "connectors.connection.check", input: { id: "li" } }] };
     const screen = { ...site, id: "connectors:cp", title: "Sign in to portal.example.com again", buttons: [{ label: "Check it now", tool: "connectors.connection.check", input: { id: "cp" } }, { label: "Open the computer's screen", open: "/u/glass/kit" }] };

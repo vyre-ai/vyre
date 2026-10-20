@@ -12,7 +12,7 @@ export const SOFTWARE_KEY = "software_key";
 export const strengthOf = attested => (attested === true ? "hardware" : "software");
 
 /** Does this strength satisfy a presence-required act here? null when it does, else the refusal code. @param {string} strength @param {boolean} devOn is this server's dev switch on (a development-kind build that was started with it)? */
-export const strengthRefusal = (strength, devOn) => (strength === "hardware" || devOn === true ? null : SOFTWARE_KEY);
+export const strengthRefusal = (strength, devOn) => (strength === "hardware" || strength === "session" || devOn === true ? null : SOFTWARE_KEY);
 
 /** How a proof is marked in the log and in status: "software" for any software-strength key (and so for a dev walk), "attested" for a hardware key. @param {string} strength */
 export const methodOf = strength => (strength === "hardware" ? "attested" : "software");
@@ -25,7 +25,9 @@ export const methodOf = strength => (strength === "hardware" ? "attested" : "sof
  * a gesture method keeps satisfying what it satisfies today for its lifetime, a session opened by `device` (never on release; on dev only) is software, and a session row with no opener recorded (an old row) is
  * software: fail closed. An unknown method is software. @param {string} method @param {string | null} [opener] the method that opened the session, when `method` is "session" @returns {"hardware" | "software"}
  */
-export const strengthOfMethod = (method, opener = null) => (INHERITS.has(String(method)) ? strengthOfMethod(String(opener || ""), null) : GESTURE_METHODS.has(String(method)) ? "hardware" : "software");
+export const strengthOfMethod = (method, opener = null) => (INHERITS.has(String(method)) ? strengthOfMethod(String(opener || ""), null) : GESTURE_METHODS.has(String(method)) ? "hardware" : String(method) === OWN_METHOD ? "session" : "software");
+/** The tool-level method for the `session` signer class (kernel/seal/proof.js SESSION): the person's own identity key signs the call. Its strength is "session": taken on a release server only while the `presence` setting is silent, which core/presence checks before it asks the key. */
+export const OWN_METHOD = "own";
 /** A presence session and the terminal's reuse window are not gestures: each is opened by a proof and inherits that proof's method (record the opener on the row and on the window). */
 const INHERITS = new Set(["session", "window"]);
 /** The methods that needed a person's gesture when the proof was made. Everything else is software by default; named here so a new method is a decision: `grant` enrols the first passkey only (it is not an act: the registry exempts it explicitly, so it is software here only because nothing may satisfy an act with it), `stand-in` is development only. */

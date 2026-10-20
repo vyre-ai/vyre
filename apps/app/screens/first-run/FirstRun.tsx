@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { SignInStep, SpacesStep } from "./SignInSteps";
 import { Pressable, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
@@ -414,35 +415,29 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
     // a bare name (tess) is as good as the whole address (tess.vyre.run)
     const addr = spaceAddressOf(signSpace.includes(".") ? signSpace : `${signSpace.trim()}.vyre.run`);
     return (
-      <FlowStep steps={steps} onBack={back} backLabel={backLabel} title={SIGNIN_COPY.title} lead={SIGNIN_COPY.lead} failure={failure}
-        primary={{ label: busy ? "Unlocking..." : "Sign in", disabled: !addr || !usernameOf(username) || !password || busy, loading: busy, onPress: () => void run(async () => {
+      <SignInStep steps={steps} onBack={back} backLabel={backLabel} failure={failure} space={signSpace} onSpace={setSignSpace} spaceBad={Boolean(signSpace && !addr)}
+        username={username} onUsername={setUsername} password={password} onPassword={setPassword} busy={busy} canSubmit={Boolean(addr && usernameOf(username) && password)}
+        onSubmit={() => void run(async () => {
           const r = await signInPassword({ space: addr ? addr.space : "", username: usernameOf(username), password });
           if (!r.ok) { setFailure(r.message); return; }
           setPassword("");
           setUsername(r.username || usernameOf(username));
           if (addr) try { rememberSpace(typeof localStorage === "undefined" ? null : localStorage, addr.space); } catch { /* nothing remembered */ }
           go("ready");
-        }) }}>
-        <Field label="Space address" name="Space address" value={signSpace} onChangeText={setSignSpace} placeholder="tess or tess.vyre.run" error={signSpace && !addr ? "Use the name of a space, like tess or tess.vyre.run." : undefined} />
-        <Field label="Username" value={username} onChangeText={setUsername} />
-        <PasswordField label="Password" value={password} onChangeText={setPassword} />
-        <ProviderSignInButton disabled={busy} onPress={() => void githubSignIn(addr ? addr.space : undefined)} />
-      </FlowStep>
+        })}
+        onGithub={() => void githubSignIn(addr ? addr.space : undefined)} />
     );
   }
 
   if (screen === "id.signin.spaces") {
     return (
-      <FlowStep steps={steps} onBack={back} backLabel={backLabel} title={SIGNIN_COPY.spacesTitle} lead={SIGNIN_COPY.spacesLead} failure={failure}
-        primary={{ label: busy ? "Unlocking..." : "Unlock", disabled: !password || busy, loading: busy, onPress: () => void run(async () => {
+      <SpacesStep steps={steps} onBack={back} backLabel={backLabel} failure={failure} found={found} password={password} onPassword={setPassword} busy={busy}
+        onSubmit={() => void run(async () => {
           const r = await unlockGithub(password);
           if (!r.ok) { setFailure(r.message); return; }
           setPassword("");
           go("ready");
-        }) }}>
-        {found.map((x) => <Text key={x.id || x.name}>{`${x.name}, ${x.role}`}</Text>)}
-        <PasswordField label="Password" value={password} onChangeText={setPassword} />
-      </FlowStep>
+        })} />
     );
   }
 

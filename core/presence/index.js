@@ -197,7 +197,7 @@ export function personOnly(name, def) {
   return Boolean(def) && Array.isArray(def.callers) && def.callers.length > 0 && def.callers.every(c => PERSON_SURFACES.has(c));
 }
 
-export const METHODS = ["touchid", "tty", "capsule", "device", "passkey", "code", "grant", "session", "yes"];
+export const METHODS = ["touchid", "tty", "capsule", "device", "passkey", "code", "grant", "session", "yes", "own"];
 
 /**
  * Floor tools whose owner may say, per input, that no proof is needed (`presence.when`). Without
@@ -531,7 +531,7 @@ export class Presence {
    *           role?: string, network?: () => { owner?: string, address?: string }, who?: () => Promise<string[]>, writeTty?: (file: string, text: string) => void, statTty?: (file: string) => any,
    *           touchid?: any, webauthn?: any, now?: () => number, env?: NodeJS.ProcessEnv, core?: CoreLink|null }} opts
    */
-  constructor({ db, events = null, standIn = () => false, softwareOk = () => false, log = () => {}, platform = process.platform, role = "local", network = () => ({}), ownerDevice = async () => false, who: whoFn, writeTty: write, statTty, touchid, webauthn, now, env = process.env, core: coreOpt }) {
+  constructor({ db, events = null, standIn = () => false, softwareOk = () => false, log = () => {}, platform = process.platform, role = "local", network = () => ({}), ownerDevice = async () => false, ownerKey = async () => false, silentOk = () => env.VYRE_PRESENCE !== "prompt", who: whoFn, writeTty: write, statTty, touchid, webauthn, now, env = process.env, core: coreOpt }) {
     this.db = db;
     /** DEVELOPMENT ONLY: is the walk's presence stand-in on for this home? The daemon answers true only for a development build whose home holds a file the owner made by hand. */
     this.standIn = standIn;
@@ -543,6 +543,10 @@ export class Presence {
     this.network = network;
     /** Is this caller one of the OWNER's paired Wink devices (the owner confirmed it; not removed)? Given by the presence module from wink.device.record; false with none. @type {(caller: string) => Promise<boolean>} */
     this.ownerDevice = ownerDevice;
+    /** Is this public key (base64url Ed25519) a published full device key of the home's owner? The daemon answers from the owner's identity list (core/presence/own-key.js); false with none. @type {(pub: string) => Promise<boolean>} */
+    this.ownerKey = ownerKey;
+    /** Does this server take the person's own key as their yes (`presence` is silent, the default)? `prompt` brings back hardware only. @type {() => boolean} */
+    this.silentOk = silentOk;
     this.events = events;
     this.log = log;
     this.platform = platform;
@@ -809,6 +813,29 @@ export class Presence {
       this.nonces.set(nonce, this.now() + 2 * CAPSULE_SKEW + 1000);
       this.db.prepare("UPDATE presence_keys SET last_used = ? WHERE id = ?").run(this.now(), row.id);
       return proved(row.id);
+    }
+
+    // The `session` signer class at the tool level (v0.6.5, password only): the person's OWN identity key, held by their app only while they are unlocked with the password, signs this call. It is verified like a
+    // device key (the same message over the tool and its input, fresh, one nonce once) against a key that is a published full device key of the home's owner, and taken only while `presence` is silent. An agent never
+    // holds that key; the owner check is the identity list's, never the caller's say-so. Named `own` here because `session` already means a presence session in this file.
+    if (method === "own") {
+      let silent = false; try { silent = this.silentOk() === true; } catch { silent = false; }
+      if (!silent) return refuse("this server asks for a hardware key; approve it in Vyre on your phone");
+      const { pub, ts, nonce, sig } = proof;
+      if (!/^[A-Za-z0-9_-]{43}$/.test(String(pub || ""))) return refuse("that key is not an identity key");
+      if (!/^\d{1,16}$/.test(String(ts || "")) || Math.abs(this.now() - Number(ts)) > CAPSULE_SKEW) return refuse("the signature is too old or from the future");
+      if (!/^[A-Za-z0-9_-]{8,128}$/.test(String(nonce || ""))) return refuse("the nonce is missing or malformed");
+      if (this.nonces.has(nonce)) return refuse("that nonce was already used");
+      let listed = false; try { listed = (await this.ownerKey(String(pub))) === true; } catch { listed = false; }
+      if (!listed) return refuse("that key is not one of the owner's devices");
+      let good = false;
+      try {
+        const key = crypto.createPublicKey({ key: Buffer.concat([Buffer.from("302a300506032b6570032100", "hex"), Buffer.from(String(pub), "base64url")]), format: "der", type: "spki" });
+        good = crypto.verify(null, Buffer.from(`vyre-presence-v1\n${tool}\n${hash}\n${ts}\n${nonce}`), key, Buffer.from(String(sig || ""), "base64url"));
+      } catch {}
+      if (!good) return refuse("the signature does not check out");
+      this.nonces.set(nonce, this.now() + 2 * CAPSULE_SKEW + 1000);
+      return proved(String(pub));
     }
 
     if (method === "passkey") {
