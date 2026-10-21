@@ -335,7 +335,7 @@ Send an email or a text message as you, held at the Gate for your yes and logged
 
 ## computer
 
-Vyre Computer: one front door over the cloud computer, your Macs and the screen engines. Computers are chosen by name; interface first, screen last.
+Vyre Computer: one front door over the cloud computer, your computers and the screen engines. Computers are chosen by name; interface first, screen last.
 
 - Folder: `core/computer`, version 0.1.0
 - Runs on: `box`, `local`
