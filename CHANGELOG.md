@@ -13,6 +13,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - feat(records): tags show as saved views, and a record can draft a document, send it for signing, or send email (apps/app/screens/records/tag-views.js, DocumentsBar.tsx).
 - feat(windows): the window remembers its place and size, is titled Vyre, uses Segoe UI, and hides the web view scrollbar (local/capsule/native-win/app/src/window_frame.rs).
 - feat(web): a phone can save Vyre to the home screen, and the page links its manifest and icons (apps/app/ui/shell/HomeScreenHint.tsx, apps/app/public/index.html).
+- fix(shell): a sidebar search that only one place starts with finds that place, and one that several labels contain stays ambiguous (lib/sidebar/model.js, lib/sidebar/model.test.js).
 
 ## 0.6.6
 
