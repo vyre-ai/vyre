@@ -2,7 +2,7 @@
 // environment variables; the list shows each item's fields, who can use it and what uses it, and search finds an item by its name or any field's name. What Vyre's modules
 // still need is asked for at the top, one tap from the Add sheet on that app's template. Everything rare is on Advanced.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import { Platform, View, useWindowDimensions } from "react-native";
 import { Banner, Button, Card, Chip, EmptyState, ErrorState, Field, GroupedList, IconButton, IconTile, LoadingState, MenuRow, Row, Segmented, Sheet, Text, showToast, type IconName } from "@vyre/ui";
 import { Footnote, Frame } from "../places/Frame";
@@ -12,6 +12,9 @@ import type { Scope, Suggestion, VaultData } from "./redesign-data";
 import { AddSheet, type Call } from "./AddSheet";
 import { VAULT_PANEL_MIN, useVaultNav } from "./vault-nav";
 import { VaultItem } from "./VaultItem";
+import { VaultsScreen } from "./VaultsScreen";
+import VaultAdvanced from "./VaultAdvanced";
+import { within } from "../../src/state/kept-model.js";
 import { needPrompts, type Need, type Saved } from "./add-model.js";
 import { fieldLabel } from "./env-model.js";
 import { putRefusal } from "./real-model";
@@ -30,7 +33,8 @@ const whoLine = (v: VItem) => (v.sp === "mine" ? (v.shared.length ? "You, and wh
 
 export default function VaultRedesign({ data }: { data: VaultData }) {
   const phone = usePhone();
-  const router = useRouter();
+  const [foldersOpen, setFoldersOpen] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const { scope, nav, setScope, setNav, setCounts } = useVaultNav();
   const [q, setQ] = useState("");
   const [items, setItems] = useState<VItem[] | null>(null);
@@ -60,7 +64,7 @@ export default function VaultRedesign({ data }: { data: VaultData }) {
 
   const load = useCallback(() => {
     setErr("");
-    data.load(scope).then((r) => { setItems(r.items); setLocked(r.locked); setNoAccount(Boolean(r.noAccount)); setOwner(r.owner !== false); }).catch((e) => setErr(String(e?.message || "The vault did not answer.")));
+    within(data.load(scope)).then((r) => { setItems(r.items); setLocked(r.locked); setNoAccount(Boolean(r.noAccount)); setOwner(r.owner !== false); }).catch((e) => setErr(String(e?.message || "The vault did not answer.")));
     data.needs?.().then(setNeeds).catch(() => setNeeds([]));
     data.templates?.().then(setSaved).catch(() => setSaved([]));
     data.folders?.list().then((xs) => setFolders(xs.map((x) => ({ id: x.id, name: x.name })))).catch(() => setFolders([]));
@@ -166,8 +170,8 @@ export default function VaultRedesign({ data }: { data: VaultData }) {
   const add = () => { setAddProblem(""); setAddOn(null); setAdding(true); };
   return (
     <Frame title="Vault" sub="Your keys and logins, like an .env you can share safely." actions={<View className="flex-row items-center gap-s2">
-      {data.real && owner && scope === "shared" ? <Button kind="ghost" size="sm" icon="folder" label="Folders" onPress={() => router.push("/u/vaults" as never)} /> : null}
-      {data.real ? <Button kind="ghost" size="sm" label="Advanced" onPress={() => router.push("/u/vault-more" as never)} /> : null}
+      {data.real && owner && scope === "shared" ? <Button kind="ghost" size="sm" icon="folder" label="Folders" onPress={() => setFoldersOpen(true)} /> : null}
+      {data.real ? <Button kind="ghost" size="sm" label="Advanced" onPress={() => setAdvancedOpen(true)} /> : null}
       {canAdd ? (phone ? <IconButton icon="plus" label="Add" kind="primary" onPress={add} /> : <Button kind="primary" size="sm" icon="plus" label="Add" onPress={add} />) : null}
     </View>}>
       <Scoper scope={scope} onScope={setScope} />
@@ -178,6 +182,8 @@ export default function VaultRedesign({ data }: { data: VaultData }) {
         {phone ? null : <View className="min-w-pane min-w-0 flex-[1.2]">{detail}</View>}
       </View>
       {sheet}{addSheet}
+      {foldersOpen ? <Sheet open onClose={() => setFoldersOpen(false)} title="Folders"><VaultsScreen embedded /></Sheet> : null}
+      {advancedOpen ? <Sheet open onClose={() => setAdvancedOpen(false)} title="Advanced"><VaultAdvanced embedded /></Sheet> : null}
     </Frame>
   );
 }

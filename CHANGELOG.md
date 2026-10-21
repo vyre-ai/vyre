@@ -8,6 +8,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - feat(settings): the list is Your account here, the Space for owners and admins, and Everywhere. The heading is the Space's name. Audit is back. Design changes are the owner's. Rules, groups, servers and MCP leave the archive as pages that fold in.
 - fix(copy): an update tells you to use the app that installed Vyre. Agents' computers and limits names that page. Settings and the vault say computer.
 - feat(settings): Rules and Groups sit on People and roles, Servers on Devices and computers, and Outside, Spend and Permissions on What agents may do. MCP keys sit on Connections. Audit is a normal page, with names behind Details. Apps lists the modules installed here. A read that runs long stops at 20 seconds and offers Try again.
+- feat(vault): Folders and Advanced open as sheets on the Vault. The separate vault routes and the sharing design page are gone.
 
 ## 0.6.6
 

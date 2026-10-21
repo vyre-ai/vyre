@@ -19,7 +19,7 @@ test("a real build blocks the sample-world pages from Metro, the mock build does
 });
 
 test("every demo, gallery, proof and screenshot page is in the list, and no real page is", () => {
-  const demos = ["app/chat-demo.tsx", "app/connect-demo.tsx", "app/gallery.tsx", "app/terminal-demo.tsx", "app/keycheck.tsx", "app/glass-relay-proof.tsx", "app/notices-proof.tsx", "app/u/vault-design.tsx", "app/u/flows/shot.tsx",
+  const demos = ["app/chat-demo.tsx", "app/connect-demo.tsx", "app/gallery.tsx", "app/terminal-demo.tsx", "app/keycheck.tsx", "app/glass-relay-proof.tsx", "app/notices-proof.tsx", "app/u/flows/shot.tsx",
     ...fs.readdirSync(path.join(app, "app")).filter((f) => /^shots-/.test(f)).map((f) => `app/${f}`)];
   for (const f of demos) { assert.ok(fs.existsSync(p(f)), `${f} exists`); assert.ok(mockRe.test(p(f)), `${f} is not registered in a real build`); }
   assert.ok(proofRe.test(p("app/two-servers-proof.tsx")));
