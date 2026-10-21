@@ -52,7 +52,7 @@ export function BackupsSection() {
       <Text tone="muted">Each Space is backed up under its owner's recovery code.</Text>
       {err ? <Card flush><ErrorState title="Backups did not load" reason={err} retry={load} recourse={errNote?.recourse} code={errNote?.code} /></Card> : null}
       {!rows && !err ? <LoadingState rows={3} /> : null}
-      {rows && !rows.length ? <Card><EmptyState title="No Spaces here" body="A box that holds Spaces lists each one here." /></Card> : null}
+      {rows && !rows.length ? <Card><EmptyState title="No Spaces here" body="A server that holds Spaces lists each one here." /></Card> : null}
       {rows && rows.length ? (
         <Card flush>
           {rows.map((r, i) => (

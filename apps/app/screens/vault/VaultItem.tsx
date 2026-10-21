@@ -23,7 +23,7 @@ const who = (w: string) => markRef(w === "alex" ? "person" : "teammate", w);
 const say = (e: unknown, fallback: string) => String((e as Error)?.message || fallback);
 /** Words for what a refusal for presence means here, so a device that cannot approve is never a dead end (the owner's ruling of 19 Oct: with no approval device set up, a person's own act goes through). */
 const presenceWords = (e: unknown, fallback: string) => ((e as { code?: string })?.code === "presence_required" || (e as { code?: string })?.code === "needs_presence"
-  ? "This needs your approval. Approve it in Vyre on your phone, or with Touch ID in a signed Mac app. With no approval device set up, your own acts go through without one."
+  ? "This needs your approval. Approve it in Vyre on your phone, or with Touch ID in a signed app on this computer. With no approval device set up, your own acts go through without one."
   : say(e, fallback));
 
 /** The names a field is shown by: its one form; a login's and a note's own fields keep their words. */

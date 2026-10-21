@@ -19,10 +19,10 @@ export function checkedLine(at: number | null, now: number): string {
   const m = Math.max(0, Math.round((now - at) / 60000));
   return m < 1 ? "Checked just now." : m < 60 ? `Checked ${m} ${m === 1 ? "minute" : "minutes"} ago.` : m < 1440 ? `Checked ${Math.round(m / 60)} ${Math.round(m / 60) === 1 ? "hour" : "hours"} ago.` : `Checked ${Math.round(m / 1440)} days ago.`;
 }
-/** How the person updates here: a button when the box takes the request, otherwise the one command to run. */
+/** How the person updates here: a button when this server takes the request, otherwise the app that installed Vyre. Never a command. */
 export function howLine(s: UpdateStatus): string {
   if (s.canApply) return "";
-  return s.command ? `To update, run ${s.command} on your home.` : "Update from the app that installed Vyre.";
+  return "Update from the app that installed Vyre.";
 }
 export const autoLine = (auto: string): string => (auto === "notify" ? "Vyre tells you when an update is out. It never installs one without your yes." : auto === "off" ? "Update checks are off." : auto === "install" ? "Vyre installs signed updates by itself." : `Update mode: ${auto}.`);
 

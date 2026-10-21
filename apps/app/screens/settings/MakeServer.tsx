@@ -14,9 +14,9 @@ export function MakeServer() {
   return (
     <Card>
       <View className="gap-s2 p-s2">
-        <Text strong>Make this Mac a server</Text>
-        <Text tone="muted">This Mac must stay on. It will run Records for My Cloud.</Text>
-        <View className="flex-row"><Button kind="secondary" label="Make this Mac a server" onPress={() => router.push(SERVER_SETUP_ROUTE as never)} /></View>
+        <Text strong>Make this computer a server</Text>
+        <Text tone="muted">This computer must stay on. It will run Records for My Cloud.</Text>
+        <View className="flex-row"><Button kind="secondary" label="Make this computer a server" onPress={() => router.push(SERVER_SETUP_ROUTE as never)} /></View>
       </View>
     </Card>
   );

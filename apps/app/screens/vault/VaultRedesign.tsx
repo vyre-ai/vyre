@@ -22,7 +22,7 @@ const TONE = { ok: "ok", expiring: "warn", expired: "err", unused: "plain" } as 
 /** The words for a save the computer could not approve (the owner's ruling of 19 Oct: with no approval device set up, a person's own act goes through). */
 const saveWords = (e: unknown) => {
   const code = (e as { code?: string }).code;
-  if (code === "presence_required" || code === "needs_presence") return "This needs your approval. Approve it in Vyre on your phone, or with Touch ID in a signed Mac app. With no approval device set up, your own changes go through without one.";
+  if (code === "presence_required" || code === "needs_presence") return "This needs your approval. Approve it in Vyre on your phone, or with Touch ID in a signed app on this computer. With no approval device set up, your own changes go through without one.";
   return putRefusal(code, String((e as Error)?.message || ""));
 };
 /** Who can use an item, in one line for the list. */

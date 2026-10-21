@@ -136,11 +136,11 @@ test("system: hand-back keeps its choices; shares flip between read only and rea
   assert.equal(m.flipAccess("ro"), "rw");
   assert.equal(m.flipAccess("rw"), "ro");
   assert.equal(m.accessWord("rw"), "Read and write");
-  assert.deepEqual(m.auditLines({ checked: 3 }), { ok: true, lines: ["Only your paired Macs can reach them. Checked 3 online devices."] });
+  assert.deepEqual(m.auditLines({ checked: 3 }), { ok: true, lines: ["Only your paired computers can reach them. Checked 3 online devices."] });
   const bad = m.auditLines({ unsafe: [{ share: "docs", found: [".env"] }, { share: "x", why: "unreadable" }], findings: [{ node: "phone" }] });
   assert.equal(bad.ok, false);
   assert.deepEqual(bad.lines.slice(0, 2), ["docs has secrets inside: .env", "x could not be checked for secrets: unreadable."]);
-  assert.match(bad.lines[2], /^1 device outside your paired Macs can reach these shares: phone\./);
+  assert.match(bad.lines[2], /^1 device outside your paired computers can reach these shares: phone\./);
   const b = box({ "recall.status": { error: { code: "no_such_tool", message: "no" } } });
   const s = systemSource(b.call);
   assert.equal(await s.recall(), null, "a tool the box lacks leaves its card out");
