@@ -1,6 +1,6 @@
 // What the generated views read: every type, every record of every type (a link shows its target's title, a contact lists its matters), the actors.
 // One world per filter, shared by every screen that shows it (world-share.js), kept current by the store's changes, so a screen keeps no copy of its own and two screens never read it twice.
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { useStoreQuery } from "../store";
 import { getStore } from "../../src/store-core/store.js";
 import type { Store } from "../../src/store-core/contracts.js";
@@ -11,6 +11,7 @@ import { filtersKey, listQuery } from "./world-load.js";
 import { haveTemplateNames, keepTemplateNames, onTemplateNames } from "../records/template-names.js";
 import { createShare } from "./world-share.js";
 import type { RecordsWorld } from "./shared";
+import { subscribeWorldSpace, worldSpace } from "./world-space.js";
 
 type Filters = Record<string, object | undefined> | undefined;
 type Share = {
@@ -66,7 +67,9 @@ function shareFor(key: string, filters: Filters) {
 
 /** `filters` names a records.list filter for a type, so the box cuts that one list (the Notes a person wrote); every other type, and every caller that names none, reads whole. */
 export function useRecordsWorld(filters?: Record<string, object | undefined>) {
-  const key = filtersKey(filters);
+  // one world per Space and filter: switching Spaces reads the new Space's records, never shows the last one's
+  const space = useSyncExternalStore(subscribeWorldSpace, worldSpace, worldSpace);
+  const key = `${space}|${filtersKey(filters)}`;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const entry = useMemo(() => shareFor(key, filters), [key]);
   const [, redraw] = useState(0);
