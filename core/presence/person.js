@@ -414,3 +414,13 @@ export class PersonSessions {
     this.db.prepare("DELETE FROM presence_removed WHERE removed <= ?").run(now - 30 * DAY);
   }
 }
+
+/**
+ * A session made by username and password (`vyre signin`, core/signin) is pinned to the node `cli:password`, which needs no terminal login: it is what a server in a container has, where no terminal can be read.
+ * The terminal's own node is tried first.
+ * @param {{ check: (o: any) => any }} people @param {any} req @param {URL} url @param {string | null | undefined} key the terminal login, when one could be read
+ */
+export function cliSessionCheck(people, req, url, key) {
+  const check = (/** @type {string} */ node) => people.check({ headers: req.headers, node, method: req.method, path: url.pathname + url.search, raw: "" });
+  return (key ? check(`cli:${key}`) : null) || (carried(req.headers) ? check("cli:password") : null);
+}

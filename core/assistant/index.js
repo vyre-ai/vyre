@@ -248,7 +248,7 @@ export default {
         // must be the home's owner alone. Nothing a caller sends counts, and no other device (a member's) gets the owner's first-run steps.
         let ownDevice = false;
         const f = meta && meta.kernelFacts;
-        if (f && f.kind === "device" && String(meta.caller || "").startsWith("device:") && ctx.kernel && ctx.kernel.id && ctx.kernel.id.owner && typeof ctx.kernel.chain === "function") {
+        if (f && f.kind === "device" && ctx.kernel && ctx.kernel.id && ctx.kernel.id.owner && typeof ctx.kernel.chain === "function") {
           try { const c = await ctx.kernel.chain({ kernelFacts: f }); const a = c && c.hops && c.hops.length === 1 ? c.hops[0].actor : null; ownDevice = Boolean(a && a.kind === "person" && a.id === ctx.kernel.id.owner && c.viewer !== true); } catch { ownDevice = false; }
         }
         if (!ownDevice) await gate(meta);

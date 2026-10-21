@@ -14,3 +14,30 @@ export function shouldStartFresh(o) {
   if (NO_SESSION.test(String(o.stderr || ""))) return true;       // the provider says the session is missing, whatever it said before that
   return !o.heard && !(o.turns > 0);                              // it never spoke and there is no finished turn to lose
 }
+
+/**
+ * Called when a session's process ends. A resume of a session that never began (its first start failed, say at the sandbox self-test, so the provider has no transcript): any provider's process that ends before
+ * it speaks, with no finished turn behind it or saying the session is missing. The thread starts that session now under the same id, and the message that was waiting goes in again.
+ * Returns true when it took over (the caller stops handling the exit).
+ * @param {any} sb the Switchboard @param {string} id @param {any} st @param {number | null} code @param {any} stderr @param {(sb: any, id: string, rec: any) => Promise<any>} lentOf
+ */
+export function startFreshOnExit(sb, id, st, code, stderr, lentOf) {
+  if (!(st.launch && st.launch.resume && sb.live.get(id) === st && shouldStartFresh({ resume: true, heard: Boolean(st.heard), stopping: Boolean(st.stopping), fresh: Boolean(st.fresh1), closing: Boolean(sb.closing), code, stderr: String(stderr || ""), turns: Number((sb.record(id) || {}).turns) || 0 }))) return false;
+  void startFresh(sb, id, st, lentOf);
+  return true;
+}
+
+/** Start the session over as a new one under the same id (no transcript to resume), once, and send again the words the failed start was carrying.
+ * @param {any} sb @param {string} id @param {any} st @param {(sb: any, id: string, rec: any) => Promise<any>} lentOf
+ */
+async function startFresh(sb, id, st, lentOf) {
+  st.switching = true;
+  try {
+    const rec = sb.must(id);
+    const words = st.lastPrompt || null;
+    sb.deps.log(`threads: ${String(id).slice(0, 8)} had no session to resume; starting it as a new one`);
+    sb.spawn(id, { ...st.launch, libraryPlugin: await sb.libraryPlugin(rec, st.launch || {}, id), sandboxSpawn: await sb.sandboxFor(id, rec, st.launch || {}), lentSpawn: await lentOf(sb, id, rec), gitEnv: await sb.gitEnv(rec && rec.project, id), resume: false, lastPrompt: words });
+    const now = sb.live.get(id); if (now) now.fresh1 = true;
+    if (words) sb.write(id, words, { askedBy: sb.turnAsker.get(id) || null });
+  } catch (e) { sb.deps.log(`threads: ${String(id).slice(0, 8)} could not start as a new session: ${/** @type {Error} */ (e).message}`); st.switching = false; sb.onExit(id, st, 1, null, "", null); }
+}

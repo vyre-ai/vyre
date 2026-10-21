@@ -87,7 +87,7 @@ import path from "node:path";
 import { entryProof } from "../../kernel/seal/entry-proof.js";
 import { newPrefixedId } from "../../lib/id.js";
 import { httpFetch } from "../../lib/http.js"; import { entryView } from "./entry-view.js";
-import { chosenServer } from "./chosen-server.js"; import { registerPublishServerSpace } from "./publish-server-space.js"; import { nameServe } from "./name-serve.js";
+import { makeWhoRead, deviceEntry } from "./who-read.js"; import { chosenServer } from "./chosen-server.js"; import { registerPublishServerSpace } from "./publish-server-space.js"; import { nameServe } from "./name-serve.js";
 /** Test seams. Nothing here is a setting: a test sets them before the module starts. */
 export const hooks = {
   /** @type {typeof globalThis.fetch | null} */ fetch: null,
@@ -172,19 +172,7 @@ export default {
       if (!s.exists || s.pending) throw refuse("Choose your Vyre name first.", "no_identity");
       return s;
     };
-    /**
-     * Who is asking, for a READ only. This home's own identity when it has one; else, for a call from a paired device the daemon has proven is the owner's (meta.kernelFacts is built by the daemon from the
-     * home's own device record and kernel, never from anything the caller sends), that owner's person id and that device's id. A server that holds no identity of its own is that case: the person's devices
-     * hold the keys, the server only knows whose they are. It signs nothing and gives no write: every write keeps `me()`.
-     * @param {any} meta
-     */
-    const whoRead = meta => {
-      let s = null; try { s = identity.status(); } catch { s = null; }
-      if (s && s.exists && !s.pending) return s;
-      const f = meta && meta.kernelFacts;
-      if (f && f.kind === "device" && typeof f.person === "string" && f.person && typeof f.device_key_id === "string" && f.device_key_id && K && typeof K.space === "string") return { exists: true, id: f.person, eid: f.device_key_id, name: null, viaDevice: true };
-      return me();
-    };
+    const whoRead = makeWhoRead({ identity, me, kernel: () => K });
     /** This person, as an owner of a space: the person id, acting through this device's entry on their list. */
     const ownerSigner = async () => { const s = me(); return { by: /** @type {string} */ (s.id), via: /** @type {string} */ (s.eid), pos: await C.viaOf(identity.ops()), sign: (/** @type {Uint8Array} */ m) => identity.sign(Buffer.from(m)) }; };
     /** This device's own entry, for acts of the person's own list. */
@@ -952,9 +940,7 @@ export default {
     const ownDeviceEid = (/** @type {any} */ meta) => (meta && meta.kernelFacts && meta.kernelFacts.kind === "device" && meta.kernelFacts.device_key_id) || String(me().eid);
     const deviceOf = async (/** @type {any} */ id, /** @type {any} */ meta, /** @type {any} */ who = null) => {
       const eid = String(id || (who && who.viaDevice ? who.eid : ownDeviceEid(meta)));
-      let e = null; try { e = (await idops.entries()).find((/** @type {any} */ x) => x.eid === eid && x.kind === "device"); } catch { e = null; }
-      // A server with no identity list: the paired device asking about ITSELF is known by the id the daemon proved; it names no other device.
-      if (!e && who && who.viaDevice && eid === who.eid) e = { eid, kind: "device", label: null };
+      const e = await deviceEntry(() => idops.entries(), eid, who);
       if (!e) throw refuse("That is not one of your devices (spaces.identity.entries lists yours).", "not_found");
       return e;
     };
@@ -2012,9 +1998,7 @@ export default {
       }, { presence: { summary: (/** @type {any} */ i) => `Transfer ${i && i.space} to ${i && i.to}` } });
     tool("spaces.roles.names", "Read the display names of the five roles, or rename one (owner or admin). The ids never change.",
       obj({ space: str, role: { type: "string", enum: ROLE_IDS }, name: str }, ["space"]), async (i, meta) => {
-        const renaming = Boolean(i.role && i.name !== undefined);
-        const who = renaming ? null : whoRead(meta);
-        const row = who && who.viaDevice ? spaceOrHome(i.space, who) : spaceOf(i.space);
+        const who = i.role && i.name !== undefined ? null : whoRead(meta); const row = who && who.viaDevice ? spaceOrHome(i.space, who) : spaceOf(i.space);
         const s = await gate(row.id, "views.read", meta, who);
         const m = membersFor(row.id);
         if (i.role && i.name !== undefined) {

@@ -186,8 +186,7 @@ export const MIGRATIONS = [
 /** A model id as a person reads it: without the effort suffix some agents add ("gpt-6.1-sol[low]" is "gpt-6.1-sol"). @param {any} m */
 export const modelName = m => (typeof m === "string" && m.trim() ? m.slice(0, 200).trim().replace(/\[[^\]]*\]$/, "").slice(0, 80) : null);
 
-import { providerName, switchedLine } from "./switched.js";
-import { shouldStartFresh } from "./no-session.js";
+import { providerName, switchedLine } from "./switched.js"; import { startFreshOnExit } from "./no-session.js";
 export { providerName, switchedLine };
 
 /** Words a model wrote, quoted into a Vyre line: every line indented, so a line of its own that looks like the end of the block or a new Vyre line stays inside the quote. @param {string} text */
@@ -2259,27 +2258,9 @@ export class Switchboard {
     if (st.lastPrompt) this.write(id, st.lastPrompt, { askedBy: this.turnAsker.get(id) || null });
   }
 
-  /**
-   * Start the session over as a new one under the same id (no transcript to resume), once, and send again the words the failed start was carrying.
-   * @param {string} id @param {any} st
-   */
-  async startFresh(id, st) {
-    st.switching = true;
-    try {
-      const rec = this.must(id);
-      const words = st.lastPrompt || null;
-      this.deps.log(`threads: ${String(id).slice(0, 8)} had no session to resume; starting it as a new one`);
-      this.spawn(id, { ...st.launch, libraryPlugin: await this.libraryPlugin(rec, st.launch || {}, id), sandboxSpawn: await this.sandboxFor(id, rec, st.launch || {}), lentSpawn: await lentOf(this, id, rec), gitEnv: await this.gitEnv(rec && rec.project, id), resume: false, lastPrompt: words });
-      const now = this.live.get(id); if (now) now.fresh1 = true;
-      if (words) this.write(id, words, { askedBy: this.turnAsker.get(id) || null });
-    } catch (e) { this.deps.log(`threads: ${String(id).slice(0, 8)} could not start as a new session: ${/** @type {Error} */ (e).message}`); st.switching = false; this.onExit(id, st, 1, null, "", null); }
-  }
-
   onExit(id, st, code, signal, stderr, moved) { this.flush(id, st);
     if (this.live.get(id) === st) { this.cancelTools(id, st, null); this.releaseSlots(id, st); }
-    // A resume of a session that never began (its first start failed, say at the sandbox self-test, so the provider has no transcript): any provider's process that ends before it speaks, with no finished turn behind it or saying the session is missing (no-session.js).
-    // The thread starts that session now under the same id, and the message that was waiting goes in again.
-    if (st.launch && st.launch.resume && this.live.get(id) === st && shouldStartFresh({ resume: true, heard: Boolean(st.heard), stopping: Boolean(st.stopping), fresh: Boolean(st.fresh1), closing: Boolean(this.closing), code, stderr: String(stderr || ""), turns: Number((this.record(id) || {}).turns) || 0 })) { void this.startFresh(id, st); return; }
+    if (startFreshOnExit(this, id, st, code, stderr, lentOf)) return; // a resume of a session that never began starts as a new one (no-session.js)
     if (moved && moved.to === "server" && this.live.get(id) === st && !st.stopping && !this.closing) { void carryOn(this, id, st); return; } // the chat moved to the server under a running turn (lib/lent-placement.js)
     if (st.idle) { clearTimeout(st.idle); st.idle = null; }
     if (st.switching || this.live.get(id) !== st) return;               // replaced (fallback): not an end

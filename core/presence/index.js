@@ -208,6 +208,7 @@ export const METHODS = ["touchid", "tty", "capsule", "device", "passkey", "code"
  */
 export const NARROWABLE = new Set(["gate.approve", "vault.account.unlock", "vault.delete"]);
 
+export { ownerKeyFor } from "./own-key.js";
 export { isYou, yes, configureYes, yesReason, signOf, momentOf, plainFieldsOf, opFitsMoment, lineOfOp, MOMENT_OPS, MOMENTS, YES_REASONS } from "../../lib/one-yes.js";
 export const MIGRATIONS = [`
   CREATE TABLE presence_keys (

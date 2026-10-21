@@ -79,3 +79,9 @@ export function getHost() {
   }
   return host;
 }
+
+/** Settings > Account on a page with its own host: link the signed-in GitHub account at each of the person's spaces. The tool is named here, in the host layer, and not in the screen: onboarding's tools are called from first run only (test/onboard-clients.test.js). */
+const LINK_GITHUB = "identity.github.link";
+export function linkGithubAtHost(session: unknown, user: unknown): Promise<unknown> {
+  return getHost().call(LINK_GITHUB, { session, user });
+}

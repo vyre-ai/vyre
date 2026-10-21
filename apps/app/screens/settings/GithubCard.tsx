@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Banner, Button, Card, Row, Text, showToast } from "@vyre/ui";
 import { Group } from "../places/Frame";
 import { dayOf } from "../../src/time/show.js";
-import { getHost, hostWanted } from "../../src/host";
+import { getHost, hostWanted, linkGithubAtHost } from "../../src/host";
 import { changeGithubDevice, githubAccount, githubDevices, githubReturnWaiting, linkGithub, signInWithGithub, type GithubDevice } from "../../src/real/github";
 
 /** Settings > Account: link or unlink GitHub. GitHub proves who you are on a new device; the password still opens your vault. Unlinking deletes the stored copy of your key at once. */
@@ -30,7 +30,7 @@ export function GithubCard() {
     // in a browser the tab goes to GitHub and comes back here, where the effect below finishes the link
     if (!s.ok) { setBusy(false); if ((s as { code?: string }).code !== "redirect") setSay(s.say); return; }
     if (viaHost) {
-      try { await getHost().call("identity.github.link", { session: s.session, user: s.user }); } catch (e) { setBusy(false); setSay(String((e as Error)?.message || "GitHub could not be linked. Try again.")); return; }
+      try { await linkGithubAtHost(s.session, s.user); } catch (e) { setBusy(false); setSay(String((e as Error)?.message || "GitHub could not be linked. Try again.")); return; }
       setBusy(false); showToast(`GitHub account ${s.user.login} is linked.`); await hostStatus(); return;
     }
     const r = await linkGithub(s.session, s.user);
