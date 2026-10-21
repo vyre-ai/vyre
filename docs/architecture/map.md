@@ -338,7 +338,7 @@ Mail, Google, GitHub, webhooks, apps, computers and screens.
 | --- | --- | --- | --- |
 | `appmods` | `core/appmods/` | box | Open-source apps (Documents first) run as containers on a server, from a pinned catalog. |
 | `comms` | `core/comms/` | box | One way to send a text or an email: it asks the Gate once, uses the person's own mail account or Twilio from the Vault, and logs it on the client. |
-| `computer` | `core/computer/` | box and local | Vyre Computer: one front door over the cloud computer, your Macs and the screen engines; computers by name, interface first, screen last. |
+| `computer` | `core/computer/` | box and local | Vyre Computer: one front door over the cloud computer, your computers and the screen engines; computers by name, interface first, screen last. |
 | `computers` | `core/computers/` | box | Each agent's own computer, a shared pool of screens, and take-over. |
 | `connectors` | `core/connectors/` | box and local | The catalog of vendors that run their own MCP server, and connections a firm makes itself. |
 | `github` | `core/github/` | box and local | Sign in with GitHub, repositories, a project from a repository. |

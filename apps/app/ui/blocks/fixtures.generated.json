@@ -3078,12 +3078,12 @@
    }
   },
   "grouped": {
-   "title": "Settings",
+   "title": "Juniper Studio",
    "screens": {
     "full": {
      "v": 2,
      "id": "grouped",
-     "title": "Settings",
+     "title": "Juniper Studio",
      "layout": {
       "block": "s"
      },
@@ -3096,40 +3096,88 @@
        "content": {
         "rows": [
          {
-          "id": "account",
-          "title": "Account and recovery",
-          "subtitle": "Sign-in, recovery code",
+          "id": "profile",
+          "title": "Your profile",
+          "subtitle": "The name and look you show here",
           "icon": "person.crop.circle",
-          "group": "You"
-         },
-         {
-          "id": "notifications",
-          "title": "Notifications",
-          "subtitle": "What can reach you, and when",
-          "icon": "bell",
-          "group": "You"
+          "group": "Your account here"
          },
          {
           "id": "ai",
           "title": "AI accounts",
-          "subtitle": "Claude, OpenAI and others, with budgets",
+          "subtitle": "Every AI account your agents use here",
           "icon": "sparkles",
-          "group": "You"
+          "group": "Your account here"
+         },
+         {
+          "id": "notifications",
+          "title": "Notifications",
+          "subtitle": "What can reach you from this Space",
+          "icon": "bell",
+          "group": "Your account here"
+         },
+         {
+          "id": "appearance",
+          "title": "Appearance",
+          "subtitle": "Theme, accent colour and density",
+          "icon": "wand.and.stars",
+          "group": "Your account here"
+         },
+         {
+          "id": "sidebar",
+          "title": "Sidebar",
+          "subtitle": "The places in your sidebar",
+          "icon": "list.bullet",
+          "group": "Your account here"
+         },
+         {
+          "id": "look",
+          "title": "Look and name",
+          "subtitle": "This Space's name, colour and logo",
+          "icon": "building.2",
+          "group": "Juniper Studio"
+         },
+         {
+          "id": "people",
+          "title": "People and roles",
+          "subtitle": "Who is here, and the rules",
+          "icon": "person.2",
+          "group": "Juniper Studio"
+         },
+         {
+          "id": "may",
+          "title": "What agents may do",
+          "subtitle": "Outside, spend and permissions",
+          "icon": "lock",
+          "group": "Juniper Studio"
+         },
+         {
+          "id": "updates",
+          "title": "Updates and backups",
+          "subtitle": "A new version, and what is backed up",
+          "icon": "tray",
+          "group": "Juniper Studio"
+         },
+         {
+          "id": "signin",
+          "title": "Sign-in and recovery",
+          "subtitle": "Your username, password and recovery",
+          "icon": "key",
+          "group": "Everywhere"
          },
          {
           "id": "devices",
-          "title": "Devices",
-          "subtitle": "Your phone and computers",
+          "title": "Devices and computers",
+          "subtitle": "Phones and computers signed in",
           "icon": "phone",
-          "accessory": "2 devices",
-          "group": "Devices"
+          "group": "Everywhere"
          },
          {
-          "id": "backups",
-          "title": "Backups",
-          "subtitle": "Which Spaces are backed up",
-          "icon": "tray",
-          "group": "Devices"
+          "id": "about",
+          "title": "About",
+          "subtitle": "Version, and who made Vyre",
+          "icon": "gear",
+          "group": "Everywhere"
          }
         ]
        }
@@ -3140,7 +3188,7 @@
     "compact": {
      "v": 2,
      "id": "grouped",
-     "title": "Settings",
+     "title": "Juniper Studio",
      "layout": {
       "block": "s"
      },
@@ -3153,40 +3201,88 @@
        "content": {
         "rows": [
          {
-          "id": "account",
-          "title": "Account and recovery",
-          "subtitle": "Sign-in, recovery code",
+          "id": "profile",
+          "title": "Your profile",
+          "subtitle": "The name and look you show here",
           "icon": "person.crop.circle",
-          "group": "You"
-         },
-         {
-          "id": "notifications",
-          "title": "Notifications",
-          "subtitle": "What can reach you, and when",
-          "icon": "bell",
-          "group": "You"
+          "group": "Your account here"
          },
          {
           "id": "ai",
           "title": "AI accounts",
-          "subtitle": "Claude, OpenAI and others, with budgets",
+          "subtitle": "Every AI account your agents use here",
           "icon": "sparkles",
-          "group": "You"
+          "group": "Your account here"
+         },
+         {
+          "id": "notifications",
+          "title": "Notifications",
+          "subtitle": "What can reach you from this Space",
+          "icon": "bell",
+          "group": "Your account here"
+         },
+         {
+          "id": "appearance",
+          "title": "Appearance",
+          "subtitle": "Theme, accent colour and density",
+          "icon": "wand.and.stars",
+          "group": "Your account here"
+         },
+         {
+          "id": "sidebar",
+          "title": "Sidebar",
+          "subtitle": "The places in your sidebar",
+          "icon": "list.bullet",
+          "group": "Your account here"
+         },
+         {
+          "id": "look",
+          "title": "Look and name",
+          "subtitle": "This Space's name, colour and logo",
+          "icon": "building.2",
+          "group": "Juniper Studio"
+         },
+         {
+          "id": "people",
+          "title": "People and roles",
+          "subtitle": "Who is here, and the rules",
+          "icon": "person.2",
+          "group": "Juniper Studio"
+         },
+         {
+          "id": "may",
+          "title": "What agents may do",
+          "subtitle": "Outside, spend and permissions",
+          "icon": "lock",
+          "group": "Juniper Studio"
+         },
+         {
+          "id": "updates",
+          "title": "Updates and backups",
+          "subtitle": "A new version, and what is backed up",
+          "icon": "tray",
+          "group": "Juniper Studio"
+         },
+         {
+          "id": "signin",
+          "title": "Sign-in and recovery",
+          "subtitle": "Your username, password and recovery",
+          "icon": "key",
+          "group": "Everywhere"
          },
          {
           "id": "devices",
-          "title": "Devices",
-          "subtitle": "Your phone and computers",
+          "title": "Devices and computers",
+          "subtitle": "Phones and computers signed in",
           "icon": "phone",
-          "accessory": "2 devices",
-          "group": "Devices"
+          "group": "Everywhere"
          },
          {
-          "id": "backups",
-          "title": "Backups",
-          "subtitle": "Which Spaces are backed up",
-          "icon": "tray",
-          "group": "Devices"
+          "id": "about",
+          "title": "About",
+          "subtitle": "Version, and who made Vyre",
+          "icon": "gear",
+          "group": "Everywhere"
          }
         ]
        }
@@ -3197,7 +3293,7 @@
     "glance": {
      "v": 2,
      "id": "grouped",
-     "title": "Settings",
+     "title": "Juniper Studio",
      "layout": {
       "col": [
        {
@@ -3214,42 +3310,42 @@
        "content": {
         "rows": [
          {
-          "id": "account",
-          "title": "Account and recovery",
-          "subtitle": "Sign-in, recovery code",
+          "id": "profile",
+          "title": "Your profile",
+          "subtitle": "The name and look you show here",
           "icon": "person.crop.circle",
-          "group": "You"
-         },
-         {
-          "id": "notifications",
-          "title": "Notifications",
-          "subtitle": "What can reach you, and when",
-          "icon": "bell",
-          "group": "You"
+          "group": "Your account here"
          },
          {
           "id": "ai",
           "title": "AI accounts",
-          "subtitle": "Claude, OpenAI and others, with budgets",
+          "subtitle": "Every AI account your agents use here",
           "icon": "sparkles",
-          "group": "You"
+          "group": "Your account here"
          },
          {
-          "id": "devices",
-          "title": "Devices",
-          "subtitle": "Your phone and computers",
-          "icon": "phone",
-          "accessory": "2 devices",
-          "group": "Devices"
+          "id": "notifications",
+          "title": "Notifications",
+          "subtitle": "What can reach you from this Space",
+          "icon": "bell",
+          "group": "Your account here"
          },
          {
-          "id": "backups",
-          "title": "Backups",
-          "subtitle": "Which Spaces are backed up",
-          "icon": "tray",
-          "group": "Devices"
+          "id": "appearance",
+          "title": "Appearance",
+          "subtitle": "Theme, accent colour and density",
+          "icon": "wand.and.stars",
+          "group": "Your account here"
+         },
+         {
+          "id": "sidebar",
+          "title": "Sidebar",
+          "subtitle": "The places in your sidebar",
+          "icon": "list.bullet",
+          "group": "Your account here"
          }
-        ]
+        ],
+        "more": 7
        }
       }
      },
