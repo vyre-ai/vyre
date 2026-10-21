@@ -2259,8 +2259,7 @@ export class Switchboard {
   }
 
   onExit(id, st, code, signal, stderr, moved) { this.flush(id, st);
-    if (this.live.get(id) === st) { this.cancelTools(id, st, null); this.releaseSlots(id, st); }
-    if (startFreshOnExit(this, id, st, code, stderr, lentOf)) return; // a resume of a session that never began starts as a new one (no-session.js)
+    if (this.live.get(id) === st) { this.cancelTools(id, st, null); this.releaseSlots(id, st); } if (startFreshOnExit(this, id, st, code, stderr, lentOf)) return; // a resume of a session that never began starts as a new one (no-session.js)
     if (moved && moved.to === "server" && this.live.get(id) === st && !st.stopping && !this.closing) { void carryOn(this, id, st); return; } // the chat moved to the server under a running turn (lib/lent-placement.js)
     if (st.idle) { clearTimeout(st.idle); st.idle = null; }
     if (st.switching || this.live.get(id) !== st) return;               // replaced (fallback): not an end

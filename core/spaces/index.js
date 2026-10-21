@@ -171,8 +171,7 @@ export default {
       const s = identity.status();
       if (!s.exists || s.pending) throw refuse("Choose your Vyre name first.", "no_identity");
       return s;
-    };
-    const whoRead = makeWhoRead({ identity, me, kernel: () => K });
+    }; const whoRead = makeWhoRead({ identity, me, kernel: () => K });
     /** This person, as an owner of a space: the person id, acting through this device's entry on their list. */
     const ownerSigner = async () => { const s = me(); return { by: /** @type {string} */ (s.id), via: /** @type {string} */ (s.eid), pos: await C.viaOf(identity.ops()), sign: (/** @type {Uint8Array} */ m) => identity.sign(Buffer.from(m)) }; };
     /** This device's own entry, for acts of the person's own list. */
