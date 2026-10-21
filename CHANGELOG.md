@@ -2,6 +2,10 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## 0.6.6
+
+- fix(app): a chat whose server is not yet known goes to the server of the Space showing. With one Space at a time the chat map was learned only from the removed All spaces list, so every send with two servers paired was refused as "Vyre does not know which server this chat is on".
+
 ## 0.6.5
 
 - chore: the error catalogue explains bad_login; the sealing group's line cap is 1015 for the session signer; the design references budget is 16 MB; Files' sidebar uses the shared RailLabel and RailHeading.

@@ -46,7 +46,9 @@ export function serverFor(o) {
   if (o.explicit) return o.paired.includes(o.explicit) ? { box: o.explicit } : refuse();
   const chat = o.input && typeof o.input.chat === "string" ? o.input.chat : "";
   if (chat && o.paired.length > 1) {
-    const at = (o.chatServers ?? {})[chat];
+    // A chat whose server has not been learned yet is on the server of the Space showing: with one Space at a time, the chat list the person is looking at came from that server (0.6.6: the map
+    // was learned only from the old All spaces list, so every send with two servers paired was refused).
+    const at = (o.chatServers ?? {})[chat] ?? (SPACE.test(o.showing ?? "") ? o.spaceServers[/** @type {string} */ (o.showing)] : undefined);
     if (at === "") return MANY;
     if (!at) return { error: { code: "chat_unknown_server", message: "Vyre does not know which server this chat is on yet. Open Chats to refresh the list, then try again. Nothing was sent." } };
     return o.paired.includes(at) ? { box: at } : refuse();

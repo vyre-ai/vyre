@@ -88,6 +88,7 @@ test("route: a chat goes to its own server even when the active server is anothe
 test("route: a chat whose server is not known is refused in words, never guessed", () => {
   const r = go({ input: { chat: "chat_unknown" }, chatServers });
   assert.equal(r.error?.code, "chat_unknown_server");
+  assert.deepEqual(go({ input: { chat: "chat_unknown" }, showing: B, chatServers }), { box: "boxb" }, "a chat not yet mapped goes to the server of the Space showing");
   assert.equal(r.box, undefined);
   assert.match(r.error?.message ?? "", /Chats/);
 });
