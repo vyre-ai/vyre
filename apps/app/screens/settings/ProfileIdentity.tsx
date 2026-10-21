@@ -77,8 +77,9 @@ export function ProfileIdentity({ name, handle, role, spaceName, look, personId,
           ) : null}
         </Pressable>
         <View className="min-w-0 flex-1 gap-s2">
-          <View className="flex-row items-center gap-s2">
-            <View className="min-w-0 flex-1">
+          {/* On a wide page the menu sits with the name. On a phone the name takes the row and the menu stays at its end, still beside the face. */}
+          <View className={phone ? "flex-row items-center gap-s2" : "max-w-full flex-row items-center gap-s2 self-start"}>
+            <View className={phone ? "min-w-0 flex-1" : "min-w-0 shrink"}>
               {editing ? (
                 <Field label="Your name" value={draft} onChangeText={setDraft} autoFocus onSubmit={() => void commit()} onKey={(key) => { if (key === "Escape") cancel(); }} help="One line, up to 60 characters. Your username stays the same." />
               ) : canEditName ? (
@@ -87,7 +88,9 @@ export function ProfileIdentity({ name, handle, role, spaceName, look, personId,
                 </Pressable>
               ) : <Text size="page" strong numberOfLines={2}>{name}</Text>}
             </View>
-            <Menu align="end" items={items} trigger={<IconButton icon="more" label="Photo and look" touch={phone} />} />
+            <View style={{ flexShrink: 0 }}>
+              <Menu align="end" items={items} trigger={<IconButton icon="more" label="Photo and look" touch={phone} />} />
+            </View>
           </View>
           {handle ? (
             <View className="flex-row flex-wrap items-center gap-s1">
