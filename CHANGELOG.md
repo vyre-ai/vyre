@@ -2,6 +2,10 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## 0.6.8
+
+- fix(doctor): `vyre doctor` no longer stops with "Cannot access 'lines' before initialization": the log summary's variable shadowed the check printer (core/cli/commands/doctor.js).
+
 ## 0.6.7
 
 - feat(settings): the theme (`appearance.scheme`: dark, paper, system) and the notification switches (`push.ask`, `draft`, `watch`, `lesson`, `planner`, `goal`) are per person in a Space. A setting declared `perPerson: true` keeps its account level in the calling person's own row (`settings_person`, keyed by Space and person); the person is the one on the kernel's chain, never a field of the call. The server-wide value is copied into a person's row once, the first time that person reads or writes. The app's existing pages read and write them unchanged; `push.settings` changes the caller's own switches, and a push goes to a person only when their switch (else the server-wide one) is on. New module-only tools `settings.person.get` and `settings.person.set`. A change to one person's row is listed to and undone by that person alone.

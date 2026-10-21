@@ -361,9 +361,9 @@ export default {
     if (viewing()) return live();
     // --log: only the last 24 h of this machine's server log, counted (doctor-log.js).
     if (args.includes("--log")) {
-      const lines = readLog(config.paths().logs);
-      if (!lines) { out(dim("  there is no server log here yet")); return EXIT.OK; }
-      const sum = summarize(lines);
+      const logged = readLog(config.paths().logs);
+      if (!logged) { out(dim("  there is no server log here yet")); return EXIT.OK; }
+      const sum = summarize(logged);
       if (json() || args.includes("--json")) emit(sum); else for (const l of logLines(sum)) out(l);
       return EXIT.OK;
     }
@@ -384,8 +384,9 @@ export default {
     const bad = r.checks.filter(c => c.ok === false).length;
     out("");
     out(dim(`  ${bad ? `${bad} to fix` : "nothing to fix"} · checked in ${(r.ms / 1000).toFixed(1)} s`));
-    const lines = readLog(config.paths().logs);
-    if (lines) { out(""); for (const l of logLines(summarize(lines))) out(l); }
+    // not `lines`: that name is the check printer above, and a const of it here would shadow it for the whole block (0.6.7 stopped with "Cannot access 'lines' before initialization")
+    const logged = readLog(config.paths().logs);
+    if (logged) { out(""); for (const l of logLines(summarize(logged))) out(l); }
     return ok ? EXIT.OK : EXIT.FAILED;
   },
 };
