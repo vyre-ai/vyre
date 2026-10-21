@@ -13,6 +13,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - chore: the generated settings picture, the architecture map and the module reference say computers, and name the Space.
 - fix(settings): Types is a Settings row, so Customize is no longer filed as a page taken off the list.
 - chore: the settings pictures name the Space and show Your account here, the Space, and Everywhere.
+- chore: the docs index follows the architecture map, which now says computers.
 
 ## 0.6.6
 
