@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6.9
 
+- fix(artifacts): a list, a search and the gallery leave out an artifact that is still being written.
 - fix(flows): a classify step with no provider it may use says "no model may answer here: add a provider in Settings" instead of the bare word residency.
 - fix(records): switching Spaces shows the new Space's records. The shared records world was kept by its filters alone, so Records kept drawing the last Space's rows after a switch; it is now kept per Space (apps/app/ui/views/data.ts, world-space.js, screens/shell/state.ts).
 
