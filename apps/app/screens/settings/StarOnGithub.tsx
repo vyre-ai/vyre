@@ -27,19 +27,21 @@ function usePress() {
   return { plan, press };
 }
 
-/** About's button, with a line saying what a press does. */
+/** About's button, with a line saying what a press does. Gone once the project is starred. */
 export function StarButton() {
   const { plan, press } = usePress();
+  if (plan.action === "none") return null;
   return (
     <>
-      <Button icon="star" label={plan.label} disabled={plan.action === "none"} onPress={() => { void press(); }} />
+      <Button icon="star" label={plan.label} onPress={() => { void press(); }} />
       <Text size="caption" tone="label">{starNote(plan)}</Text>
     </>
   );
 }
 
-/** The small link in the top corner of Settings. */
+/** The small link in the top corner of Settings. Gone once the project is starred. */
 export function StarLink() {
   const { plan, press } = usePress();
-  return <Button kind="ghost" size="sm" icon="star" label={plan.action === "none" ? "Starred" : "Star"} disabled={plan.action === "none"} onPress={() => { void press(); }} />;
+  if (plan.action === "none") return null;
+  return <Button kind="ghost" size="sm" icon="star" label="Star" onPress={() => { void press(); }} />;
 }

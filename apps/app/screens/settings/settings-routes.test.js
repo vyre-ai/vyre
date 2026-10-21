@@ -100,6 +100,12 @@ test("Star stars only for a connected account that has not starred, and otherwis
   assert.ok(starNote(starPlan(null)).includes("GitHub"));
 });
 
+test("once starred, both Star controls are gone", () => {
+  const src = fs.readFileSync(new URL("./StarOnGithub.tsx", import.meta.url), "utf8");
+  assert.equal((src.match(/if \(plan\.action === "none"\) return null;/g) || []).length, 2);
+  assert.ok(!src.includes('label="Starred"') && !src.includes("disabled={plan.action"));
+});
+
 test("nothing stars on its own: the star tool is called only from a press", () => {
   const src = fs.readFileSync(new URL("./StarOnGithub.tsx", import.meta.url), "utf8");
   const calls = src.split('tool("github.star")').length - 1;
