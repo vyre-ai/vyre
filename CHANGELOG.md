@@ -2,6 +2,10 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## 0.6.7
+
+- fix(modules): comms, computer, documents, events, mentions and outside declare "vyre": "1", so a start no longer warns that apiVersion is deprecated. The computer module, and the architecture map's sentence for it, say computers.
+
 ## 0.6.6
 
 - fix(app): a chat whose server is not yet known goes to the server of the Space showing. With one Space at a time the chat map was learned only from the removed All spaces list, so every send with two servers paired was refused as "Vyre does not know which server this chat is on".
