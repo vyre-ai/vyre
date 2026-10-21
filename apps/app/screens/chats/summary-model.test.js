@@ -16,6 +16,11 @@ test("work.chat.summary's agents, the pinned one too, by name: count, latest, li
   assert.equal(m.size, 2);
 });
 
+test("each thread is kept, so a search can open it", () => {
+  const m = summaryByAgent({ pinned: [{ kind: "agent", agent: "juno", name: "Juno", threads: 2, items: [{ thread: "c1", title: "Spring note", last_line: "draft ready" }, { thread: "c2", title: "New thread", last_line: null }], latest: { title: "Spring note", last_active: 9 } }] });
+  assert.deepEqual(m.get("juno").threads, [{ id: "c1", title: "Spring note", line: "draft ready" }, { id: "c2", title: "New thread", line: "" }]);
+});
+
 test("no answer, or nothing useful, is an empty map", () => {
   assert.equal(summaryByAgent(null).size, 0);
   assert.equal(summaryByAgent({ agents: "x" }).size, 0);

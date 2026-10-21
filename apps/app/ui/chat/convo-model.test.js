@@ -216,6 +216,22 @@ test("the Engineer is one row: its own chat and the agents list do not both draw
   assert.equal(rows.length, 1);
 });
 
+test("a search finds a thread by its title or its last line and opens that thread; with nothing typed there is one row per agent", () => {
+  const items = convosFrom({
+    assistantName: "Juno", assistantAgent: "juno",
+    assistantThreads: [{ id: "c-new", title: "second thread", line: "draft ready" }, { id: "c-old", title: "first thread", line: "hello" }],
+    chats: [chat({ id: "p", title: "New thread", pinned: "assistant", last: 9, line: "draft ready" })],
+    agents: [agent({ name: "kit", summary: { count: 2, latest: "Kit note", threads: [{ id: "k1", title: "Kit note", line: "paused the ads" }, { id: "k2", title: "Older note", line: "nothing" }] } })],
+    people: [],
+  });
+  assert.equal(items.filter((r) => r.names.includes("juno") || r.agent === "juno").length, 1, "one row for the assistant");
+  assert.equal(convosShown(items, { project: "all", query: "" }).filter((r) => r.id.startsWith("thread:")).length, 0);
+  const older = convosShown(items, { project: "all", query: "first thread" });
+  assert.deepEqual(older.map((r) => r.chat), ["c-old"]);
+  const line = convosShown(items, { project: "all", query: "paused the ads" });
+  assert.equal(line.find((r) => r.chat === "k1").title, "Kit note");
+});
+
 test("one row per agent even when a chat row and an agent row arrive under the same agent from two lists", () => {
   const rows = convosFrom({
     chats: [chat({ id: "a", title: "Site", agents: ["engineer"], last: 4 })],

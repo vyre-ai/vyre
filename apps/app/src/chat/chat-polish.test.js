@@ -34,7 +34,7 @@ test("/new and /threads are the slash menu's help, not a line under the composer
 test("an agent chat is said by the agent's name as a person reads it: header, opening, composer, panel, its computer", () => {
   const screen = read("./ChatScreen.tsx");
   assert.match(screen, /const agentTitle = kind === "agent" && agentNames\[0\] \? agentWords\(agentNames\[0\]\) : "";/);
-  assert.match(screen, /<ChatHeader title=\{agentTitle \|\| head\.title\} sub=\{agentTitle \? threadSub\(head\.title, agentNames\[0\]\) : undefined\}/);
+  assert.match(screen, /<ChatHeader title=\{agentTitle \|\| head\.title\} sub=\{agentTitle \? threadSub\(threadLabel, agentNames\[0\]\) : undefined\}/);
   assert.match(screen, /agentName=\{kind === "agent" && agentNames\[0\] \? agentWords\(agentNames\[0\]\) : undefined\}/);
   assert.match(read("./ChatPanel.tsx"), /agentWords\(agents\[0\]\.name\)/);
   assert.match(read("./ComputerTab.tsx"), /<AgentComputerPane name=\{agentWords\(who\)\}/);

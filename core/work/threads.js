@@ -3,18 +3,10 @@ import crypto from "node:crypto";
 // Agents are persistent and each has many threads (team/0.6/plans/threads.md). A THREAD is a chat of one person and one agent: its id is the chat id and never changes. The engine's runs
 // (switchboard threads) are not exposed here; a thread's state is read from them. Everything is read through the kernel's own chat read, so a chat the caller is not in is not found.
 
+import { canonicalAgent, firstUserLine, isAgentThread, keysFor, rosterOf, rowFor, threadTitle } from "./thread-match.js";
+
 const obj = (/** @type {Record<string, any>} */ properties = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties, required });
 const fail = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
-
-/** The agent ids a name or an id stands for: what the chat's assistants list may hold. @param {any} ctx @param {string} agent */
-async function agentKeys(ctx, agent) {
-  const keys = new Set([agent]);
-  const byName = await ctx.call("agents.uid", { name: agent.toLowerCase() }).catch(() => null);
-  if (byName && byName.data && byName.data.uid) keys.add(String(byName.data.uid));
-  const byUid = await ctx.call("agents.uid", { uid: agent }).catch(() => null);
-  if (byUid && byUid.data && byUid.data.name) keys.add(String(byUid.data.name));
-  return keys;
-}
 
 /**
  * Where a chat lives, from its project and who is in it: a project of its own is "project"; otherwise (the unfiled Personal or the old General) it is "personal" while only the caller is in it and "space" once anyone else is.
@@ -108,7 +100,12 @@ export async function threadsOf(d, agent, extra, { limit = 50, before = null } =
   const hop = chain && chain.hops && chain.hops[0];
   if (!hop || !hop.actor || hop.actor.kind !== "person") throw fail("denied", "threads are a person's own: ask from your own session");
   const me = String(hop.actor.id);
-  const keys = await agentKeys(d.ctx, agent);
+  const roster = await rosterOf(d.ctx);
+  const keys = keysFor(roster, agent);
+  const row = rowFor(roster, agent);
+  const assistant = Boolean(row && row.kind === "assistant") || String(agent).toLowerCase() === "assistant";
+  const pins = typeof d.pinnedOf === "function" ? d.pinnedOf(me) : new Map();
+  const db = d.ctx.store && d.ctx.store.db;
   const mine = new Set((await k.chats.mine(chain)).map((/** @type {any} */ m) => m.chat));
   const rows = (await d.chatRows(chain, { page: { limit: 500 } })).filter((/** @type {any} */ r) => mine.has(r.data.chat));
   const held = await heldThreads(d.ctx);
@@ -116,9 +113,13 @@ export async function threadsOf(d, agent, extra, { limit = 50, before = null } =
   for (const r of rows) {
     let c; try { c = k.chats.read(chain, r.data.chat); } catch { continue; }
     const people = [...c.people], agents = [...c.assistants];
-    if (people.length !== 1 || people[0] !== me || agents.length !== 1 || !keys.has(String(agents[0]))) continue;
+    const pinned = pins.get(String(r.data.chat)) || null;
+    if (!isAgentThread({ people, agents, me, keys, pinned, assistant })) continue;
     const runs = ((await d.ctx.call("threads.of-chat", { chat: r.data.chat }).then((/** @type {any} */ x) => (x && x.data) || {}).catch(() => ({}))).runs) || [];
-    out.push(threadRow({ ...r.data, agents }, withHeld(runs, held), unreadOf(d.ctx.store && d.ctx.store.db, me, r.data.chat)));
+    const built = threadRow({ ...r.data, agents }, withHeld(runs, held), unreadOf(db, me, r.data.chat));
+    built.title = threadTitle(r.data.title, firstUserLine(db, r.data.chat), built.last_line);
+    if (!built.agent) built.agent = row && row.name ? String(row.name) : String(agent);
+    out.push(built);
   }
   out.sort((a, b) => String(b.last_active || "").localeCompare(String(a.last_active || "")));
   const after = before ? out.filter(t => String(t.last_active || "") < String(before)) : out;
@@ -155,6 +156,7 @@ async function loadMine(d, extra) {
   const me = String(hop.actor.id);
   const db = d.ctx.store && d.ctx.store.db;
   const faces = await facesOf(d.ctx, k);
+  const roster = await rosterOf(d.ctx);
   const projects = new Map(((await k.records.query(chain, "project", { page: { limit: 500 } })).rows || []).map((/** @type {any} */ p) => [p.urn, { urn: p.urn, name: p.data.name, slug: p.data.slug, personal_of: p.data.personal_of }]));
   const mine = new Set((await k.chats.mine(chain)).map((/** @type {any} */ m) => m.chat));
   const pins = d.pinnedOf(me);
@@ -167,8 +169,11 @@ async function loadMine(d, extra) {
     const proj = r.data.project && r.data.project.urn ? projects.get(r.data.project.urn) || null : null, place = placeOf(proj, ppl.length);
     const project = place === "project" && proj ? { urn: proj.urn, name: proj.name } : null;
     const runs = ((await d.ctx.call("threads.of-chat", { chat: r.data.chat }).then((/** @type {any} */ x) => (x && x.data) || {}).catch(() => ({}))).runs) || [];
-    const thread = { ...threadRow({ ...r.data, agents }, withHeld(runs, held), unreadOf(db, me, r.data.chat)), place, project, faces: { people: faces.people(ppl), agents: faces.agents(agents) }, pinned: pins.get(String(r.data.chat)) || null };
-    items.push({ ppl, agents, place, project, projectChat: Boolean(r.data.project_chat), thread, key: r.data.project_chat ? String(r.data.chat) : chatKey(ppl, project ? project.urn : null) });
+    const pinned = pins.get(String(r.data.chat)) || null;
+    const thread = { ...threadRow({ ...r.data, agents }, withHeld(runs, held), unreadOf(db, me, r.data.chat)), place, project, faces: { people: faces.people(ppl), agents: faces.agents(agents) }, pinned };
+    const canon = canonicalAgent({ people: ppl, agents, pinned, roster });
+    if (canon) { thread.title = threadTitle(r.data.title, firstUserLine(db, r.data.chat), thread.last_line); thread.agent = canon; }
+    items.push({ ppl, agents, canon, place, project, projectChat: Boolean(r.data.project_chat), thread, key: r.data.project_chat ? String(r.data.chat) : chatKey(ppl, project ? project.urn : null) });
   }
   return { me, k, faces, items };
 }
@@ -201,14 +206,14 @@ export async function summarize(d, extra) {
   const { me, faces, items } = await loadMine(d, extra);
   /** @type {Map<string, any[]>} */ const byAgent = new Map(), byChat = new Map();
   for (const it of items) {
-    if (it.ppl.length === 1 && it.agents.length === 1) { const l = byAgent.get(String(it.agents[0])) || []; l.push(it.thread); byAgent.set(String(it.agents[0]), l); }
+    if (it.canon) { const l = byAgent.get(String(it.canon)) || []; l.push(it.thread); byAgent.set(String(it.canon), l); }
     else byChat.set(it.key, [...(byChat.get(it.key) || []), it]);
   }
   /** @type {any[]} */ const pinned = [], agentRows = [];
   for (const [agent, threads] of byAgent) {
     threads.sort((a, b) => String(b.last_active || "").localeCompare(String(a.last_active || "")));
     const live = threads.find(t => t.state === "needs_you") || threads.find(t => t.state === "live") || null;
-    const row = { kind: "agent", agent, name: faces.agentName(agent), place: threads[0].place, threads: threads.length, latest: threads[0], live, needs_you: threads.some(t => t.state === "needs_you"), unread: threads.reduce((n, t) => n + (Number(t.unread) || 0), 0), last_active: threads[0].last_active };
+    const row = { kind: "agent", agent, name: faces.agentName(agent), place: threads[0].place, threads: threads.length, items: threads.map((/** @type {any} */ t) => ({ thread: t.thread, title: t.title, last_line: t.last_line || null })), latest: threads[0], live, needs_you: threads.some(t => t.state === "needs_you"), unread: threads.reduce((n, t) => n + (Number(t.unread) || 0), 0), last_active: threads[0].last_active };
     if (threads.some(t => t.pinned === "assistant")) pinned.push(row); else agentRows.push(row);
   }
   const chats = [...byChat.values()].map(g => chatOf(faces, me, g));

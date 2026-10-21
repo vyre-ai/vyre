@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6.9
 
+- fix(threads): a person's chats with one agent are that agent's threads. The assistant's pinned chat counts, and so does a chat stored under the agent's id, its name or its model. work.agent.threads and work.chat.summary count the same threads. A thread is titled by the first thing the person typed (60 characters) or New thread, never by the agent's reply (core/work/thread-match.js, core/work/threads.js).
+- fix(app): the Threads tab lists those threads, newest first, marks the one open, and New thread opens the new chat. The chat header shows the agent's name and face, with the thread title on the same line. Sidebar search finds a thread by its title or last line and opens that thread. With nothing typed, the list stays one row per agent (apps/app/src/chat/ChatScreen.tsx, threads-model.js, screens/chats/chats-model.js, ui/chat/convo-model.js).
 - fix(records): switching Spaces shows the new Space's records. The shared records world was kept by its filters alone, so Records kept drawing the last Space's rows after a switch; it is now kept per Space (apps/app/ui/views/data.ts, world-space.js, screens/shell/state.ts).
 
 ## 0.6.8
