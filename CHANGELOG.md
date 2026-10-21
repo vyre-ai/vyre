@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6.9
 
+- fix(settings): Fast mode and Keep file checkpoints are gone from Settings. Nothing read them, so a change did nothing. File rewind still keeps its own checkpoints.
 - fix(vault): Watchtower's known-breach check turns on and off. It was labelled coming in this release. Each check still asks you, and Off sends nothing (core/vault/module.json, apps/app/screens/vault/RealVaultMore.tsx).
 - fix(site): vyre.run/terms is a page, the one the welcome screen already links to. It says Vyre is free under Apache 2.0, you run it yourself, and you pay your own AI providers (scripts/gen-site.mjs, site/terms/).
 - fix(settings): the Star button is gone once the project is starred (apps/app/screens/settings/StarOnGithub.tsx).

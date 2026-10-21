@@ -92,8 +92,8 @@ test("a hand edit that widens what Claude may do waits for the person, then appl
 
 test("edits made while vyred was off are read at start, and a held one still waits", async t => {
   const { c } = await world(t, { before: root => fs.writeFileSync(path.join(root, "hub.json"), JSON.stringify({ rev: 3,
-    account: { "sessions.fast": true, "sessions.mode": "dontAsk" }, projects: { northwind: { "sessions.effort": "low" } } })) });
-  assert.equal((await c("settings.get", { key: "sessions.fast" })).data.value, true);
+    account: { "sessions.thinking": "open", "sessions.mode": "dontAsk" }, projects: { northwind: { "sessions.effort": "low" } } })) });
+  assert.equal((await c("settings.get", { key: "sessions.thinking" })).data.value, "open");
   assert.equal((await c("settings.get", { key: "sessions.effort", project: "northwind" })).data.value, "low");
   const mode = (await c("settings.get", { key: "sessions.mode" })).data;
   assert.equal(mode.value, "default");
@@ -107,9 +107,9 @@ test("a broken hub.json is named, kept aside on the next change, and rebuilt fro
   await sleep(400);
   assert.match((await c("settings.schema")).data.hub.problem, /not valid JSON/);
   assert.equal((await c("settings.get", { key: "sessions.effort" })).data.value, "high", "what was in effect stays");
-  await c("settings.set", { key: "sessions.fast", value: true });
+  await c("settings.set", { key: "sessions.thinking", value: "open" });
   assert.equal(fs.readFileSync(path.join(root, "hub.json.bad"), "utf8"), "{ \"account\": { \"sessions.effort\": ", "the person's text is kept");
-  assert.deepEqual(hub().account, { "sessions.effort": "high", "sessions.fast": true });
+  assert.deepEqual(hub().account, { "sessions.effort": "high", "sessions.thinking": "open" });
   assert.equal((await c("settings.schema")).data.hub.problem, undefined);
 });
 
