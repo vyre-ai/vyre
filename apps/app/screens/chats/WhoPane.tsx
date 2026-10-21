@@ -18,7 +18,7 @@ const AGENT_TABS: [AgentTab, string][] = [["threads", "Threads"], ["computer", "
 
 /**
  * The side pane for one who: what the shell mounts in its right pane when the name or avatar in a chat's title is pressed (or an avatar is right-clicked anywhere).
- *  - agent (the person's assistant too): their threads with you (newest first, New thread), their computer (screen, Files, Terminal), Routines and Watchers, and the files they share.
+ *  - agent (the person's assistant too): their threads with you (newest first, New thread), their computer (the screen), Routines and Watchers, and the files they share.
  *  - person: their profile and role.
  *  - group: its members, and its own threads.
  * Picking a thread opens it in the main chat view (/u/chats/<id>); New thread opens an empty chat with that agent (/u/chats/new-thread?agent=<name>), where the first message creates it.

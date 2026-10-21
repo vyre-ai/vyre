@@ -1,11 +1,12 @@
 // The Computer tab: the computer of the agent in this chat. With several agents in the chat a chip row picks whose. Status loads once and again every minute while the tab is open; waking
 // is checked a few times after the tap, not on a fast timer.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { View } from "react-native";
+import { Platform, View } from "react-native";
 import { useRouter } from "expo-router";
 import { AgentComputerPane, Chip, EmptyState, LoadingState } from "@vyre/ui";
 import type { ComputerView } from "@vyre/ui";
 import { agentComputer } from "../../screens/chat-tools/computer-source";
+import { openComputer } from "../../screens/glass/computer-open";
 import { agentWords } from "../state/agent-name.js";
 
 export function ComputerTab({ agents, onLeave }: { agents: readonly string[]; /** Called before the full-screen view opens, so the panel can close. */ onLeave?: () => void }) {
@@ -39,14 +40,18 @@ export function ComputerTab({ agents, onLeave }: { agents: readonly string[]; /*
     await load();
     if (follow) void settle();
   };
-  const leave = (app?: string) => { onLeave?.(); router.push(`/u/glass/${encodeURIComponent(who)}${app ? `?app=${app}` : ""}` as never); };
+  const open = () => {
+    onLeave?.();
+    if (Platform.OS === "web") openComputer(who);
+    else router.push(`/u/glass/${encodeURIComponent(who)}` as never);
+  };
   if (!agents.length) return <EmptyState title="No agent in this chat" body="An agent's computer shows here when the agent is in the chat." />;
   return (
     <View style={{ gap: 12 }}>
       {agents.length > 1 ? <View accessibilityLabel="Whose computer" style={{ flexDirection: "row", flexWrap: "wrap", gap: 4 }}>{agents.map((a) => <Chip key={a} selected={a === who} onPress={() => setWho(a)}>{agentWords(a)}</Chip>)}</View> : null}
       {!view && !problem ? <LoadingState rows={2} /> : (
         <AgentComputerPane name={agentWords(who)} view={view} busy={busy} problem={problem} onSettings={problem ? () => { onLeave?.(); router.push("/u/settings/system" as never); } : undefined}
-          onWake={() => void act(() => agentComputer.wake(who), true)} onSleep={() => void act(() => agentComputer.sleep(who))} onReset={() => void act(() => agentComputer.reset(who))} onOpen={() => leave()} onFiles={() => { onLeave?.(); router.push(`/u/files?agent=${encodeURIComponent(who)}` as never); }} onDock={(id) => leave(id)} />
+          onWake={() => void act(() => agentComputer.wake(who), true)} onReset={() => void act(() => agentComputer.reset(who))} onOpen={open} />
       )}
     </View>
   );

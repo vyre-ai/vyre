@@ -225,7 +225,7 @@ function Sample({ name }: { name: string }) {
     return <View className="gap-s3" style={{ maxWidth: 336 }}><ConversationHeader all={items} query="" onQuery={() => {}} project="all" onProject={() => {}} add={[{ label: "New chat", onPress: () => {} }]} /><ConversationList items={items} onOpen={() => {}} whenOf={(c) => (c.last ? `${Math.max(1, Math.round((now - c.last) / 60000))}m` : "")} /></View>;
   }
   if (name === "agent-computer") {
-    return <View style={{ maxWidth: 340 }}><AgentComputerPane name="ads" view={{ state: "live", lastActive: 0, thumbnail: "" }} onWake={() => {}} onSleep={() => {}} onOpen={() => {}} onDock={() => {}} /></View>;
+    return <View style={{ maxWidth: 340 }}><AgentComputerPane name="ads" view={{ state: "live", lastActive: 0, thumbnail: "" }} onWake={() => {}} onOpen={() => {}} /></View>;
   }
   if (name === "new-agent") {
     return <NewAgentDialog open onClose={() => {}} values={{ name: "rex", shape: 2, color: 3, job: "", projects: [], runsOn: "subscription", budget: "", model: "", effort: "", computer: false, personal: false }} onChange={() => {}} projects={[{ slug: "northwind", name: "Northwind Bakery" }]} owner onCreate={() => {}} />;

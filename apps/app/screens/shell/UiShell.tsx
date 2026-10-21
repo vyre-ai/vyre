@@ -26,6 +26,7 @@ import { startSpace } from "./real-model";
 import { useSpaces } from "./state";
 import { themeFor } from "./spaces.js";
 import { FindHost, openFind } from "../find/FindHost";
+import { ComputerHost } from "../glass/ComputerHost";
 import { startKeepingAppearance } from "../../src/state/keep-appearance";
 import { startKeepingMyLook, useMyLook } from "../../src/state/my-look";
 import { lockIdentity } from "../unlock/real.js";
@@ -140,6 +141,7 @@ export function UiShell({ children }: { children: React.ReactNode }) {
       ) : needsServer ? <NeedsServer teams={teams} onOpenTeam={(id) => { setShowing(id); }} onAddServer={() => router.push(SERVER_SETUP_ROUTE as never)} /> : children}
       <ApprovalSheet />
       <FindHost />
+      <ComputerHost />
       <PanelLoader id={panelId} />
       <NewViewHost />
     </Shell>

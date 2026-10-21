@@ -2,6 +2,12 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## 0.6.9
+
+- fix(chat): the Computer tab is the screen, one line under it, and Reset. Pressing an asleep screen wakes it. Pressing a live screen opens the computer full screen. Open, Sleep, the Chrome / Files / Terminal rows, and the files row are gone (apps/app/ui/chat/AgentComputerPane.tsx, apps/app/src/chat/ComputerTab.tsx).
+- fix(glass): a live computer opens over the whole window: the screen, Take over (Hand back while you hold the keyboard), Sign in privately, and close. Escape hands the keyboard back, then closes. The old page chrome (title, Screen/Files, Activity, and the paused card while the window is visible) is gone (apps/app/screens/glass/ComputerOverlay.tsx).
+- fix(computers): an agent's own screen is a glass computer. Glass used to list only desktops and agents marked computer: true, so a live assistant was "Glass does not know a computer". computers.list now includes a computers_agent_users row, and computers.watch and take-over open that screen instead of checking out a desktop (core/computers/glass-map.js).
+
 ## 0.6.8
 
 - fix(app): with two servers paired, an id never listed yet goes to the server of the Space showing, for every tool. 0.6.7 did this only for work.chat, threads and stream tools, so a new thread with an agent (work.agent.thread.new: a chat with an agent, Home's Ask) was still refused with "Vyre does not know which Space this belongs to". Only with no Space showing is it refused (apps/app/src/real/server-route.js).
