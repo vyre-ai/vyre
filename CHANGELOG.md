@@ -9,6 +9,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - feat(shell): Home is Needs you, Doing, Today with a Week toggle, Tasks with the planner capture, and Recent (apps/app/screens/now/HomeToday.tsx, HomeTasks.tsx, HomeRecent.tsx).
 - feat(shell): the agent's computer is on. The who pane's Computer tab and dock rows open it full screen (apps/app/screens/shell/rc.ts).
 - feat(shell): Flows, Kits and Sites show the Space's own screens (apps/app/screens/flows/FlowScreen.tsx, KitsScreen.tsx, apps/app/screens/sites/SitesScreen.tsx).
+- feat(projects): a project page's tabs are Overview, Chats, Tasks, Files, Flows, Team, Memory, Site and Timeline (apps/app/screens/projects/panes.ts).
 
 ## 0.6.6
 

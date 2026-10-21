@@ -1,7 +1,5 @@
 // What a project page shows (R031-14, 15), pure. A free-flow project opens on its chats, with Files and Memory beside them; a project that started from a template opens on its stages and tasks first.
 // On a wide window the panes sit side by side instead of behind tabs: two from 1100 points, three from 1280 (a laptop shows all of Stages, Chats and Files).
-// @ts-ignore a plain .js module
-import { kindTabs } from "./kind-panes.js";
 export type PaneId = "stages" | "chats" | "files" | "memory" | "timeline" | "team";
 
 export const WIDE = 1100;
@@ -48,15 +46,29 @@ export function panesAt(width: number, tab: PaneId, data: Record<string, unknown
 
 // The project page, redone: Chats are the wide column; a right rail holds the rest as compact sections. On a phone the same parts are tabs.
 export type RailId = "stages" | "instructions" | "context" | "files" | "memory" | "access";
-export type PageTab = "chats" | "about" | "files" | "memory" | "timeline" | "team" | "client" | "emails" | "board" | "flows";
-export const PAGE_LABEL: Record<PageTab, string> = { chats: "Chats", about: "About", files: "Files", memory: "Memory", timeline: "Timeline", team: "Team", client: "Client", emails: "Emails", board: "Board", flows: "Runs on its own" };
+export type PageTab = "overview" | "chats" | "tasks" | "files" | "flows" | "team" | "memory" | "site" | "timeline" | "about" | "client" | "emails" | "board";
+export const PAGE_LABEL: Record<PageTab, string> = { overview: "Overview", chats: "Chats", tasks: "Tasks", files: "Files", flows: "Flows", team: "Team", memory: "Memory", site: "Site", timeline: "Timeline", about: "About", client: "Client", emails: "Emails", board: "Board" };
+
+/** The published site this project carries, or null when it has none. A string is the site id; an object uses its id. */
+export function siteOf(data?: Record<string, unknown> | null): string | null {
+  if (!data) return null;
+  const s = data.site ?? data.site_id;
+  if (typeof s === "string" && s.trim()) return s.trim();
+  if (s && typeof s === "object" && typeof (s as { id?: unknown }).id === "string" && (s as { id: string }).id.trim()) return (s as { id: string }).id.trim();
+  return null;
+}
 export const RAIL_LABEL: Record<RailId, string> = { stages: "Stages", instructions: "Instructions", context: "Context", files: "Files", memory: "Memory", access: "Access" };
 
 /** The rail's sections, top to bottom; a project started from a template shows its stages first. */
 export const railFor = (data: Record<string, unknown> | undefined | null): RailId[] => (isTemplateProject(data) ? ["stages", "instructions", "context", "files", "memory", "access"] : ["instructions", "context", "files", "memory", "access"]);
 
-/** The tabs of a project page on a phone or a narrow window: Chats first, then the tabs its kind adds (Client and Emails, or Board and Runs on its own), About (instructions, context, stages), Files, Memory, Timeline, Team. */
-export const pageTabs = (data?: Record<string, unknown> | null): [PageTab, string][] => (["chats", ...kindTabs(data), "about", "files", "memory", "timeline", "team"] as PageTab[]).map((p) => [p, PAGE_LABEL[p]]);
+/** The tabs of a project page, on every width: Overview, Chats, Tasks, Files, Flows, Team, Memory, Site when the project has one, Timeline. */
+export const pageTabs = (data?: Record<string, unknown> | null): [PageTab, string][] => {
+  const order: PageTab[] = ["overview", "chats", "tasks", "files", "flows", "team", "memory"];
+  if (siteOf(data)) order.push("site");
+  order.push("timeline");
+  return order.map((p) => [p, PAGE_LABEL[p]]);
+};
 
 /** The reference a project's chats and timeline are asked for by: its short name, else its record id (the box's work hub resolves either); empty only when the page has neither. */
 export const refOf = (slug: string, pid: string): string => slug || pid;

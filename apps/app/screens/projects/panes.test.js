@@ -69,17 +69,23 @@ test("the redone project page: the rail's sections, the phone's tabs, and a proj
   const { railFor, pageTabs, refOf } = await import("./panes.ts");
   assert.deepEqual(railFor(free), ["instructions", "context", "files", "memory", "access"]);
   assert.deepEqual(railFor(tpl), ["stages", "instructions", "context", "files", "memory", "access"]);
-  assert.deepEqual(pageTabs().map(([p]) => p), ["chats", "about", "files", "memory", "timeline", "team"]);
+  assert.deepEqual(pageTabs().map(([p]) => p), ["overview", "chats", "tasks", "files", "flows", "team", "memory", "timeline"]);
   assert.equal(refOf("northwind", "rec-1"), "northwind");
   assert.equal(refOf("", "rec-1"), "rec-1", "no short name: the record id is the reference");
   assert.equal(refOf("", ""), "");
 });
 
-test("the page tabs add what the kind brings after Chats: Client and Emails, or Board and Runs on its own", async () => {
-  const { pageTabs } = await import("./panes.ts");
-  assert.deepEqual(pageTabs().map(([p]) => p), ["chats", "about", "files", "memory", "timeline", "team"]);
-  assert.deepEqual(pageTabs({ kind: "client" }).map(([p]) => p), ["chats", "client", "emails", "about", "files", "memory", "timeline", "team"]);
-  assert.deepEqual(pageTabs({ kind: "ongoing" }).map(([p]) => p), ["chats", "board", "flows", "about", "files", "memory", "timeline", "team"]);
-  assert.deepEqual(pageTabs({ kind: "stages" }).map(([p]) => p), ["chats", "about", "files", "memory", "timeline", "team"]);
-  assert.equal(pageTabs({ kind: "ongoing" })[2][1], "Runs on its own");
+test("the page tabs are Overview, Chats, Tasks, Files, Flows, Team, Memory, then Site when the project has one, then Timeline", async () => {
+  const { pageTabs, siteOf } = await import("./panes.ts");
+  const labels = ["Overview", "Chats", "Tasks", "Files", "Flows", "Team", "Memory", "Timeline"];
+  assert.deepEqual(pageTabs().map(([, n]) => n), labels);
+  assert.deepEqual(pageTabs({ kind: "client" }).map(([p]) => p), ["overview", "chats", "tasks", "files", "flows", "team", "memory", "timeline"]);
+  assert.deepEqual(pageTabs({ kind: "ongoing" }).map(([p, n]) => n), labels);
+  assert.equal(siteOf(undefined), null);
+  assert.equal(siteOf({ site: "  " }), null);
+  assert.equal(siteOf({ site: "northwind" }), "northwind");
+  assert.equal(siteOf({ site_id: "harbor" }), "harbor");
+  assert.equal(siteOf({ site: { id: "pier" } }), "pier");
+  assert.deepEqual(pageTabs({ site: "northwind" }).map(([p]) => p), ["overview", "chats", "tasks", "files", "flows", "team", "memory", "site", "timeline"]);
+  assert.equal(pageTabs({ site: "northwind" }).find(([p]) => p === "site")?.[1], "Site");
 });
