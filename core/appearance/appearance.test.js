@@ -193,14 +193,15 @@ test("appearance: only a person changes the theme; an agent is refused", async t
 });
 
 test("appearance: a device's value beats the account's, and the check runs at device level too", async t => {
-  const { c, hub } = await world(t);
+  const { c, hub, root } = await world(t);
   if (!hub) return t.skip(NO_HUB);
   const phone = { level: "device", device: "tailnet:phone" };
   let r = await c("settings.set", { key: "appearance.tokens", value: { control: { touch: 30 } }, ...phone });
   assert.equal(r.error.code, "bad_input");
   assert.equal(r.error.message, "control.touch: 30 is under the 44 pt touch target");
 
-  assert.ok(!(await c("settings.set", { key: "appearance.scheme", value: "dark" })).error);
+  // the scheme's account level is each person's own now (core/settings/person-values.js); the server-wide value every device starts from is the one under it
+  await oldSetting(root, "appearance.scheme", "dark");
   assert.ok(!(await c("settings.set", { key: "appearance.tokens", value: { radius: { card: 16 } } })).error);
   r = await c("settings.set", { key: "appearance.scheme", value: "paper", ...phone });
   assert.ok(!r.error, JSON.stringify(r.error));
@@ -276,7 +277,7 @@ test("appearance: an old theme value (system, dark, paper) reads as the vyre pre
   let x = (await c("appearance.resolve")).data;
   assert.deepEqual([x.theme, x.scheme, x.problems], ["vyre", "dark", undefined]);
   // A scheme the person set wins over the one the old value implied.
-  assert.ok(!(await c("settings.set", { key: "appearance.scheme", value: "paper" })).error);
+  await oldSetting(root, "appearance.scheme", "paper");
   x = (await c("appearance.resolve")).data;
   assert.deepEqual([x.theme, x.scheme], ["vyre", "paper"]);
 });
