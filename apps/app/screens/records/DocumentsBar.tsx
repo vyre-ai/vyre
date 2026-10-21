@@ -10,8 +10,8 @@ import { plainError } from "../../src/real/error-note.js";
 const say = (e: unknown) => plainError(e, "That did not work.");
 
 /**
- * The Documents bar of a record page: Make document (a Word template from the Drive, filled from this record and the ones linked to it), Send for signature (when the Documents app is here and the
- * record has an address), and what is still waiting for this person's signature, with a reminder. Each is the tool the Flow steps already call; nothing is shown that the box cannot do.
+ * The Documents bar of a record page: Draft a document (a Word template from the Drive, filled from this record and the ones linked to it), Send for signing (when the Documents app is here and the
+ * record has an address), and what is still waiting for this person's signature, with a reminder. Each is the tool the Flow steps already call; nothing is shown that the server cannot do.
  */
 export function DocumentsBar({ def, rec, related, email, canSend }: { def: any; rec: any; related: { urn: string; type: string }[]; email: string; canSend: boolean }) {
   const router = useRouter();
@@ -46,7 +46,7 @@ export function DocumentsBar({ def, rec, related, email, canSend }: { def: any; 
     if (!Number.isInteger(id) || id < 1) { setSend({ ...send, problem: "Pick a signing template." }); return; }
     setSend({ ...send, busy: true, problem: "" });
     tool("documents.send", { template_id: id, ...(def.name === "contact" ? { contact: rec.urn } : { email }), ...(send.signer.trim() ? { signer: send.signer.trim() } : {}), ...(send.note.trim() ? { note: send.note.trim() } : {}) })
-      .then(() => { showToast("Sent for signature."); setSend(null); loadWaiting(); })
+      .then(() => { showToast("Sent for signing."); setSend(null); loadWaiting(); })
       .catch((e) => setSend((s) => (s ? { ...s, busy: false, problem: say(e) } : s)));
   };
   const remind = (submission: number) => { tool("documents.signing.remind", { submission }).then(() => showToast("Reminder sent.")).catch((e) => showToast(say(e))); };
@@ -54,8 +54,8 @@ export function DocumentsBar({ def, rec, related, email, canSend }: { def: any; 
   return (
     <View className="gap-s2">
       <View className="flex-row flex-wrap items-center gap-s2">
-        {templates.length ? <Button kind="secondary" size="sm" icon="file" label="Make document" onPress={() => setMake({ name: "", asks: [], format: "docx", busy: false, problem: "", made: "" })} /> : null}
-        {canSend && email ? <Button kind="secondary" size="sm" icon="send" label="Send for signature" onPress={() => setSend({ id: "", signer: "", note: "", busy: false, problem: "" })} /> : null}
+        {templates.length ? <Button kind="secondary" size="sm" icon="file" label="Draft a document" onPress={() => setMake({ name: "", asks: [], format: "docx", busy: false, problem: "", made: "" })} /> : null}
+        {canSend && email ? <Button kind="secondary" size="sm" icon="send" label="Send for signing" onPress={() => setSend({ id: "", signer: "", note: "", busy: false, problem: "" })} /> : null}
       </View>
       {waiting.length ? (
         <Card flush title="Waiting for signature">
@@ -65,7 +65,7 @@ export function DocumentsBar({ def, rec, related, email, canSend }: { def: any; 
         </Card>
       ) : null}
 
-      <Sheet open={!!make} onClose={() => setMake(null)} title="Make a document">
+      <Sheet open={!!make} onClose={() => setMake(null)} title="Draft a document">
         {make ? (
           <View className="gap-s3">
             <Text tone="muted">{`It is filled from ${def.label.toLowerCase()} ${rec.id ? "and the records linked to it" : ""}, and filed in Files.`}</Text>
@@ -79,7 +79,7 @@ export function DocumentsBar({ def, rec, related, email, canSend }: { def: any; 
         ) : null}
       </Sheet>
 
-      <Sheet open={!!send} onClose={() => setSend(null)} title="Send for signature">
+      <Sheet open={!!send} onClose={() => setSend(null)} title="Send for signing">
         {send ? (
           <View className="gap-s3">
             <Text tone="muted">{`The signing link goes to ${email}. You approve the send.`}</Text>
