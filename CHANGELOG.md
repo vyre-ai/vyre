@@ -11,6 +11,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - feat(vault): Folders and Advanced open as sheets on the Vault. The separate vault routes and the sharing design page are gone.
 - feat(settings): the settings picture is named for the Space and shows Your account here, the Space, and Everywhere.
 - chore: the generated settings picture, the architecture map and the module reference say computers, and name the Space.
+- fix(settings): Types is a Settings row, so Customize is no longer filed as a page taken off the list.
 
 ## 0.6.6
 

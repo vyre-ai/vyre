@@ -31,8 +31,6 @@ export const ARCHIVED = Object.freeze([
     reason: "One Skills and plugins row now: the library has its own Personal and Space switch." },
   { title: "Build", sub: "Playbooks, objects, templates and Kits", href: "/u/playbooks", icon: "kits", kind: "moved",
     reason: "Build is its own place in the main sidebar (lib/sidebar/model.js)." },
-  { title: "Customize", sub: "Object types, fields and stages", href: "/u/settings/customize", icon: "records", kind: "moved",
-    reason: "Types in Build, and All types in the Records panel, open it." },
   { title: "Engineer", sub: "Set up your Space by describing what you want", href: "/u/settings/engineer", icon: "bolt", kind: "moved",
     reason: "Only a redirect to /u/engineer, which New agent and Make an app open." },
 ]);
