@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6.9
 
+- feat(profile): Your profile is one identity. A 96 px photo, or your look when there is no photo, with Change photo, a menu to change the photo, use a look, or remove the photo, the name edited in place, the @username with copy, and the role in this Space. The assistant has its own section. A photo is centre-cropped and scaled on the device before it is saved. The unused second profile screen is gone.
 - fix(records): switching Spaces shows the new Space's records. The shared records world was kept by its filters alone, so Records kept drawing the last Space's rows after a switch; it is now kept per Space (apps/app/ui/views/data.ts, world-space.js, screens/shell/state.ts).
 
 ## 0.6.8

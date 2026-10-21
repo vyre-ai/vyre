@@ -15,7 +15,7 @@ import { useCardFill } from "../lib/cardFill";
 /** What a mark stands for. Person, assistant, teammate and agent are faces and characters; project (matter, trip) and space are emblems; device a line drawing. */
 export type AvatarKind = MarkRef["kind"];
 export type AvatarRef = MarkRef;
-export type AvatarSize = 16 | 20 | 24 | 28 | 32 | 40 | 44 | 56;
+export type AvatarSize = 16 | 20 | 24 | 28 | 32 | 40 | 44 | 56 | 96;
 export type { MarkRef };
 
 /** The space badge: 16 at 40 and above, scaled below so it never covers the face. The ring is 2 in the card colour. */
