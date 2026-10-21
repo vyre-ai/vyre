@@ -1,5 +1,8 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { collect, today } from "../calendar/logic.js";
+import { collect, rangeOf } from "../calendar/logic.js";
+import { HomeToday, type Dated } from "./HomeToday";
+import { HomeTasks } from "./HomeTasks";
+import { HomeRecent } from "./HomeRecent";
 import { useEffect, useMemo, useState } from "react";
 import { useMembers } from "../spaces/state";
 import { PhoneApprovals } from "../shell/PhoneApprovals";
@@ -27,7 +30,7 @@ import { AskDock } from "./AskDock";
 import { SETUP_BANNER } from "../install/first-run.js";
 import { Button, ErrorState, allowsMock, useRecordsWorld, LargeTitleScreen, LoadingState, NowView, usePlayScenario, useTaskActions, useWorld } from "@vyre/ui";
 
-/** /u/now: Now, a view over tasks. Pull to refresh on a phone; the title collapses into the bar as it scrolls. `?scenario=client-pays` plays "a client pays" on a fresh mock store and ends with the Welcome email waiting for one tap. */
+/** /u/now: Home. Pull to refresh on a phone; the title collapses into the bar as it scrolls. `?scenario=client-pays` plays "a client pays" on a fresh mock store and ends with the Welcome email waiting for one tap. */
 export default function NowScreen() {
   const router = useRouter();
   const { scenario, scroll, act, card } = useLocalSearchParams<{ scenario?: string; scroll?: string; act?: string; card?: string }>();
@@ -37,7 +40,12 @@ export default function NowScreen() {
   // On a real vyred today's items are every dated record (screens/calendar/logic.js), not the store's own calendar; the sample world keeps its sample day.
   const real = !allowsMock();
   const rw = useRecordsWorld();
-  const calendar = useMemo(() => (real && rw.data && q.data ? today(collect(rw.data.types, rw.data.byType), q.data.now).map((i: any) => ({ id: `${i.urn}/${i.field}`, at: i.start.getTime(), title: i.title, sub: i.event ? i.typeLabel : `${i.typeLabel}: ${i.fieldLabel}`, record: i.urn })) : null), [real, rw.data, q.data]);
+  const dated = useMemo(() => (real && rw.data && q.data ? collect(rw.data.types, rw.data.byType).map((i: any): Dated => ({ id: `${i.urn}/${i.field}`, at: i.start.getTime(), title: i.title, sub: i.event ? i.typeLabel : `${i.typeLabel}: ${i.fieldLabel}` })) : null), [real, rw.data, q.data]);
+  const calendar = useMemo(() => {
+    if (!dated || !q.data) return null;
+    const { from, to } = rangeOf("day", new Date(q.data.now));
+    return dated.filter((e) => e.at >= from.getTime() && e.at < to.getTime()).map((e) => ({ ...e, record: "" }));
+  }, [dated, q.data]);
   const fresh = useMemo(() => (q.data && calendar ? { ...q.data, calendar } : q.data), [q.data, calendar]);
   // Stale while revalidate: the last good world for this Space draws at once and the box's answer replaces it in place; the placeholder rows show only when nothing is kept yet.
   const home = useHomeWorld(fresh);
@@ -61,7 +69,7 @@ export default function NowScreen() {
   const go = (p: string) => router.push(p as never);
   const { run, sheets } = useTaskActions(world, go);
   return (
-    <LargeTitleScreen title="Now" own wide onRefresh={q.reload} dock={real && ask.assistant ? <AskDock names={ask.names} assistant={ask.assistant} /> : undefined} startAt={allowsMock() ? Number(scroll) || undefined : undefined}>
+    <LargeTitleScreen title="Home" own wide onRefresh={q.reload} dock={real && ask.assistant ? <AskDock names={ask.names} assistant={ask.assistant} /> : undefined} startAt={allowsMock() ? Number(scroll) || undefined : undefined}>
       <HomeHeader name={name} waiting={waiting} now={world?.now ?? Date.now()} today={calendar?.length ?? (real && home.stale ? world?.calendar?.length : undefined)} working={working} updating={home.stale} />
       {real ? <HomeAgents onCount={setWorking} onNames={(names, assistant) => setAsk({ names, assistant })} /> : null}
       {real ? <RecordsSetup /> : null}
@@ -75,7 +83,12 @@ export default function NowScreen() {
       {real ? <ModuleNowCards /> : null}
       {q.error && !world ? <ErrorState title="Now did not load" reason={q.error.message} retry={q.reload} />
         : !world ? <LoadingState rows={4} />
-        : <NowView world={world} notice={play.notice} onAction={(t, id, input, extra) => run(t, id, input, extra)} onOpen={(t) => void run(t, "open")} />}
+        : <>
+            <NowView world={world} notice={play.notice} onAction={(t, id, input, extra) => run(t, id, input, extra)} onOpen={(t) => void run(t, "open")} />
+            <HomeToday items={dated ?? world.calendar ?? []} now={world.now} />
+            <HomeTasks />
+            <HomeRecent world={world} />
+          </>}
       {real ? <PhoneApprovals want={want} /> : null}
       {scenario ? <Button kind="ghost" size="sm" label="Play: client pays" onPress={play.replay} /> : null}
       {sheets}

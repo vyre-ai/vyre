@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Animated, Easing } from "react-native";
-import { ASSISTANT_MARK } from "../../src/store-core/kernel-view.js";
-import { Pressable, View, useWindowDimensions } from "react-native";
-import { Avatar, AvatarStack, type AvatarRef } from "../components/Avatar";
+import { View } from "react-native";
+import { Avatar, type AvatarRef } from "../components/Avatar";
+
 import { Banner } from "../components/Banner";
 import { Card, Divider } from "../components/Card";
 import { Icon } from "../components/Icon";
@@ -14,7 +14,7 @@ import { TaskCard } from "./TaskCard";
 import { useNowScope } from "./scope";
 import { groupAsks, groupKeyOf } from "./ask-model.js";
 import { useSnoozed } from "../../src/state/snooze";
-import { nameOf, nextEvent, nowModel, recordTitle, spaceTag, whenLabel, workingLine, who, type World } from "./model";
+import { nameOf, nowModel, recordTitle, spaceTag, workingLine, who, type World } from "./model";
 import { SpaceTag } from "../components/SpaceTag";
 import { Stagger } from "../motion/Appear";
 import { Pulse } from "../motion/Pulse";
@@ -23,7 +23,6 @@ import type { SwipeSet } from "../motion/SwipeActions";
 import { useUiTheme } from "../theme";
 import { aid } from "../../src/store-core/kernel-view.js";
 
-const WIDE = 1000;
 /** How many Needs you cards show before "N more waiting": three on a wide screen, two (both hero cards) on a phone. */
 const SHOW = { wide: 3, phone: 2 };
 const RUNNING = 5;
@@ -133,59 +132,35 @@ export function NeedsList({ world, list, showSpace, onAction, onOpen, hero = 0 }
 }
 
 /**
- * Now: a view over tasks (DESIGN-tasks.md). The greeting and one scope control, then what needs you (the first card is the hero: a step up, the one to do first;
- * three show, the rest fold under "N more waiting"), what is being worked on (one grouped card), what finished today (one quiet line) and, in the side column,
- * today's calendar and recent events. A phone is one short column: the next event as a strip, two hero cards, "5 more waiting" and "9 running" each push a page,
- * and Recent lives in Chat.
+ * Needs you and Doing on Home. Three cards show before the rest fold open here. What finished today is a quiet line under Doing.
+ * Today, Tasks and Recent are the sections that follow this one.
  */
-export function NowView({ world, onAction, onOpen, onMore, notice }: Props & { onMore?: (kind: "needs" | "doing") => void; notice?: string | null }) {
+export function NowView({ world, onAction, onOpen, notice }: Props & { notice?: string | null }) {
   const { scope } = useNowScope(world);
   const [moreNeeds, setMoreNeeds] = useState(false);
   const [moreDoing, setMoreDoing] = useState(false);
   const [doneOpen, setDoneOpen] = useState(false);
-  const { width } = useWindowDimensions();
   const { phone } = useUiTheme();
   const later = useSnoozed(world.now);
   const m = nowModel(world, scope, later);
-  const wide = width >= WIDE;
   const showSpace = scope === "all";
   const openSwipe = (t: any): SwipeSet => ({ trailing: [{ id: "open", label: "Open", icon: "chev-r", tone: "plain", haptic: "selection", onPress: () => onOpen(t) }] });
 
-  const next = nextEvent(m.calendar, world.now);
   const limit = phone ? SHOW.phone : SHOW.wide;
   const hidden = m.needs.length - limit;
-  const needsShown = !phone && moreNeeds ? m.needs : m.needs.slice(0, limit);
+  const needsShown = moreNeeds ? m.needs : m.needs.slice(0, limit);
   const needs = (
-    <Section first={wide || (phone && !next)} title="Needs you" count={m.needs.length}>
+    <Section first title="Needs you" count={m.needs.length}>
       {m.needs.length ? (
         <View className="gap-s3">
           <NeedsList world={world} list={needsShown} showSpace={showSpace} onAction={onAction} onOpen={onOpen} hero={phone ? limit : 1} />
-          {hidden > 0 ? (phone
-            ? <MoreRow label={`${hidden} more waiting`} onPress={() => onMore?.("needs")} />
-            : <MoreRow label={moreNeeds ? "Show fewer" : `${hidden} more waiting`} up={moreNeeds} onPress={() => setMoreNeeds(!moreNeeds)} />) : null}
+          {hidden > 0 ? <MoreRow label={moreNeeds ? "Show fewer" : `${hidden} more waiting`} up={moreNeeds} onPress={() => setMoreNeeds(!moreNeeds)} /> : null}
         </View>
       ) : <Card><Row dense lead={<Icon name="check" size={20} tone="ok" />} title="Nothing needs you" sub="Tasks that wait on you show up here." /></Card>}
     </Section>
   );
 
-  const doers = [...new Map(m.working.map((t) => { const a = who(world, aid(t.doer)); return [aid(t.doer), { kind: (a?.family === "assistant" ? "assistant" : a?.family === "teammate" ? "teammate" : a?.family === "service" ? "agent" : "person") as AvatarRef["kind"], id: aid(t.doer), name: a?.name || aid(t.doer), seed: a?.seed }] as const; })).values()];
   const runningShown = moreDoing ? m.working : m.working.slice(0, RUNNING);
-  const doing = (
-    <Section title="Doing now">
-      {!m.working.length ? <Text tone="label">Nobody is working right now.</Text>
-        : phone ? (
-          <Card flush>
-            <Row lead={<AvatarStack of={doers} size={28} max={4} />} title={`${m.working.length} running`} end={<Icon name="chevron" size={16} tone="faint" />} onPress={() => onMore?.("doing")} />
-          </Card>
-        ) : (
-          <View className="gap-s2">
-            <DoingList world={world} list={runningShown} onOpen={onOpen} swipe={openSwipe} />
-            {m.working.length > RUNNING ? <MoreRow label={moreDoing ? "Show fewer" : `${m.working.length - RUNNING} more running`} up={moreDoing} onPress={() => setMoreDoing(!moreDoing)} /> : null}
-          </View>
-        )}
-    </Section>
-  );
-
   const done = m.doneToday.length ? (
     <View className="min-w-0 gap-s2 pt-s6">
       <PressableScale depth={0.985} accessibilityRole="button" accessibilityState={{ expanded: doneOpen }} onPress={() => setDoneOpen(!doneOpen)} style={{ minHeight: 44, flexDirection: "row", alignItems: "center", gap: 8, alignSelf: "flex-start", paddingHorizontal: 4 }}>
@@ -204,64 +179,23 @@ export function NowView({ world, onAction, onOpen, onMore, notice }: Props & { o
       ) : null}
     </View>
   ) : null;
-
-  const calendarWide = m.calendar.length ? (
-    <Section first title="Today">
-      <Card>
-        <View className="gap-s4">
-          {m.calendar.map((e: any) => (
-            <View key={e.id} className="flex-row gap-s3">
-              <Text mono tone="label" className="flex-none" style={{ minWidth: 40 }}>{whenLabel(e.at, world.now)}</Text>
-              <View className="min-w-0 flex-1"><Text medium style={{ fontSize: 15, lineHeight: 20 }}>{e.title}</Text>{e.sub ? <Text size="secondary" tone="label">{e.sub}</Text> : null}</View>
-            </View>
-          ))}
+  const doing = (
+    <Section title="Doing">
+      {!m.working.length ? <Text tone="label">Nobody is working right now.</Text> : (
+        <View className="gap-s2">
+          <DoingList world={world} list={runningShown} onOpen={onOpen} swipe={openSwipe} />
+          {m.working.length > RUNNING ? <MoreRow label={moreDoing ? "Show fewer" : `${m.working.length - RUNNING} more running`} up={moreDoing} onPress={() => setMoreDoing(!moreDoing)} /> : null}
         </View>
-      </Card>
-    </Section>
-  ) : null;
-  const contact = next ? [...world.records.values()].find((r: any) => r.type === "contact" && next.title.includes(recordTitle(world, r))) : null;
-  const withName = next && / with (.+)$/.exec(next.title)?.[1];
-  const calendarPhone = next ? (
-    <Card className="justify-center" style={{ minHeight: 56, paddingVertical: 0 }}>
-      <View className="flex-row items-center gap-s3" style={{ minHeight: 56 }}>
-        {contact ? <Avatar of={{ kind: "person", id: contact.id, name: recordTitle(world, contact) }} size={32} /> : withName ? <Avatar of={{ kind: "person", id: withName, name: withName }} size={32} /> : null}
-        <Text numberOfLines={1} className="min-w-0 flex-1"><Text tone="label">Next </Text><Text mono tone="label">{whenLabel(next.at, world.now)}</Text><Text strong>{`  ${next.title}`}</Text></Text>
-      </View>
-    </Card>
-  ) : null;
-
-  const recent = (
-    <Section title="Recent">
-      {m.recent.length ? (
-        <View>
-          {m.recent.map((e) => {
-            const a = who(world, e.actor);
-            const name = e.actor === world.me ? "You" : a?.family === "person" ? a.name.split(" ")[0] : a?.name || "Vyre";
-            return (
-              <View key={e.id} className="min-h-control flex-row items-center gap-s3 py-s1">
-                <ActorMark who={a} size="sm" />
-                <Text size="secondary" className="min-w-0 flex-1" numberOfLines={1}>{`${name}${e.via ? ` ${ASSISTANT_MARK}` : ""} ${e.what}`}</Text>
-                <Text mono size="caption" tone="faint">{whenLabel(e.at, world.now)}</Text>
-              </View>
-            );
-          })}
-        </View>
-      ) : <Text tone="label">Nothing has happened yet.</Text>}
+      )}
+      {done}
     </Section>
   );
 
   return (
     <View className="gap-s4">
-      {/* The greeting, the date and what needs the person are Home's one header (screens/now/HomeHeader.tsx), not repeated here. */}
+      {/* The greeting, the date and what needs the person are Home's one header (screens/now/HomeHeader.tsx), not repeated here. Today, Tasks and Recent follow this block. */}
       {notice ? <Banner>{notice}</Banner> : null}
-      {wide ? (
-        <View className="flex-row items-start gap-s8">
-          <View className="min-w-0 flex-1 gap-s2">{needs}{doing}{done}</View>
-          <View className="w-side gap-s2">{calendarWide}{recent}</View>
-        </View>
-      ) : (
-        <View className="gap-s2">{phone ? calendarPhone : calendarWide}{needs}{doing}{done}{phone ? null : recent}</View>
-      )}
+      <View className="gap-s2">{needs}{doing}</View>
     </View>
   );
 }
