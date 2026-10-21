@@ -3,7 +3,12 @@ import { useStore } from "@vyre/ui";
 import type { RecordsWorld } from "../../ui/views/shared";
 import { ScrollView, View } from "react-native";
 import { useRouter } from "expo-router";
-import { Appear, allowsMock, Button, IconButton, Menu, Text, showToast, factsOf, EmptyState, ErrorState, PageHeader, RecordPage, SkeletonRows, titleOf, urnParam, useFieldEnv, useRecordEvents, useRecordsWorld, viewDefOf } from "@vyre/ui";
+import { Appear, allowsMock, Text, showToast, factsOf, EmptyState, ErrorState, PageHeader, RecordPage, SkeletonRows, titleOf, urnParam, useFieldEnv, useRecordEvents, useRecordsWorld, viewDefOf } from "@vyre/ui";
+import type { MenuItem } from "@vyre/ui";
+import { RecordHeader } from "../../ui/views/RecordHeader";
+import { recordIdOf } from "../../ui/records/record-id.js";
+import { copyAndTell, recordLink } from "../../ui/records/clipboard";
+import { useShowEmpty } from "../../src/state/record-prefs";
 import { href } from "../../../../lib/tags.js";
 import { useShell } from "../shell/shared";
 import { RecordHistory } from "./RecordHistory";
@@ -25,6 +30,7 @@ import { openExternal } from "../../src/shell/open-external";
 import { plainError } from "../../src/real/error-note.js";
 import { recordsApi } from "./records-api";
 import { useRecordsAccess } from "./records-access";
+import { recordMenu } from "./record-menu.js";
 
 
 /** /u/record/<id>: one record's page. The id is the record's urn (vyre://space/type/id, encoded) or its bare id (the uuid); both find the same record. */
@@ -59,6 +65,10 @@ export function RecordScreen({ id, onClose, onOpen }: { id: string; onClose?: ()
   const rec = world ? Object.values(world.byType).flat().find((r) => (urn ? r.urn === urn : r.id === id)) : undefined;
   const lay = useTypeLayout(rec?.type);
   const [logged, setLogged] = useState(0);
+  const [who, setWho] = useState<"person" | "assistant">("person");
+  const [showEmpty, setShowEmpty] = useShowEmpty();
+  const [headerOpen, setHeaderOpen] = useState(false);
+  useEffect(() => { setWho("person"); }, [rec?.urn]);
   const events = useRecordEvents(rec?.urn);
   // A Contact with an e-mail gets "Send for signature" when the Documents app is installed: its view opens with the e-mail already in the form.
   const [canSend, setCanSend] = useState(false);
@@ -87,7 +97,6 @@ export function RecordScreen({ id, onClose, onOpen }: { id: string; onClose?: ()
   const title = titleOf(def, rec);
   const space = SPACES.find((s) => s.id === rec.labels?.source_spaces?.[0])?.name;
   const vd = viewDefOf(def);
-  const pinned: string[] | undefined = Array.isArray(lay.layout?.header_fields?.default) ? lay.layout.header_fields.default : undefined;
   // Delete moves the record to the bin, with Undo; Delete for good is in the Bin (records-api.ts, Bin.tsx)
   const remove = () => {
     const urn = rec.urn;
@@ -97,28 +106,49 @@ export function RecordScreen({ id, onClose, onOpen }: { id: string; onClose?: ()
       back();
     });
   };
-  // One header for the pushed page (ui-system.md section 7): the face or emblem, the title, "Job \u00B7 Juniper Studio".
+  // One header: the face, the name, "Project · Juniper Studio", and the ID at the end of that line. Chat and More sit at the right.
+  const idText = recordIdOf(rec);
+  const folder = typeof rec.data?.drive_path === "string" ? rec.data.drive_path.trim() : "";
+  const dial = typeof rec.data?.phone === "string" && rec.data.phone ? String(rec.data.phone) : "";
+  const menu: MenuItem[] = recordMenu({ id: idText, agent: who === "assistant", canAgent: !access.joined, showEmpty, files: !!folder, dial: !!dial }).map((item) => ({
+    ...item,
+    onPress: () => {
+      if (item.id === "copy-id") void copyAndTell(idText);
+      else if (item.id === "copy-link") void copyAndTell(recordLink(rec.id));
+      else if (item.id === "agent") setWho((w) => (w === "assistant" ? "person" : "assistant"));
+      else if (item.id === "empty") setShowEmpty(!showEmpty);
+      else if (item.id === "files") router.push(`/u/files?folder=${encodeURIComponent(folder)}` as never);
+      else if (item.id === "dial") void openExternal(`tel:${dial.replace(/\s/g, "")}`);
+      else if (item.id === "header") setHeaderOpen(true);
+      else if (item.id === "delete") remove();
+    },
+  }));
+  const idLabel = def.fields.find((f: any) => f.name === "ref")?.label;
+  const pinnedAll: string[] | undefined = Array.isArray(lay.layout?.header_fields?.default) ? lay.layout.header_fields.default : undefined;
+  const pinned = pinnedAll?.filter((n) => n !== "ref");
+  const templateName = def.fields.find((x: any) => x.name === "template")?.label;
+  const facts = (pinned ? pinnedFacts(def, rec, pinned) : factsOf(def, rec)).filter(([l]) => l !== idLabel).map(([l, v]) => [l, rec.type === "project" && l === templateName ? templateLabel(v) : v] as [string, any]);
+  const headerNames = (pinned ?? factsOf(def, rec).map(([l]) => def.fields.find((f: any) => f.label === l)?.name).filter(Boolean) as string[]).filter((n) => n !== "ref");
   return (
     <View className="min-h-0 flex-1">
-      <PageHeader title={title} context={[def.label, space].filter(Boolean).join(" \u00B7 ")} faces={[{ kind: vd.initials ? "person" : "project", id: rec.id, name: title, seed: rec.data?.avatar_seed }]} onBack={back} actions={<View className="flex-row items-center gap-s2"><Menu trigger={<IconButton icon="more" label="More" />} items={[{ label: "Delete", danger: true, onPress: remove }]} />{typeof rec.data?.drive_path === "string" && rec.data.drive_path.trim() ? <Button kind="secondary" size="sm" icon="folder" label="Open files" onPress={() => router.push(`/u/files?folder=${encodeURIComponent(String(rec.data.drive_path).trim())}` as never)} /> : null}<Button kind="secondary" size="sm" label="Chat about this" onPress={() => router.push(`/u/chats/new?about=${encodeURIComponent(rec.urn)}&name=${encodeURIComponent(title)}` as never)} /></View>} />
-      {rec.type === "contact" || rec.type === "organization" ? <View className="px-s4 pt-s3"><Roles urn={rec.urn} name={title} onOpen={open} /></View> : null}
-      {isShareable(rec.type) ? <View className="px-s4 pt-s3"><ShareControl urn={rec.urn} type={rec.type} record={typeof rec.data?.record === "object" ? rec.data.record?.urn : typeof rec.data?.record === "string" ? rec.data.record : undefined} value={String(rec.data?.visibility ?? "private")} onDone={reload} /></View> : null}
-      <View className="px-s4 pt-s3"><QuickActions email={email || undefined} urn={rec.urn} onLogged={() => setLogged((n) => n + 1)} /></View>
-      <View className="px-s4 pt-s3"><DocumentsBar def={def} rec={rec} related={relatedRecords(world.types, world.byType, def, rec)} email={email} canSend={canSend || allowsMock()} /></View>
-      <View className="flex-row flex-wrap items-start gap-x-s8 gap-y-s3 px-s4 pt-s3">
-        {(pinned ? pinnedFacts(def, rec, pinned) : factsOf(def, rec)).map(([l, v]) => [l, rec.type === "project" && l === def.fields.find((x: any) => x.name === "template")?.label ? templateLabel(v) : v] as [string, any]).map(([l, v]) => (
-          <View key={l} className="min-w-[96px] gap-s1">
-            <Text size="caption" tone="label">{l}</Text>
-            {v === null ? <Text tone="faint">Add</Text> : <Text strong numberOfLines={1}>{String(v)}</Text>}
-          </View>
-        ))}
-        {typeof rec.data?.phone === "string" && rec.data.phone ? <Button kind="secondary" size="sm" icon="phone" label="Call" onPress={() => void openExternal(`tel:${String(rec.data.phone).replace(/\s/g, "")}`)} /> : null}
-        <View className="ml-auto">
-          <HeaderFields fields={def.fields.filter((f: any) => f.kind !== "sealed" && !f.seal).map((f: any) => ({ name: f.name, label: String(f.label ?? f.name) }))} names={pinned ?? factsOf(def, rec).map(([l]) => def.fields.find((f: any) => f.label === l)?.name).filter(Boolean) as string[]} spaceScope={lay.scope === "space"} onNames={(n) => void lay.save("header_fields", { ...(lay.layout.header_fields ?? {}), default: n })} />
+      <RecordHeader title={title} context={[def.label, space].filter(Boolean).join(" \u00B7 ")} id={idText || undefined} faces={[{ kind: vd.initials ? "person" : "project", id: rec.id, name: title, seed: rec.data?.avatar_seed }]} onBack={back} onChat={() => router.push(`/u/chats/new?about=${encodeURIComponent(rec.urn)}&name=${encodeURIComponent(title)}` as never)} menu={menu} />
+      {rec.type === "contact" || rec.type === "organization" ? <View className="px-s4 pt-s2"><Roles urn={rec.urn} name={title} onOpen={open} /></View> : null}
+      {isShareable(rec.type) ? <View className="px-s4 pt-s2"><ShareControl urn={rec.urn} type={rec.type} record={typeof rec.data?.record === "object" ? rec.data.record?.urn : typeof rec.data?.record === "string" ? rec.data.record : undefined} value={String(rec.data?.visibility ?? "private")} onDone={reload} /></View> : null}
+      <View className="px-s4 pt-s2"><QuickActions email={email || undefined} urn={rec.urn} onLogged={() => setLogged((n) => n + 1)} /></View>
+      <View className="px-s4 pt-s2"><DocumentsBar def={def} rec={rec} related={relatedRecords(world.types, world.byType, def, rec)} email={email} canSend={canSend || allowsMock()} /></View>
+      {facts.length ? (
+        <View className="flex-row flex-wrap items-start gap-x-s4 gap-y-s2 px-s4 pt-s2">
+          {facts.map(([l, v]) => (
+            <View key={l} className="min-w-[96px] gap-s1">
+              <Text size="caption" tone="label">{l}</Text>
+              {v === null ? <Text tone="faint">Add</Text> : <Text strong numberOfLines={1}>{String(v)}</Text>}
+            </View>
+          ))}
         </View>
-      </View>
-      <ScrollView contentContainerClassName="gap-s5 px-s4 pb-s12 pt-s3 max-w-page w-full self-center">
-        <Appear index={1}><RecordPage def={def} rec={rec} world={world} canCustomize={access.admin} canSeal={access.ownServer} canSeeAsAgent={!access.joined} onStage={(st) => { void mv.go(rec, def, st); }} events={events.data ?? []} env={env} onOpen={open} story={<View className="gap-s4"><Connections urn={rec.urn} env={env} onOpen={open} /><RecordHistory urn={rec.urn} refresh={logged} me={(world as { me?: string }).me} /></View>} onNew={(t, via) => router.push(`/u/record/new?type=${t}&via=${encodeURIComponent(via)}&to=${encodeURIComponent(rec.urn)}` as never)} /></Appear>
+      ) : null}
+      <HeaderFields trigger={false} open={headerOpen} onOpen={setHeaderOpen} fields={def.fields.filter((f: any) => f.name !== "ref" && f.kind !== "sealed" && !f.seal).map((f: any) => ({ name: f.name, label: String(f.label ?? f.name) }))} names={headerNames} spaceScope={lay.scope === "space"} onNames={(n) => void lay.save("header_fields", { ...(lay.layout.header_fields ?? {}), default: n })} />
+      <ScrollView contentContainerClassName="gap-s5 px-s4 pb-s12 pt-s2 max-w-page w-full self-center">
+        <Appear index={1}><RecordPage def={def} rec={rec} world={world} canCustomize={access.admin} canSeal={access.ownServer} who={who} onWho={setWho} onStage={(st) => { void mv.go(rec, def, st); }} events={events.data ?? []} env={env} onOpen={open} story={<View><Connections urn={rec.urn} env={env} onOpen={open} /><RecordHistory urn={rec.urn} refresh={logged} me={(world as { me?: string }).me} /></View>} onNew={(t, via) => router.push(`/u/record/new?type=${t}&via=${encodeURIComponent(via)}&to=${encodeURIComponent(rec.urn)}` as never)} /></Appear>
       </ScrollView>
       {mv.sheet}
     </View>

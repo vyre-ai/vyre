@@ -1,296 +1,108 @@
-import { useEffect, useState } from "react";
-import { Platform, Pressable, View } from "react-native";
-import { Text } from "../components/Text";
-import { isTemplateField, templateLabel } from "../records/template-names.js";
-import { ID_NOTE, isRecordIdField, recordIdOf } from "../records/record-id.js";
-import { Card, Divider } from "../components/Card";
-import { GroupedList } from "../components/GroupedList";
-import { RelatedSection } from "../records/RelatedSection";
-import { groupRelated, isInternalField, isLockedField, viaOf } from "../records/logic.js";
-import { Row } from "../components/Row";
-import { Chip } from "../components/Chip";
-import { Banner } from "../components/Banner";
-import { Button, IconButton } from "../components/Button";
-import { Segmented } from "../components/Segmented";
-import { Menu } from "../components/Menu";
-import { Switch } from "../components/Switch";
-import { Sheet } from "../components/Sheet";
-import { Field } from "../components/Field";
-import { Avatar } from "../components/Avatar";
+import { useState } from "react";
+import type { ReactNode } from "react";
+import { View } from "react-native";
+import { Button } from "../components/Button";
 import { Icon } from "../components/Icon";
+import { Row } from "../components/Row";
 import { StageSteps } from "../components/StageSteps";
+import { Text } from "../components/Text";
 import { TimelineItem } from "../components/TimelineItem";
 import { showToast } from "../components/Toast";
+import { isEmpty } from "../fields/logic.js";
+import type { FieldEnv } from "../fields/types";
+import { groupRelated, viaOf } from "../records/logic.js";
 import { cn } from "../lib/cn";
+import { px } from "../lib/measure";
 import { useUiTheme } from "../theme";
 import { useStore } from "../store";
-import { editField, renderField, KINDS } from "../fields/registry";
-import { isEmpty, isSealedValue, sampleFor } from "../fields/logic.js";
-import type { FieldEnv } from "../fields/types";
 import { theirTimeOf } from "../../src/time/show.js";
-import { useShowEmpty } from "../../src/state/record-prefs";
 import { ASSISTANT_MARK } from "../../src/store-core/kernel-view.js";
-import { actorWords, ago, assistantNote, canSealField, eventWhat, fieldStates, filesOf, isSealedField, newFieldSpec, relatedRecords, sealSpec, stageField, timelineLine, titleOf, val, viewDefOf } from "./logic.js";
-import type { RecordsWorld } from "./shared";
 import { plainError } from "../../src/real/error-note.js";
+import { actorWords, ago, assistantNote, eventWhat, fieldStates, filesOf, isSealedField, relatedRecords, stageField, timelineLine, val, viewDefOf } from "./logic.js";
+import type { RecordsWorld } from "./shared";
+import { RecordProperties } from "./RecordProperties";
+import { RecordSection } from "./RecordSection";
 
 const errText = (e: unknown) => plainError(e, "That did not save.");
 
-/** Copy a record's ID: the browser's clipboard on the web, the phone's otherwise. */
-async function copyId(text: string) {
-  if (Platform.OS === "web") { if (typeof navigator !== "undefined" && navigator.clipboard) { await navigator.clipboard.writeText(text); return; } throw new Error("no clipboard"); }
-  const mod = await import("expo-clipboard");
-  await mod.setStringAsync(text);
-}
-
 /**
- * The record page: all the fields in order (press one to change it), the stage steps, You or Your assistant sees, Add a field, the timeline from the Event log,
- * linked records and files. Every value goes through the field renderers, so a field added to the type shows here with no new code. Writes go to the Store
- * and the page redraws from it; a sealed value goes through putSealed and reveals through reveal, which the box holds for the owner's yes on their phone.
+ * The record page: the stage steps, the properties, and the sections under them (connections and history when the screen gives them, otherwise the change list, then linked records and files).
+ * Who is looking is the screen's More menu. While the agent preview is on, a slim line offers the way back.
  */
-export function RecordPage({ def, rec, world, events, env, onOpen, story, onNew, onStage, canCustomize = true, canSeal = true, canSeeAsAgent = true }: { def: any; rec: any; world: RecordsWorld; events: any[]; env: FieldEnv; onOpen: (urn: string) => void; story?: React.ReactNode; /** Given, each type that links here gets "Add a <type>" under its list: the type, and the field of it that links to this record. */ onNew?: (type: string, via: string) => void; /** Given, a tap on the stage strip goes through it (the move rule: a stage that needs fields asks for them) instead of writing the stage field directly. */ onStage?: (stage: string) => void;
-  /** An owner or an admin: Add a field shows (the server refuses anyone else). */ canCustomize?: boolean; /** An owner or an admin on their own server: "Seal this field" shows. */ canSeal?: boolean;
-  /** "Your agent sees" shows (not in a team joined as a member: that look stays on the owner's own server). */ canSeeAsAgent?: boolean }) {
+export function RecordPage({ def, rec, world, events, env, onOpen, story, onNew, onStage, canCustomize = true, canSeal = true, who: whoProp, onWho }: {
+  def: any; rec: any; world: RecordsWorld; events: any[]; env: FieldEnv; onOpen: (urn: string) => void; story?: ReactNode;
+  /** Given, each type that links here gets "Add a <type>" under its list: the type, and the field of it that links to this record. */ onNew?: (type: string, via: string) => void;
+  /** Given, a tap on the stage strip goes through it (the move rule: a stage that needs fields asks for them) instead of writing the stage field directly. */ onStage?: (stage: string) => void;
+  /** An owner or an admin: New property shows (the server refuses anyone else). */ canCustomize?: boolean;
+  /** An owner or an admin on their own server: "Seal this field" shows. */ canSeal?: boolean;
+  /** "person" or "assistant". The screen owns it when the More menu does; omitted, the page keeps its own. */ who?: "person" | "assistant";
+  onWho?: (who: "person" | "assistant") => void;
+}) {
   const store = useStore();
-  const { phone } = useUiTheme();
-  const vd = viewDefOf(def);
-  const [who, setWho] = useState<"person" | "assistant">("person");
-  // A narrow page (the side panel, a small window) stacks the label above its value; a wide one gives labels a fixed column so a long label never wraps a word per line.
+  const { phone, color, map } = useUiTheme();
+  const [ownWho, setOwnWho] = useState<"person" | "assistant">("person");
+  const who = whoProp ?? ownWho;
+  const setWho = (next: "person" | "assistant") => (onWho ? onWho(next) : setOwnWho(next));
+  const ai = who === "assistant";
   const [pageW, setPageW] = useState(0);
   const sideBySide = !phone && (pageW === 0 || pageW >= 760);
-  const stack = phone || (pageW > 0 && pageW < 480);
-  const [seen, setSeen] = useState<Record<string, any> | null>(null);
-  const [editing, setEditing] = useState<string | null>(null);
-  const [draft, setDraft] = useState<any>(undefined);
-  const [confirm, setConfirm] = useState<{ f: any } | null>(null);
-  const [adding, setAdding] = useState(false);
-  const [showEmpty, setShowEmpty] = useShowEmpty();
-  const [hover, setHover] = useState<string | null>(null);
-  const [rowMenu, setRowMenu] = useState<any>(null);
-  const ai = who === "assistant";
-
-  useEffect(() => {
-    let live = true;
-    if (!ai) { setSeen(null); return; }
-    store.seesAs(rec.urn, "assistant").then((s) => { if (live) setSeen(s); }).catch((e) => showToast(errText(e)));
-    return () => { live = false; };
-  }, [ai, rec.urn, rec.version, store]);
-
-  const valueFor = (f: any) => (ai ? seen?.[f.name] : val(rec, f.name));
-  const revealFor = (f: any) => (purpose: string) => store.reveal(rec.urn, f.name, purpose, undefined as never /* no proof of its own: the box holds the call for the owner's yes */).then((r: any) => r.value as string);
-  // Conditional fields (visible_if, required_if): judged on the record as it is now, the same way the gateway judges a write.
-  const states = fieldStates(def, rec.data || {});
-  const change = async (f: any, v: any) => {
-    if (f.kind !== "sealed" && isEmpty(v) && states[f.name]?.required) { showToast(`${f.label} is required`); return; }
-    try {
-      if (f.kind === "sealed") { if (v !== undefined) await store.putSealed(rec.urn, f.name, String(v)); }
-      else await store.update(rec.urn, { [f.name]: v }, rec.version);
-      setEditing(null); setDraft(undefined);
-    } catch (e) { showToast(errText(e)); }
-  };
-  const sealAll = async () => {
-    if (!confirm) return;
-    try { await store.sealField?.(def.name, confirm.f.name, String(rec.urn).split("/")[2] || undefined); setConfirm(null); showToast(`${confirm.f.label} is sealed for all ${vd.plural.toLowerCase()}.`); } catch (e) { showToast(errText(e)); }
-  };
   const sf = stageField(def);
   const stages: string[] = sf ? [...(sf.options || [])] : [];
+  const states = fieldStates(def, rec.data || {});
+  const pickStage = (s: string) => {
+    if (!sf || ai) return;
+    if (onStage) { onStage(s); return; }
+    if (isEmpty(s) && states[sf.name]?.required) { showToast(`${sf.label} is required`); return; }
+    void store.update(rec.urn, { [sf.name]: s }, rec.version).catch((e) => showToast(errText(e)));
+  };
   const sealedNow = def.fields.filter((f: any) => isSealedField(f) && !isEmpty(val(rec, f.name)));
   const related = relatedRecords(world.types, world.byType, def, rec);
   const files = filesOf(def, rec);
-  const pool = world.byType[def.name] || [rec];
-  // The stage strip above is the stage field's renderer, so the list leaves it out; so are the system's own fields (the bag, removed ones, ones hidden from every role, bookkeeping). Empty fields wait behind one line,
-  // except the one being edited; an empty field only the system writes is not offered to fill.
-  const listed = def.fields.filter((f: any) => (!sf || f.name !== sf.name) && !isInternalField(f, def.name) && states[f.name]?.visible !== false);
-  const isBlank = (f: any) => !showEmpty && f.kind !== "sealed" && isEmpty(val(rec, f.name)) && editing !== f.name && !states[f.name]?.required;
-  const filled = listed.filter((f: any) => !isBlank(f));
-  const empty = listed.filter((f: any) => isBlank(f) && !isLockedField(f));
-
-  const fieldRow = (f: any) => {
-    // The record's ID is Vyre's (record-id.js): a quiet line with a copy button, never an editor, never sealed.
-    if (isRecordIdField(f)) {
-      const id = recordIdOf(rec);
-      return (
-        <View key={f.name} className={cn("gap-s1 px-s4 py-s3", !stack && "flex-row items-center gap-s3")}>
-          <View className={cn("flex-row flex-wrap items-center gap-s2", !stack && "w-[168px] flex-none")}><Text tone="label">{f.label}</Text></View>
-          <View className={cn("min-w-0 flex-row flex-wrap items-center gap-s2", !stack && "flex-1")}>
-            <Text selectable>{id || "Given when saved"}</Text>
-            {id ? <IconButton icon="copy" label={`Copy ${f.label}`} onPress={() => void copyId(id).then(() => showToast(`${f.label} copied.`), () => showToast("Copying did not work here. Select the text and copy it."))} /> : null}
-            <Text size="caption" tone="label">{ID_NOTE}</Text>
-          </View>
-        </View>
-      );
-    }
-    const isEditing = editing === f.name && !ai;
-    const value = valueFor(f);
-    const sealed = isSealedField(f);
-    // A field Vyre keeps (the kernel's own, computed, read-only, an ID, a weighted value) is shown, never edited, and never offered to be sealed (isLockedField includes isKeptField).
-    const locked = isLockedField(f);
-    const plainEditable = !ai && !locked && f.kind !== "sealed" && f.kind !== "link" && f.kind !== "ref" && f.kind !== "file";
-    const shown = renderField({ kind: f.kind, definition: f, value: isTemplateField(rec, f) ? templateLabel(value) : value, mode: "view", read_only: true, reveal: ai ? undefined : revealFor(f) }, env);
-    const items = locked ? [] : [
-      { label: "Edit", onPress: () => { setEditing(f.name); setDraft(undefined); } },
-      ...(sealed || !canSeal || !canSealField(f) ? [] : [{ label: `Seal this field for all ${vd.plural.toLowerCase()}`, onPress: () => setConfirm({ f }) }]),
-    ];
-    // Desktop: the menu shows on hover (or while the row is being edited). Phone: tap the row to edit, long-press for the menu.
-    // a locked field has nothing to offer: its menu keeps its place, unseen and not pressable, so the rows line up
-    const menuNode = !ai && !phone ? (
-      items.length ? (
-        <View className="flex-none" style={{ opacity: hover === f.name || isEditing ? 1 : 0 }}>
-          <Menu trigger={<IconButton icon="more" label={`${f.label}, more`} />} items={items} />
-        </View>
-      ) : <View className="flex-none" style={{ opacity: 0 }} pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants"><IconButton icon="more" label={`${f.label}, more`} /></View>
-    ) : null;
-    return (
-      <Pressable key={f.name} disabled={ai || !phone || isEditing} onPress={plainEditable ? () => { setEditing(f.name); setDraft(undefined); } : undefined} onLongPress={items.length ? () => setRowMenu({ f, items }) : undefined}
-        onHoverIn={() => setHover(f.name)} onHoverOut={() => setHover((h) => (h === f.name ? null : h))}
-        className={cn("gap-s1 px-s4 py-s3", !stack && "flex-row items-center gap-s3")}>
-        <View className={cn("flex-row flex-wrap items-center gap-s2", !stack && "w-[168px] flex-none")}>
-          <Text tone="label">{f.label}</Text>
-          {sealed ? <Chip tone="sealed" icon="vault">Sealed</Chip> : null}
-          {states[f.name]?.required && isEmpty(val(rec, f.name)) ? <Chip>Required</Chip> : null}
-        </View>
-        <View className={cn("min-w-0", !stack && "flex-1")} {...(Platform.OS === "web" && typeof value === "string" && value.length > 24 ? ({ title: value } as object) : {})}>
-          {isEditing ? (
-            <View className="gap-s2">
-              {editField({ kind: f.kind, definition: f, value, mode: "edit", onChange: setDraft }, env)}
-              <View className="flex-row gap-s2">
-                <Button kind="primary" size="sm" label="Save" onPress={() => { if (draft === undefined) { setEditing(null); return; } change(f, draft); }} />
-                <Button kind="ghost" size="sm" label="Cancel" onPress={() => { setEditing(null); setDraft(undefined); }} />
-              </View>
-            </View>
-          ) : plainEditable ? (
-            <Pressable accessibilityRole="button" accessibilityLabel={`Edit ${f.label}`} onPress={() => { setEditing(f.name); setDraft(undefined); }} className="self-start">{shown}</Pressable>
-          ) : sealed && !ai && !locked ? (
-            <View className="gap-s2">
-              {shown}
-              <View className="flex-row flex-wrap items-center gap-s2">
-                <Button size="sm" kind="ghost" icon="key" label={isEmpty(val(rec, f.name)) ? "Fill" : "Replace"} onPress={() => { setEditing(f.name); setDraft(undefined); }} />
-                <Text size="caption" tone="label">Hidden from AI; your agent sees a placeholder</Text>
-              </View>
-            </View>
-          ) : shown}
-        </View>
-        {menuNode}
-      </Pressable>
-    );
-  };
-
-  // A contact's local time, from the Contact's time_zone (lib/time reads it).
   const theirs = def.name === "contact" ? theirTimeOf(Date.now(), rec.data?.time_zone) : null;
+  const changes = (
+    <RecordSection title="Changes" action={<Text size="caption" tone="label">Every field change, who and why</Text>}>
+      {events.length ? events.map((e) => {
+        const l = timelineLine(e);
+        return <TimelineItem key={l.id} actor={actorWords(l.actor, world, (world as { me?: string }).me)} what={eventWhat(l.what)} mark={l.via ? ASSISTANT_MARK : undefined} at={ago(l.at, env.now ?? Date.now())} why={l.why} />;
+      }) : <Text tone="label">Nothing has happened yet.</Text>}
+    </RecordSection>
+  );
   const main = (
-    <View className={cn("min-w-0 gap-s4", sideBySide && "flex-[2]")}>
-      {theirs ? <Text size="caption" tone="label">{`It is ${theirs} where they are`}</Text> : null}
-      {!ai ? (
-        <View className="flex-row items-center justify-between gap-s3 pb-s2">
-          <Text tone="label">Show empty fields</Text>
-          <Switch on={showEmpty} onChange={setShowEmpty} label="Show empty fields" />
-        </View>
-      ) : null}
-      {def.groups?.length ? (
-        <GroupedList groups={def.groups} items={filled} itemNoun="fields" renderItems={(items) => <Card flush>{items.map((f: any, i: number) => <View key={f.name}>{i > 0 ? <Divider /> : null}{fieldRow(f)}</View>)}</Card>} />
-      ) : null}
-      <Card flush>
-        {def.groups?.length ? null : filled.map((f: any, i: number) => <View key={f.name}>{i > 0 ? <Divider /> : null}{fieldRow(f)}</View>)}
-        {empty.length ? (
-          // One quiet line: how many are empty, and their names; a name opens that field in place. Nothing moves on hover.
-          <View className="gap-s1 px-s4 py-s3">
-            {filled.length && !def.groups?.length ? <View className="-mx-s4 mb-s2"><Divider /></View> : null}
-            <View className="flex-row flex-wrap items-center gap-x-s2 gap-y-s1">
-              <Text tone="label">{`${empty.length} empty`}</Text>
-              {empty.map((f: any, i: number) => (
-                <Pressable key={f.name} accessibilityRole="button" accessibilityLabel={`Fill in ${f.label}`} onPress={() => { setEditing(f.name); setDraft(undefined); }} className="flex-row">
-                  <Text tone="muted">{f.label}</Text>
-                  {i < empty.length - 1 ? <Text tone="label">,</Text> : null}
-                </Pressable>
-              ))}
-            </View>
-          </View>
-        ) : null}
-      </Card>
-      {/* One history on the page: the screen's own (History, with its filters and Undo) when it gives one, else the change list from the Event log. */}
-      {story ?? (
-        <Card title="Changes" actions={<Text size="caption" tone="label">Every field change, who and why</Text>}>
-          {events.length ? events.map((e) => {
-            const l = timelineLine(e);
-            return <TimelineItem key={l.id} actor={actorWords(l.actor, world, (world as { me?: string }).me)} what={eventWhat(l.what)} mark={l.via ? ASSISTANT_MARK : undefined} at={ago(l.at, env.now ?? Date.now())} why={l.why} />;
-          }) : <Text tone="label">Nothing has happened yet.</Text>}
-        </Card>
-      )}
+    <View className={cn("min-w-0", sideBySide && "flex-[2]")}>
+      {theirs ? <View className="pb-s2"><Text size="caption" tone="label">{`It is ${theirs} where they are`}</Text></View> : null}
+      <RecordProperties def={def} rec={rec} env={env} ai={ai} pool={world.byType[def.name] || [rec]} canCustomize={canCustomize} canSeal={canSeal} />
+      {story ?? changes}
     </View>
   );
   const side = (
-    <View className={cn("min-w-0 gap-s4", !phone && "flex-1")}>
-      {related.length ? groupRelated(related, Object.fromEntries(world.types.map((t: any) => [t.name, { label: t.label, plural: viewDefOf(t).plural }]))).map((g) => (
-        <RelatedSection key={g.type} title={g.plural} noun={g.label.toLowerCase()} rows={g.rows.map((l) => ({ id: l.urn, title: l.title, sub: g.label }))} onOpen={onOpen}
-          {...(onNew && viaOf(world.types, g.type, def.name) ? { onAdd: () => onNew(g.type, viaOf(world.types, g.type, def.name) as string) } : {})} />
-      )) : <Card title="Linked records"><Text tone="label">Nothing linked.</Text></Card>}
-      <Card title="Files" flush>
-        {files.length ? files.map((x: any, i: number) => (
-          <View key={x.field}>
-            {i > 0 ? <Divider /> : null}
-            <Row lead={<Icon name="file" size={20} />} title={x.name} sub={x.field} />
-          </View>
-        )) : <View className="px-s4 pb-s4"><Text tone="label">No files.</Text></View>}
-      </Card>
+    <View className={cn("min-w-0", sideBySide && "flex-1")}>
+      {related.length ? groupRelated(related, Object.fromEntries(world.types.map((t: any) => [t.name, { label: t.label, plural: viewDefOf(t).plural }]))).map((g) => {
+        const via = onNew ? viaOf(world.types, g.type, def.name) : undefined;
+        return (
+          <RecordSection key={g.type} title={g.plural} action={via ? <Button kind="ghost" size="sm" icon="plus" label={`Add ${g.label.toLowerCase()}`} onPress={() => onNew?.(g.type, via)} /> : undefined}>
+            {g.rows.map((l) => <Row key={l.urn} className="px-0" title={l.title} sub={g.label} onPress={() => onOpen(l.urn)} />)}
+          </RecordSection>
+        );
+      }) : <RecordSection title="Linked records"><Text tone="label">Nothing linked.</Text></RecordSection>}
+      <RecordSection title="Files">
+        {files.length ? files.map((x: any) => <Row key={x.field} className="px-0" lead={<Icon name="file" size={20} />} title={x.name} sub={x.field} />) : <Text tone="label">No files.</Text>}
+      </RecordSection>
     </View>
   );
-
   return (
-    <View className="gap-s5" onLayout={(e) => { const w = Math.round(e.nativeEvent.layout.width); setPageW((p) => (Math.abs(p - w) > 8 ? w : p)); }}>
-      {sf ? <StageSteps strip={phone} stages={stages} current={stages.indexOf(String(val(rec, sf.name) ?? ""))} onSelect={ai ? undefined : (s) => (onStage ? onStage(s) : change(sf, s))} /> : null}
-      <View className="flex-row flex-wrap items-center gap-s3">
-        {canSeeAsAgent ? <Segmented<"person" | "assistant"> label="Who is looking" value={who} onChange={(v) => { setWho(v); setEditing(null); }} options={[["person", "You"], ["assistant", "Your agent sees"]]} /> : null}
-        <View className="flex-1" />
-        {ai || !canCustomize ? null : phone ? <IconButton icon="plus" label="Add a field" kind="secondary" onPress={() => setAdding(true)} /> : <Button size="sm" icon="plus" label="Add a field" onPress={() => setAdding(true)} />}
-      </View>
+    <View className="gap-s4" onLayout={(e) => { const w = Math.round(e.nativeEvent.layout.width); setPageW((p) => (Math.abs(p - w) > 8 ? w : p)); }}>
+      {sf ? <StageSteps strip={phone} stages={stages} current={stages.indexOf(String(val(rec, sf.name) ?? ""))} onSelect={ai ? undefined : pickStage} /> : null}
       {ai ? (
-        <Banner tone="warn">
-          <Text strong>This is what an agent sees.</Text>
-          <Text size="caption" tone="muted">{assistantNote(sealedNow)}</Text>
-        </Banner>
-      ) : null}
-      <View className={cn("gap-s5", sideBySide && "flex-row items-start")}>{main}{side}</View>
-
-      <Sheet open={!!rowMenu} onClose={() => setRowMenu(null)} title={rowMenu?.f.label}>
-        <View>{(rowMenu?.items ?? []).map((it: any) => <Row key={it.label} title={it.label} onPress={() => { setRowMenu(null); it.onPress(); }} />)}</View>
-      </Sheet>
-      <Sheet open={!!confirm} onClose={() => setConfirm(null)} title={confirm ? sealSpec(def, confirm.f, pool, vd).title : undefined}>
-        <Text tone="muted">{confirm ? sealSpec(def, confirm.f, pool, vd).body : ""}</Text>
-        <View className="flex-row gap-s2">
-          <Button kind="primary" label={confirm ? sealSpec(def, confirm.f, pool, vd).action : "Seal"} onPress={sealAll} />
-          <Button kind="ghost" label="Cancel" onPress={() => setConfirm(null)} />
+        <View className="gap-s2">
+          <View className="flex-row flex-wrap items-center gap-s2 px-s3 py-s2" style={{ backgroundColor: color.hover, borderRadius: px(map, "--r-row") }}>
+            <Icon name="eye" size={16} />
+            <Text size="secondary">Showing what your agent sees</Text>
+            <Button kind="ghost" size="sm" label="Back to yours" onPress={() => setWho("person")} />
+          </View>
+          {sealedNow.length ? <Text size="caption" tone="label">{assistantNote(sealedNow)}</Text> : null}
         </View>
-      </Sheet>
-      <AddFieldSheet open={adding} onClose={() => setAdding(false)} def={def} env={env} onAdd={async (draftSpec) => { try { await store.addField?.(def.name, newFieldSpec(draftSpec, def) as any); setAdding(false); } catch (e) { showToast(errText(e)); } }} />
+      ) : null}
+      <View className={cn(sideBySide && "flex-row items-start gap-s6")}>{main}{side}</View>
     </View>
-  );
-}
-
-/** Add a field: a name, one of the fifteen kinds, and both renderers drawn live from a sample so the person sees how it shows and how it is edited. */
-function AddFieldSheet({ open, onClose, def, env, onAdd }: { open: boolean; onClose: () => void; def: any; env: FieldEnv; onAdd: (d: { label: string; kind: string }) => void }) {
-  const [label, setLabel] = useState("");
-  const [kind, setKind] = useState("text");
-  const vd = viewDefOf(def);
-  const draft = { name: "new", label: label.trim() || "New field", kind, options: ["Option A", "Option B"], to: def.name };
-  const sample = sampleFor(draft, env);
-  return (
-    <Sheet open={open} onClose={onClose} title={`Add a field to ${vd.plural}`}>
-      <Text tone="muted">{`Every ${def.label.toLowerCase()} gets it. The list, board, record page and the agent's view pick it up with no new screen.`}</Text>
-      <Field label="Name" value={label} placeholder="For example Preferred contact time" onChangeText={setLabel} />
-      <View className="gap-s1">
-        <Text size="caption" strong tone="label">Kind</Text>
-        <View accessibilityRole="menu" className="flex-row flex-wrap gap-s1">{KINDS.map(([k, l]) => <Chip key={k} selected={k === kind} onPress={() => setKind(k)}>{l}</Chip>)}</View>
-      </View>
-      <View className="gap-s2">
-        <Text size="caption" strong tone="label">How it shows</Text>
-        {renderField({ kind, definition: draft as any, value: sample, mode: "view", read_only: true }, env)}
-        <Text size="caption" strong tone="label">How it is edited</Text>
-        <View key={kind}>{editField({ kind, definition: draft as any, value: isSealedValue(sample) ? null : sample, mode: "edit" }, env)}</View>
-      </View>
-      <View className="flex-row gap-s2">
-        <Button kind="primary" label={`Add to ${vd.plural}`} disabled={!label.trim()} onPress={() => { onAdd({ label, kind }); setLabel(""); setKind("text"); }} />
-        <Button kind="ghost" label="Cancel" onPress={onClose} />
-      </View>
-    </Sheet>
   );
 }

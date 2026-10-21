@@ -220,8 +220,14 @@ test("a stored filter keeps only the rows it holds for", () => {
 import { readFileSync as readSrc } from "node:fs";
 test("a record's reveal and fill go to the box held for the owner's yes: the page carries no simulated proof, and the store link routes both calls through the held door", () => {
   const page = readSrc(new URL("./RecordPage.tsx", import.meta.url), "utf8");
-  assert.equal(/simulatedProof/.test(page), false);
-  assert.match(page, /Hidden from AI; your agent sees a placeholder/);
+  const props = readSrc(new URL("./RecordProperties.tsx", import.meta.url), "utf8");
+  assert.equal(/simulatedProof/.test(page + props), false);
+  assert.match(props, /Hidden from AI; your agent sees a placeholder/);
+  assert.equal(/Your agent sees/.test(page), false);
+  assert.equal(/Show empty fields/.test(page), false);
+  assert.equal(/Made by Vyre with each record/.test(page), false);
+  assert.match(page, /Showing what your agent sees/);
+  assert.match(page, /Back to yours/);
   const link = readSrc(new URL("../../src/api/store-link.ts", import.meta.url), "utf8");
   assert.match(link, /HELD = new Set\(\["records\.seal-put", "records\.reveal", "records\.field\.seal"\]\)/, "sealing a field for good goes through the held door too");
 });

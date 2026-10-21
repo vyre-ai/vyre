@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6.9
 
+- feat(records): the record page is a calm panel. The ID shows once, faint and monospace at the end of "Contact · Space", with a copy control. Chat about this and a More menu hold Copy ID, Copy link, the agent preview, Show empty fields, and the rare actions (open files, edit header, call the number, delete). Roles sit in a tight row. Quick actions are Call, Meeting, Note and Task. Properties are one list: empty ones hide, a row can be copied or edited, and + Add a property offers the empty ones and New property. Connections and History are headings with a hairline, not cards.
 - fix(records): switching Spaces shows the new Space's records. The shared records world was kept by its filters alone, so Records kept drawing the last Space's rows after a switch; it is now kept per Space (apps/app/ui/views/data.ts, world-space.js, screens/shell/state.ts).
 
 ## 0.6.8

@@ -45,7 +45,7 @@ export function Roles({ urn, onOpen, name }: { urn: string; onOpen: (urn: string
   };
   if (plain) {
     return plain.length ? (
-      <View className="flex-row flex-wrap items-center gap-s2">
+      <View className="flex-row flex-wrap items-center gap-s1">
         {plain.map((c) => <Chip key={c.key} tone={toneFor(c)} onPress={c.urn ? () => onOpen(c.urn) : undefined}>{c.ended ? `${c.label} (ended)` : c.label}</Chip>)}
       </View>
     ) : null;
@@ -61,8 +61,8 @@ export function Roles({ urn, onOpen, name }: { urn: string; onOpen: (urn: string
   const lead = held.find((r) => r.current && (kinds.find((k) => k.role === r.role)?.stages ?? []).length > 1);
   const strip = lead ? kinds.find((k) => k.role === lead.role)?.stages ?? [] : [];
   return (
-    <View className="gap-s3">
-    <View className="flex-row flex-wrap items-center gap-s2">
+    <View className="gap-s2">
+    <View className="flex-row flex-wrap items-center gap-s1">
       {chips.map((c, i) => {
         const r = roleOf(i);
         const stages = kinds.find((k) => k.role === r.role)?.stages ?? [];
@@ -73,7 +73,7 @@ export function Roles({ urn, onOpen, name }: { urn: string; onOpen: (urn: string
         );
       })}
       {free.length ? (
-        <Menu trigger={<Pressable accessibilityRole="button" accessibilityLabel="Add a role"><Chip icon="plus">Role</Chip></Pressable>} items={free.map((k) => ({ label: k.label, onPress: () => void add(k) }))} />
+        <Menu trigger={<Pressable accessibilityRole="button" accessibilityLabel="Add a role"><Chip>+ Role</Chip></Pressable>} items={free.map((k) => ({ label: k.label, onPress: () => void add(k) }))} />
       ) : null}
     </View>
     {lead && strip.length ? (

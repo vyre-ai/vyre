@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { View } from "react-native";
-import { Button, Card, Field, Row, Select, Sheet, Text, showToast } from "@vyre/ui";
+import { Button, Field, Row, Select, Sheet, Text, showToast } from "@vyre/ui";
+import { RecordSection } from "../../ui/views/RecordSection";
 import type { FieldEnv } from "../../ui/fields/types";
 import { callT } from "../../src/real/call-tool";
 import { groupConnections } from "./connections-model.js";
@@ -20,15 +21,15 @@ export function Connections({ urn, env, onOpen }: { urn: string; env: FieldEnv; 
   const titleOf = (u: string) => env.links?.[u]?.title ?? u.split("/").pop() ?? u;
   const sections = useMemo(() => groupConnections(rows ?? [], titleOf), [rows, env.links]);
   return (
-    <Card title="Connections" actions={<Button kind="ghost" size="sm" icon="plus" label="Add a connection" onPress={() => setAdding(true)} />}>
+    <RecordSection title="Connections" action={<Button kind="ghost" size="sm" icon="plus" label="Add a connection" onPress={() => setAdding(true)} />}>
       {rows === null ? <Text tone="label">Loading</Text> : sections.length ? sections.map((s) => (
-        <View key={s.title} className="gap-s1 pb-s3">
+        <View key={s.title} className="gap-s1 pb-s2">
           <Text size="caption" tone="label">{s.title}</Text>
-          {s.items.map((it) => <Row key={it.id} title={it.title} sub={[it.when, it.note].filter(Boolean).join(" · ")} onPress={() => onOpen(it.urn)} />)}
+          {s.items.map((it) => <Row key={it.id} className="px-0" title={it.title} sub={[it.when, it.note].filter(Boolean).join(" · ")} onPress={() => onOpen(it.urn)} />)}
         </View>
       )) : <Text tone="label">Nothing connected yet.</Text>}
       <AddConnection open={adding} onClose={() => setAdding(false)} urn={urn} env={env} onDone={() => { setAdding(false); load(); }} />
-    </Card>
+    </RecordSection>
   );
 }
 
