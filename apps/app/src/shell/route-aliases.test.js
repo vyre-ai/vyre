@@ -21,7 +21,7 @@ test("a production build lists every /u route, and the folded and demo routes ar
   }
   assert.equal(routes.includes("/u/vault-design"), false);
   assert.equal(routes.includes("/u/flows/shot"), false);
-  assert.ok(fs.existsSync(path.join(appDir, "u/vault-design.tsx")), "the demo file stays for the mock build");
+  assert.equal(fs.existsSync(path.join(appDir, "u/vault-design.tsx")), false, "the vault design page is deleted, not only hidden");
   assert.ok(!routes.some((r) => /gallery|shots-|demo|proof/.test(r)), routes.filter((r) => /gallery|shots-|demo|proof/.test(r)).join(" "));
   assert.ok(routes.every((r) => r === "/u" || r.startsWith("/u/")), "the list is only /u");
 });
