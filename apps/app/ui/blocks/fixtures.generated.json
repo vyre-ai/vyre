@@ -4852,6 +4852,28 @@
      "component": "who-group"
     }
    }
+  },
+  "home-quiet": {
+   "title": "Home on a quiet day",
+   "screens": {
+    "full": {
+     "component": "home-quiet"
+    },
+    "compact": {
+     "component": "home-quiet"
+    }
+   }
+  },
+  "home-busy": {
+   "title": "Home with work, today and recent",
+   "screens": {
+    "full": {
+     "component": "home-busy"
+    },
+    "compact": {
+     "component": "home-busy"
+    }
+   }
   }
  }
 }

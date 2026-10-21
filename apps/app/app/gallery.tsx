@@ -55,6 +55,7 @@ import { GroupedTasksDemo, ImportDemo, RecordFormDemo, RecordPageDemo } from "..
 import { ChatComposer } from "../src/chat/ChatComposer";
 import { WhoPane } from "../screens/chats/WhoPane";
 import NewThreadScreen from "../screens/chats/NewThreadScreen";
+import { HomePreview } from "../screens/now/HomePreview";
 import { FileViewerFixture } from "../ui/files/Fixture";
 import { ChatPanel, type PanelPage } from "../src/chat/ChatPanel";
 import { sampleAccounts, sampleGroups, sampleNow } from "../src/models/mock-models.js";
@@ -104,6 +105,8 @@ function VaultDemo({ scope }: { scope: "mine" | "shared" }) {
 /** Whole screens that are components, not block screens: drawn from sample data so a picture of them needs no box. */
 function Sample({ name }: { name: string }) {
   const { phone } = useUiTheme();
+  // Home, quiet and with the day in front of you. The ask field stays in the column at both widths.
+  if (name === "home-quiet" || name === "home-busy") return <HomePreview day={name === "home-quiet" ? "quiet" : "busy"} />;
   // An agent's Routines and Watchers as its panel beside a chat lists them, and a Watcher's card in the chat where the person asked for it (sample data, no box).
   if (name === "agent-routines") return <View style={{ maxWidth: 360 }}><RoutinesView agent="scout" rows={SAMPLE_ROWS} onAct={() => {}} /></View>;
   // The empty chat a new thread opens (the title, the start of the chat, the composer focused at the bottom) and the who pane beside a chat, on the sample world.

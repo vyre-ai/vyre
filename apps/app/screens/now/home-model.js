@@ -1,4 +1,4 @@
-// The top of Home: the date, the greeting by the person's local time, and a one-line summary of what needs them. Pure (home-model.test.js).
+// The top of Home: the date, the greeting by the person's local time, who can be asked, and whether the day is quiet. Pure (home-model.test.js).
 import { displayName } from "../../src/state/agent-name.js";
 
 /** The part of the day on the person's own clock. @param {number} hour 0 to 23 */
@@ -51,4 +51,23 @@ export function agentCards(rows) {
 
 /** How many agents are working now, for the summary line. @param {{ live: boolean }[]} cards */
 export const workingCount = (cards) => cards.filter((a) => a.live).length;
+
+/** True when this agent's name is Engineer, in any case. That agent is not offered as a chip. @param {unknown} name */
+export const isEngineer = (name) => String(name ?? "").trim().toLowerCase() === "engineer";
+
+/** Chips under the ask field: the assistant first, then agents the person made. Never the Engineer. @param {ReturnType<typeof agentCards>} cards */
+export const askChips = (cards) => (Array.isArray(cards) ? cards : []).filter((a) => a && !isEngineer(a.name) && !isEngineer(a.title));
+
+/** The one line when nothing is waiting, running, on the calendar, or recent. */
+export const QUIET_LINE = "All clear. Nothing needs you today.";
+
+/** Nothing in Needs you, Doing, Today or Recent. The task field does not count. @param {{ needs?: number, doing?: number, today?: number, recent?: number }} n */
+export const isQuietDay = (n) => !((n.needs ?? 0) || (n.doing ?? 0) || (n.today ?? 0) || (n.recent ?? 0));
+
+/** What a chip writes into the ask field: replace a leading @token, or prefix "@name ". @param {string} text @param {string} name */
+export function mention(text, name) {
+  const at = `@${name}`;
+  if (/^@\S*/.test(text)) return text.replace(/^@\S*\s*/, `${at} `);
+  return text ? `${at} ${text}` : `${at} `;
+}
 

@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { View } from "react-native";
-import { Button, Field, Text, showToast } from "@vyre/ui";
-import { Section } from "../../ui/tasks/Section";
+import { Text, showToast } from "@vyre/ui";
 import { planner } from "../planner/planner";
 import { addInput, kindWord, previewLine, splitKind } from "../planner/model";
+import { HomeField } from "./HomeField";
 
-/** Tasks on Home: the planner's capture ("remind me at 7") is the composer. */
+/** The planner's capture ("remind me at 7") is one line. Enter and the plus add it. */
 export function HomeTasks() {
   const [words, setWords] = useState("");
   const [preview, setPreview] = useState("");
@@ -28,12 +28,9 @@ export function HomeTasks() {
     planner.add(input).then(() => { setWords(""); setPreview(""); showToast("Added."); }).catch((e) => showToast(e instanceof Error && e.message ? e.message : "That did not go through.")).finally(() => setAdding(false));
   };
   return (
-    <Section title="Tasks">
-      <View className="gap-s3">
-        <Field label="Add a task" name="task" value={words} onChangeText={setWords} placeholder="Remind me at 7, or todo buy milk" onSubmit={add} />
-        {preview ? <Text size="secondary" tone="label">{preview}</Text> : null}
-        <Button kind="primary" label={adding ? "Adding" : "Add"} onPress={add} disabled={!words.trim() || adding} />
-      </View>
-    </Section>
+    <View className="gap-s2">
+      <HomeField name="Add a task" value={words} onChangeText={setWords} placeholder="Add a task, like remind me at 7" icon="plus" action="Add a task" busy={adding} busyLabel="Adding" onSubmit={add} />
+      {preview ? <Text size="secondary" tone="label">{preview}</Text> : null}
+    </View>
   );
 }
