@@ -332,7 +332,8 @@ export default {
     /** The one-time copy of the server-wide values into a person's row, the first time that person reads or writes. @type {Map<string, Promise<void>>} */
     const seeding = new Map();
     const seedPerson = (/** @type {string} */ person) => {
-      if (people.seeded(person)) return Promise.resolve();
+      // Reading a store (push.settings) may come back here for the same person: while the copy is under way a nested call goes on without it (its read falls to the server-wide value, which is what the copy takes).
+      if (people.seeded(person) || seeding.has(person)) return Promise.resolve();
       let run = seeding.get(person);
       if (!run) {
         run = (async () => {
@@ -671,7 +672,8 @@ export default {
         if (i.holds) return { holds: people.anyHolds(String(i.holds.key), i.holds.value) };
         if (!PERSON.test(String(i.person))) throw Object.assign(new Error("person is a person's id"), { code: "bad_input" });
         /** @type {Record<string, any>} */ const values = {};
-        for (const d of decls().filter(x => x.perPerson === true && (!Array.isArray(i.keys) || i.keys.includes(x.key)))) { const l = await level(d, "account", null, i.person); if (l.value !== undefined) values[d.key] = l.value; }
+        // the person's own rows only: a module that asks (push) holds the server-wide value itself, and a read that fell through to a store would ask that module back
+        for (const d of decls().filter(x => x.perPerson === true && (!Array.isArray(i.keys) || i.keys.includes(x.key)))) { const v = people.get(i.person, d.key); if (v !== undefined) values[d.key] = v; }
         return { values };
       },
     });
@@ -691,7 +693,7 @@ export default {
         if (d.module !== mod || !String(i.key).startsWith(mod + ".")) refuse(`${mod} may write only its own settings (${mod}.*)`);
         if (d.confirm || d.security === "loosens") refuse(`${d.key} needs the person's confirm; only the person changes it`);
         const value = i.value === undefined || i.value === null ? undefined : coerce(d, i.value);
-        const before = await level(d, "account", null, i.person);
+        const before = { value: people.get(i.person, d.key) };
         await seedPerson(i.person);
         if (value === undefined) people.del(i.person, d.key); else people.set(i.person, d.key, value);
         const r = commit();
