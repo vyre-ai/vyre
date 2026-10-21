@@ -11,6 +11,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - feat(shell): Flows, Kits and Sites show the Space's own screens (apps/app/screens/flows/FlowScreen.tsx, KitsScreen.tsx, apps/app/screens/sites/SitesScreen.tsx).
 - feat(projects): a project page's tabs are Overview, Chats, Tasks, Files, Flows, Team, Memory, Site and Timeline (apps/app/screens/projects/panes.ts).
 - feat(records): tags show as saved views, and a record can draft a document, send it for signing, or send email (apps/app/screens/records/tag-views.js, DocumentsBar.tsx).
+- feat(windows): the window remembers its place and size, is titled Vyre, uses Segoe UI, and hides the web view scrollbar (local/capsule/native-win/app/src/window_frame.rs).
 
 ## 0.6.6
 
