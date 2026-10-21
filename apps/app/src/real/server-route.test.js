@@ -208,6 +208,12 @@ test("route: a task of B decided while A is showing reaches B, and the call is t
   assert.deepEqual(go({ tool: "tasks.get", input: { id: "tsk_b1" }, itemSpaces, showing: "all" }), { box: "boxb", space: B }, "under All too");
 });
 
+test("route: a new thread made from a chat goes to the server of the Space showing; with no Space showing it is still refused", () => {
+  assert.deepEqual(go({ tool: "work.chat.thread.new", input: { id: "0190c3f2-aaaa-4abc-8def-000000000009", agent: "qi" }, itemSpaces, showing: B }), { box: "boxb", space: B });
+  assert.deepEqual(go({ tool: "threads.effort", input: { thread: "thr_new" }, itemSpaces, showing: A }), { box: "boxa", space: A });
+  assert.equal(go({ tool: "work.chat.thread.new", input: { id: "0190c3f2-aaaa-4abc-8def-000000000009" }, itemSpaces, showing: "all" }).error?.code, "item_unknown_server");
+});
+
 test("route: an id never seen is refused with several servers, even when a Space is showing", () => {
   const r = go({ tool: "tasks.decide", input: { id: "tsk_zzz" }, itemSpaces, showing: A });
   assert.equal(r.error?.code, "item_unknown_server");

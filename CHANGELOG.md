@@ -20,6 +20,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - feat(records): tags show as saved views, and a record can draft a document, send it for signing, or send email (apps/app/screens/records/tag-views.js, DocumentsBar.tsx).
 - feat(windows): the window remembers its place and size, is titled Vyre, uses Segoe UI, and hides the web view scrollbar (local/capsule/native-win/app/src/window_frame.rs).
 - feat(web): a phone can save Vyre to the home screen, and the page links its manifest and icons (apps/app/ui/shell/HomeScreenHint.tsx, apps/app/public/index.html).
+- fix(app): a new thread started from a chat (work.chat.thread.new, threads.*) with two servers paired goes to the server of the Space showing; it was refused as "does not know which Space this belongs to". Any other unseen id is still refused (apps/app/src/real/server-route.js).
+- fix(chats): Chats lists only the chats the person started: the Engineer's chats and Flow runs no longer flash in and out of the list (apps/app/screens/chats/useConvos.ts).
 - fix(shell): the route test expects the vault design page deleted, as the Settings part does (apps/app/src/shell/route-aliases.test.js).
 - fix(shell): a sidebar search that only one place starts with finds that place, and one that several labels contain stays ambiguous (lib/sidebar/model.js, lib/sidebar/model.test.js).
 - chore(design): picture references for the five-place sidebar, the phone home-screen hint, Draft a document, and the Computer tab (design-refs).

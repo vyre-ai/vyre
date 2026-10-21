@@ -71,7 +71,10 @@ export function serverFor(o) {
   if (o.paired.length > 1 && needsSpace(o.tool) && !(o.input && typeof o.input.space === "string" && o.input.space) && !(o.input && typeof o.input.urn === "string")) {
     const idv = ID_KEYS.map((k) => (o.input ? o.input[k] : undefined)).find((v) => typeof v === "string" && v);
     if (typeof idv === "string") {
-      const sp = (o.itemSpaces ?? {})[idv];
+      // A chat or thread id never listed yet (one being made, from the chat the person is in) is in the Space showing: with one Space at a time, that is where the person is acting (0.6.7). Any other
+      // unseen id (a task, a rule) is still refused.
+      const chatty = /^(work\.chat\.|threads\.|stream\.)/.test(o.tool ?? "");
+      const sp = (o.itemSpaces ?? {})[idv] ?? (chatty && SPACE.test(o.showing ?? "") ? /** @type {string} */ (o.showing) : undefined);
       if (sp === "") return MANY;
       if (!sp) return { error: { code: "item_unknown_server", message: "Vyre does not know which Space this belongs to. Open the Space it is in, so its list loads, then try again. Nothing was changed." } };
       const at = o.spaceServers[sp];

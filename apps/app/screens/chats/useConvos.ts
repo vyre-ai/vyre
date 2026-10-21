@@ -7,8 +7,6 @@ import { callT } from "../../src/real/call-tool";
 import { summaryByAgent } from "./summary-model.js";
 import { teammates } from "../teammates/teammates";
 import type { ChatRow } from "./chats-model.js";
-import { useFlowChats } from "./FlowChatsList";
-import { flowChatSub } from "./flow-chat-model.ts";
 import { viewCache } from "../../src/state/cache";
 import { useSpaces } from "../shell/state";
 import { AUX_BUDGET_MS, auxKey, packAux, unpackAux } from "./chats-cache.js";
@@ -23,7 +21,6 @@ export function useConvos(chats: readonly ChatRow[]): Convo[] & { ready?: boolea
   const [people, setPeople] = useState<Person[]>([]);
   const [assistantName, setAssistantName] = useState("");
   const [assistantAgent, setAssistantAgent] = useState("");
-  const { chats: flowChats } = useFlowChats();
   const space = useSpaces((x) => x.space);
   const key = auxKey(space);
   // `ready` is the key whose agents and teammates are known (kept or fresh), or whose wait ran out: the list draws once, not once per answer
@@ -66,7 +63,9 @@ export function useConvos(chats: readonly ChatRow[]): Convo[] & { ready?: boolea
     })();
     return () => { live = false; };
   }, [st, key]);
-  const flows = useMemo(() => (flowChats ?? []).map((c) => ({ id: c.id, title: c.title, line: flowChatSub(c, Date.now()), last: c.last, runs: c.runs, needs: c.needsYou })), [flowChats]);
-  const convos = useMemo(() => convosFrom({ chats, agents, people, flows, assistantName, assistantAgent }), [chats, agents, people, flows, assistantName, assistantAgent]);
+  // Chats lists only the chats the person started with people and agents: the Engineer's chats (a new site, a new flow) are reached from where they were made, and Flows from Projects (owner, 22 Oct).
+  const mine = useMemo(() => chats.filter((c) => c.engineer !== true && c.pinned !== "engineer" && !c.agents.some((a) => a.toLowerCase() === "engineer")), [chats]);
+  const ownAgents = useMemo(() => agents.filter((a) => a.name.toLowerCase() !== "engineer"), [agents]);
+  const convos = useMemo(() => convosFrom({ chats: mine, agents: ownAgents, people, flows: [], assistantName, assistantAgent }), [mine, ownAgents, people, assistantName, assistantAgent]);
   return useMemo(() => Object.assign([...convos], { ready: ready === key }), [convos, ready, key]);
 }
