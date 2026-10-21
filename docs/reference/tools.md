@@ -11541,7 +11541,7 @@ A team member's own AI sign-in call on the team's server: list, signin, remove o
 
 ### `sessions.accounts.set`
 
-Set an account's privacy choice (Grok only): privacy true is privacy mode on, xAI does not keep the account's chats and Grok cannot make video; false is off, xAI keeps them and may train on them, and Grok can make video. Records the choice; the setting itself is changed on xAI's side, in Grok's /privacy settings. For an OpenCode account, go_only true uses only OpenCode Go when that key lists Go models, and false uses the regular models.
+Set an account's privacy choice (Grok only): privacy true is privacy mode on, xAI does not keep the account's sessions and Grok cannot make video; false is off, xAI keeps them and may train on them, and Grok can make video. Records the choice; the setting itself is changed on xAI's side, in Grok's /privacy settings. For an OpenCode account, go_only true uses only OpenCode Go when that key lists Go models, and false uses the regular models.
 
 - Input:
   - `account` string, required
@@ -18248,7 +18248,7 @@ Run a turned-on watcher now and return what happened.
 
 ### `watchers.shown`
 
-The watcher cards shown in a thread, with the hash each card carried when it was shown: { project, kinds, watchers: [{ name, hash, title, state, project, at }] }. Answered from a record made when watchers.card or watchers.preset served the card, never from the folder now. The assistant's recorder and a paired device read it.
+The watcher cards shown in a thread, each with the hash it carried when shown. Answered from the record made when the card was served.
 
 - Input:
   - `thread` string, required
