@@ -158,7 +158,7 @@ export function RefText({ text, style }: { text: string; style?: object }) {
 
 /** A person's words. A key they pasted was moved to the Vault and left a reference (vault://name): it reads as a chip, and one quiet line under the words says it is secured. */
 export function UserText({ text, pending, tone }: { text: string; pending: boolean; tone?: "inverse" }) {
-  const style = pending ? { opacity: 0.55 } : undefined;
+  const style = pending ? { opacity: 0.8 } : undefined;
   const names = [...new Set(partsOf(text).flatMap((p) => ("vault" in p ? [p.vault] : [])))];
   if (!names.length) return <Text size="body" selectable tone={tone} style={style}>{text}</Text>;
   return (
@@ -444,6 +444,13 @@ export function useMessageKeys(off: boolean) {
   }, []);
 }
 
+/** "Sending" only when the box is slow to echo: a send that lands within a second never says it. */
+function SendingNote() {
+  const [show, setShow] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setShow(true), 1000); return () => clearTimeout(t); }, []);
+  return show ? <Text size="caption" tone="label">Sending</Text> : null;
+}
+
 function ItemBody({ store, k, ctx }: { store: ChatStore; k: string; ctx: BlockCtx }) {
   const it = useRow(store, k);
   if (!it) return null;
@@ -460,7 +467,7 @@ function ItemBody({ store, k, ctx }: { store: ChatStore; k: string; ctx: BlockCt
           <QuoteBlock store={store} it={it} ctx={ctx} />
           <UserText text={it.text} pending={!!it.pending} tone={mine ? "inverse" : undefined} />
           {Array.isArray(it.attachments) && it.attachments.length ? <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>{it.attachments.map((a: { id: string; name: string; bytes: number }) => (thumbFor(a.id) ? <Thumb key={a.id} uri={thumbFor(a.id) as string} name={a.name} size={wide ? 120 : 96} /> : <Chip key={a.id} tone="plain" icon="file">{`${a.name} · ${sizeWord(a.bytes)}`}</Chip>))}</View> : null}
-          {it.pending ? <Text size="caption" tone="label">Sending</Text> : null}
+          {it.pending ? <SendingNote /> : null}
           {it.failed ? <NotSent store={store} k={k} reason={String(it.failed)} /> : null}
         </Message>
         </Replyable>

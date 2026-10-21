@@ -344,9 +344,10 @@ export function createGroup(viewer) {
     /** The label for an `a:`/`u:` row key. @param {string} key */
     label(key) {
       const m = msgs.get(key.slice(2));
-      return authorLabel({ author: m?.author ?? (key.startsWith("u:") ? viewer : undefined), acts_for: m?.acts_for, viewer, names: names() });
+      return authorLabel({ author: m?.author ?? (key.startsWith("u:") || key.startsWith("o:") ? viewer : undefined), acts_for: m?.acts_for, viewer, names: names() });
     },
-    /** @param {string} key */ isMine: (key) => (msgs.get(key.slice(2))?.author ?? (key.startsWith("u:") ? viewer : "")) === viewer,
+    /** A row the person is sending (`o:`, before the box echoes it) is theirs too, so it sits on their side from the first frame. @param {string} key */
+    isMine: (key) => (msgs.get(key.slice(2))?.author ?? (key.startsWith("u:") || key.startsWith("o:") ? viewer : "")) === viewer,
     /** @param {string} message */ reactions: (message) => [...(reactions.get(message) ?? new Map()).entries()].map(([emoji, who]) => ({ emoji, count: who.size, mine: who.has(viewer) })),
     /** @param {string} message */ pinned: (message) => pins.has(message),
     /** @param {string} message */ replyCount: (message) => replies.get(message)?.length ?? 0,

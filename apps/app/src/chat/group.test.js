@@ -108,6 +108,7 @@ test("the group folds a conversation: authors, presence, reactions, pins, thread
   assert.equal(g.mentioned("m1"), true);
   assert.equal(g.label("u:m1").name, "chris");
   assert.equal(g.isMine("u:m1"), false);
+  assert.equal(g.isMine("o:1"), true, "a message being sent sits on the sender's side before the box echoes it");
 
   g.apply(fr("read-marker", { upto: 1 }, { author: V }));
   const r = g.apply(fr("text-delta", { message: "k1", index: 0, text: "On it" }, { author: "assistant:kit", acts_for: "person:chris", message: "k1" }));
