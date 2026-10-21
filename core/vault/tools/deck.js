@@ -29,14 +29,13 @@ const GEN_FIELD = { login: "password", secret: "value", "api-key": "value" };
  * @param {{ ctx: any, vault: import("../vault.js").Vault, fetch?: typeof globalThis.fetch }} deps
  */
 export function register({ ctx, vault, fetch = httpFetch }) {
-  const opts = () => (ctx.config && ctx.config.vault) || {};
+  const breachOn = () => (ctx.config && ctx.config.vault && ctx.config.vault.breach) === "ask";
 
   ctx.tool("vault.caps", {
     description: "What this vyred lets a surface do with the Vault: reveal (needs a presence proof) and the breach check mode. No value.",
     input: obj({}),
     run: () => {
-      const o = opts();
-      return { reveal: true, breach: o.breach === "ask" ? "ask" : "off", host: String((ctx.config && ctx.config.name) || "vyre") };
+      return { reveal: true, breach: breachOn() ? "ask" : "off", host: String((ctx.config && ctx.config.name) || "vyre") };
     },
   });
 
@@ -110,7 +109,7 @@ export function register({ ctx, vault, fetch = httpFetch }) {
     callers: PEOPLE,
     presence: { summary: async () => "Send the first 5 characters of each password's SHA-1 to api.pwnedpasswords.com" },
     run: async (_input, { caller }) => {
-      if (opts().breach !== "ask") throw new Error('the breach check is off · set vault.breach to "ask" in config.json to allow it');
+      if (!breachOn()) throw new Error("the breach check is off · turn it on in Vault, under Health");
       const rows = /** @type {any[]} */ (ctx.store.db.prepare("SELECT * FROM vault_items WHERE kind = 'login' ORDER BY name").all());
       const entries = [];
       for (const r of rows) {
