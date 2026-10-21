@@ -88,7 +88,7 @@ function ActionRow({ children, side }: { children: React.ReactNode; side: "left"
   const { color } = useUiTheme();
   // Kept mounted when hidden: the bar is what a right-click or a long press asks to open the message menu, so it has to be there before anyone hovers.
   return (
-    <View style={{ display: on ? "flex" : "none", position: "absolute", top: -14, zIndex: 5, [side]: 8, flexDirection: "row", flexWrap: "wrap", alignItems: "center", columnGap: 12, minHeight: 28, paddingHorizontal: 8, borderRadius: 8, borderWidth: 1, borderColor: color.edge, backgroundColor: color["surface-2"] }}>
+    <View style={{ display: on ? "flex" : "none", position: "absolute", top: -30, zIndex: 5, [side]: 0, flexDirection: "row", flexWrap: "nowrap", alignItems: "center", columnGap: 12, minHeight: 28, paddingHorizontal: 8, borderRadius: 8, borderWidth: 1, borderColor: color.edge, backgroundColor: color["surface-2"], ...({ whiteSpace: "nowrap" } as object) }}>
       {children}
     </View>
   );
@@ -125,7 +125,7 @@ function Message({ who, family, meta, sub, dress, children, wide, provider, mine
       <ActionsOn.Provider value={hover || held || focus || menuShown || showActions()}>
       <View style={{ paddingHorizontal: side, paddingTop: continued ? 8 : 16, paddingBottom: 0, alignItems: mine ? "flex-end" : "flex-start" }}>
         {showWho ? <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingBottom: 4, paddingLeft: 2 }}><Face name={who} family={family} size={24} provider={provider} /><Text size="caption" medium tone="label">{who}</Text></View> : null}
-        {/* The bubble is the anchor of its toolbar: the actions float over its top corner on hover, focus or a long press, so they take no room between messages. */}
+        {/* The bubble is the anchor of its toolbar: the actions float just above it on hover, focus or a long press, so they take no room between messages and never cover the words. */}
         <View style={{ maxWidth: "75%", minWidth: 0 }}>
           <View style={{ gap: 6, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 10, backgroundColor: mine ? color.primary : color["surface-3"],
             ...(dress?.mentioned || dress?.flash ? { borderWidth: 2, borderColor: color.accent } : {}) }}>
@@ -133,7 +133,8 @@ function Message({ who, family, meta, sub, dress, children, wide, provider, mine
             {children}
             {dress?.cut ? <Text size="caption" tone="warn">{dress.cut}</Text> : null}
           </View>
-          {bar || detail ? <ActionRow side={mine ? "left" : "right"}>{detail ? <Text size="caption" tone="label">{detail}</Text> : null}{bar}</ActionRow> : null}
+          {/* one line above the bubble, flush with its outer edge: on a short message it never wraps over the words */}
+          {bar || detail ? <ActionRow side={mine ? "right" : "left"}>{detail ? <Text size="caption" tone="label">{detail}</Text> : null}{bar}</ActionRow> : null}
         </View>
         {dress?.replies ? <Text size="caption" tone="muted" style={{ paddingTop: 2 }}>{`${dress.replies} ${dress.replies === 1 ? "reply" : "replies"}`}</Text> : null}
         {footer}

@@ -21,6 +21,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - feat(windows): the window remembers its place and size, is titled Vyre, uses Segoe UI, and hides the web view scrollbar (local/capsule/native-win/app/src/window_frame.rs).
 - feat(web): a phone can save Vyre to the home screen, and the page links its manifest and icons (apps/app/ui/shell/HomeScreenHint.tsx, apps/app/public/index.html).
 - fix(app): a new thread started from a chat (work.chat.thread.new, threads.*) with two servers paired goes to the server of the Space showing; it was refused as "does not know which Space this belongs to". Any other unseen id is still refused (apps/app/src/real/server-route.js).
+- fix(chat): the hover actions sit on one line just above the message, flush with its edge, and no longer wrap over a short message (apps/app/src/chat/ChatRows.tsx).
 - fix(chat): a message being sent sits on your side from the first frame, not on the left; "Sending" shows only when the server takes over a second, and the words are barely dimmed meanwhile (apps/app/src/chat/group.js, ChatRows.tsx).
 - fix(chats): Chats lists only the chats the person started: the Engineer's chats and Flow runs no longer flash in and out of the list (apps/app/screens/chats/useConvos.ts).
 - fix(shell): the route test expects the vault design page deleted, as the Settings part does (apps/app/src/shell/route-aliases.test.js).
