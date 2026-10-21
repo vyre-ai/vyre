@@ -6,7 +6,7 @@ import { useRouter } from "expo-router";
 import { Button, Card, Divider, Field, LoadingState, Row, Segmented, Switch, Text, showToast } from "@vyre/ui";
 import { Page } from "../places/Frame";
 import { agent } from "./agent";
-import { NEW_FORM, createInput, type NewAgentForm } from "./agent-model.ts";
+import { NEW_FORM, createInput, initialProjects, type NewAgentForm } from "./agent-model.ts";
 
 export default function NewAgent() {
   const router = useRouter();
@@ -14,7 +14,7 @@ export default function NewAgent() {
   const [projects, setProjects] = useState<{ slug: string; name: string }[] | null>(null);
   const [problem, setProblem] = useState("");
   const [busy, setBusy] = useState(false);
-  useEffect(() => { agent.projects().then((p) => { setProjects(p); setF((x) => ({ ...x, hasProjects: p.length > 0 })); }).catch(() => setProjects([])); }, []);
+  useEffect(() => { agent.projects().then((p) => { setProjects(p); setF((x) => ({ ...x, hasProjects: p.length > 0, projects: x.projects.length ? x.projects : initialProjects(p) })); }).catch(() => setProjects([])); }, []);
   const set = (p: Partial<NewAgentForm>) => setF((x) => ({ ...x, ...p }));
   const toggle = (slug: string) => set({ projects: f.projects.includes(slug) ? f.projects.filter((s) => s !== slug) : [...f.projects, slug] });
   const submit = () => {
