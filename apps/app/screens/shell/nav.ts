@@ -4,7 +4,7 @@ import type { NavDef, NavItem } from "@vyre/ui";
 import { builtinEntries, layout } from "../../../../lib/sidebar/model.js";
 import { RC } from "./rc";
 
-/** The build's flags that decide which built-in places exist (Sites is only in some builds). */
+/** The build's flags that decide which optional places exist. None of the five places is optional. */
 export const PLACE_FLAGS = { sites: Boolean(RC.sites) };
 
 /** A drawn layout as the shell's nav definition. @param {ReturnType<typeof layout>} l */

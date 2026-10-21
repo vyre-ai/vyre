@@ -2,6 +2,10 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## 0.6.7
+
+- feat(shell): the sidebar is Home, Chats, Projects, Records and Files, with Vault and Settings at the foot. Apps, Sites, Agents, Flows, Calendar, Memory and Build are not places (lib/sidebar/model.js, apps/app/ui/shell/ShellSample.tsx, apps/app/ui/shell/sidebar-stack.js).
+
 ## 0.6.6
 
 - fix(app): a chat whose server is not yet known goes to the server of the Space showing. With one Space at a time the chat map was learned only from the removed All spaces list, so every send with two servers paired was refused as "Vyre does not know which server this chat is on".

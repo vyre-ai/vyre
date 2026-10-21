@@ -87,14 +87,13 @@ export function UiShell({ children }: { children: React.ReactNode }) {
       if (e.key.toLowerCase() === "l" && !allowsMock()) { e.preventDefault(); void lockIdentity().then((r: { ok: boolean; message?: string }) => { if (r.ok) lockChanged(); else showToast(r.message ?? "That did not go through."); }); return; }
       // Cmd N is a new chat with your assistant, in every place
       if (e.key.toLowerCase() === "n") { e.preventDefault(); router.push("/u/chats/new-thread" as never); return; }
-      if (e.key.toLowerCase() === "b" && arranged.bottom.some((b) => b.id === "build")) { e.preventDefault(); router.push("/u/playbooks" as never); return; }
       // Cmd 1 to Cmd 9 pick the Space in that place of the footer menu
       const to = spaceForKey(DATA.spaces, e.key);
       if (to) { e.preventDefault(); setShowing(to); }
     };
     window.addEventListener("keydown", on);
     return () => window.removeEventListener("keydown", on);
-  }, [router, arranged, DATA.spaces, setShowing]);
+  }, [router, DATA.spaces, setShowing]);
   // Inside Build, up and down move through its list and Escape folds back to the main sidebar, as in Settings.
   useEffect(() => {
     if (Platform.OS !== "web" || typeof window === "undefined" || sectionOf(path) === null) return;

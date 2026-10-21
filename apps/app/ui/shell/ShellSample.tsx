@@ -19,17 +19,18 @@ const SPACES: ShellSpace[] = [
 
 const NAV: NavDef = {
   items: [
-    { id: "now", label: "Now", icon: "now", href: "/u/now", badge: 3 },
-    { id: "chat", label: "Chat", icon: "chat", href: "/u/chats" },
+    { id: "now", label: "Home", icon: "now", href: "/u/now", badge: 3 },
+    { id: "chat", label: "Chats", icon: "chat", href: "/u/chats" },
     { id: "projects", label: "Projects", icon: "projects", href: "/u/projects" },
     { id: "records", label: "Records", icon: "records", href: "/u/records/contact" },
     { id: "drive", label: "Files", icon: "drive", href: "/u/files" },
   ],
-  groups: [
-    { name: "AI", items: [{ id: "assistants", label: "Agents", icon: "assistants", href: "/u/assistants" }, { id: "flows", label: "Flows", icon: "flows", href: "/u/flows" }] },
-  ],
+  groups: [],
   more: [],
-  bottom: [{ id: "settings", label: "Settings", icon: "settings", href: "/u/settings" }],
+  bottom: [
+    { id: "vault", label: "Vault", icon: "vault", href: "/u/vault" },
+    { id: "settings", label: "Settings", icon: "settings", href: "/u/settings" },
+  ],
 };
 
 const PROJECTS: PanelDef = {

@@ -67,12 +67,12 @@ test("sidebar: hide, show, move, group and remove", async t => {
   await c("sidebar.edit", { op: "show", key: "place:vault" });
   g = (await c("sidebar.get", {})).data;
   assert.ok(!g.entries.find((/** @type {any} */ e) => e.id === "vault").hidden);
-  await c("sidebar.edit", { op: "move", key: "place:memory", index: 0 });
-  assert.equal((await c("sidebar.get", {})).data.entries[0].id, "memory");
+  await c("sidebar.edit", { op: "move", key: "place:drive", index: 0 });
+  assert.equal((await c("sidebar.get", {})).data.entries[0].id, "drive");
   await c("sidebar.edit", { op: "group", what: "Files", group: "Work" });
   assert.equal((await c("sidebar.get", {})).data.entries.find((/** @type {any} */ e) => e.id === "drive").group, "Work");
-  await c("sidebar.edit", { op: "remove", what: "Flows" });
-  assert.equal((await c("sidebar.get", {})).data.entries.find((/** @type {any} */ e) => e.id === "flows").hidden, true, "a place is hidden, not deleted");
+  await c("sidebar.edit", { op: "remove", what: "Records" });
+  assert.equal((await c("sidebar.get", {})).data.entries.find((/** @type {any} */ e) => e.id === "records").hidden, true, "a place is hidden, not deleted");
   assert.equal((await c("sidebar.edit", { op: "hide", key: "place:settings" })).data.ok, true);
   assert.ok(!(await c("sidebar.get", {})).data.entries.find((/** @type {any} */ e) => e.id === "settings").hidden, "settings cannot be hidden");
 });
@@ -88,9 +88,9 @@ test("sidebar: the team's default is sidebar.team: the person sets it, and a per
   g = (await c("sidebar.get", {})).data;
   assert.ok(g.default && g.default.some((/** @type {any} */ e) => keyOf(e) === "module:docuseal/documents"));
   // an assistant may arrange the person's OWN list at once
-  assert.equal((await c("sidebar.edit", { op: "hide", what: "Memory" }, "mcp")).error, undefined);
+  assert.equal((await c("sidebar.edit", { op: "hide", what: "Records" }, "mcp")).error, undefined);
   g = (await c("sidebar.get", {})).data;
-  assert.equal(g.entries.find((/** @type {any} */ e) => e.id === "memory").hidden, true);
+  assert.equal(g.entries.find((/** @type {any} */ e) => e.id === "records").hidden, true);
   assert.ok(g.entries.some((/** @type {any} */ e) => keyOf(e) === "module:docuseal/documents"), "the default's entry still reaches the merged list");
   assert.deepEqual((await c("sidebar.get", {}, "mcp")).data.can_set_default, false, "an assistant is told it may not set the default itself");
 });
@@ -103,7 +103,7 @@ test("sidebar: a proven assistant's change to the team's default is held for a y
   assert.doesNotMatch(String(r.error.message), /not available|Only an owner/);
   assert.equal((await d.registry.call("sidebar.get", {}, "cli", {})).data.default, null, "nothing changed");
   // the same assistant arranges the person's own list at once
-  const own = await d.registry.call("sidebar.edit", { op: "hide", what: "Memory" }, "mcp:agent:kit", { thread: "thr_abcdefgh" });
+  const own = await d.registry.call("sidebar.edit", { op: "hide", what: "Records" }, "mcp:agent:kit", { thread: "thr_abcdefgh" });
   assert.equal(own.error, undefined, JSON.stringify(own.error));
 });
 
@@ -122,8 +122,8 @@ test("sidebar: set replaces a whole list (the app's drag and drop), cleaned, for
 test("sidebar: reset drops my own list and leaves the team's", async t => {
   const { c } = await world(t);
   await c("sidebar.team", { op: "hide", what: "Vault" });
-  await c("sidebar.edit", { op: "hide", what: "Flows" });
-  assert.deepEqual((await c("sidebar.get", {})).data.entries.filter((/** @type {any} */ e) => e.hidden).map((/** @type {any} */ e) => e.id).sort(), ["flows", "vault"]);
+  await c("sidebar.edit", { op: "hide", what: "Records" });
+  assert.deepEqual((await c("sidebar.get", {})).data.entries.filter((/** @type {any} */ e) => e.hidden).map((/** @type {any} */ e) => e.id).sort(), ["records", "vault"]);
   assert.equal((await c("sidebar.edit", { op: "reset" })).error, undefined);
   const g = (await c("sidebar.get", {})).data;
   assert.deepEqual(g.mine, []);

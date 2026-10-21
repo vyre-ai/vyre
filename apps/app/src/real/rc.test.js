@@ -23,10 +23,8 @@ test("createIdentity refuses on a blocked browser before it makes a key, opens s
   assert.ok(!/saveIdentity|indexedDB|fetch\(/.test(body), "nothing is stored or fetched before the guard");
 });
 
-test("Sites is hidden from nav and routes where the build has no Sites", () => {
-  // the places are lib/sidebar/model.js (Sites is `optional`), and the app shows it only where the build has it (PLACE_FLAGS in nav.ts)
-  assert.match(read("../../../../lib/sidebar/model.js"), /id: "sites"[^}]*optional: "sites"/);
-  assert.match(read("../../screens/shell/nav.ts"), /sites: Boolean\(RC\.sites\)/);
+test("Sites is not a sidebar place; its route stays behind the build flag", () => {
+  assert.doesNotMatch(read("../../../../lib/sidebar/model.js"), /id: "sites"/);
   assert.match(read("../../app/u/sites.tsx"), /RC\.sites \? SitesScreen : HiddenSites/);
 });
 
