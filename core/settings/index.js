@@ -597,7 +597,7 @@ export default {
         if (d.secret) throw Object.assign(new Error(`${d.key} is secret; set it again in Settings`), { code: "bad_input" });
         const prev = row.prev === null ? undefined : JSON.parse(row.prev);
         // A change to one person's own row is undone only by that person, on the account level it was made from.
-        if (row.level === "person" && (await callPerson(ctx.kernel, meta)) !== row.target) throw Object.assign(new Error("that change is another person's own setting"), { code: "denied" });
+        if (row.level === "person" && (await callPerson(ctx.kernel, meta)) !== row.target) throw Object.assign(new Error("that change is another person's own setting; only that person can undo it (settings.changes lists your own)"), { code: "denied" });
         const at = { [row.level]: row.target };
         const r = await change(row.level === "person" ? { key: row.key, level: "account", confirm: true } : { key: row.key, level: row.level, ...(row.target ? at : {}), confirm: true }, meta, prev);
         ctx.store.db.prepare("UPDATE settings_changes SET undone = 1 WHERE id = ?").run(row.id);
