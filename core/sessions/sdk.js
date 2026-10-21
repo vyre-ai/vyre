@@ -105,7 +105,7 @@ export function install(dir, { bundled = false, npm = npmBin(), timeout = 15 * 6
     fs.mkdirSync(dir, { recursive: true });
     const pkg = path.join(dir, "package.json");
     if (!fs.existsSync(pkg)) fs.writeFileSync(pkg, JSON.stringify({ name: "vyre-sessions-sdk", private: true, type: "module",
-      description: "The Claude Agent SDK Vyre runs its sessions on, installed by vyre on first use." }, null, 2) + "\n");
+      description: "The Claude Agent SDK Vyre runs its threads on, installed by vyre on first use." }, null, 2) + "\n");
     const args = ["install", "--no-audit", "--no-fund", "--omit=dev", "--no-package-lock", "--loglevel=error",
       ...(bundled ? [] : ["--omit=optional"]), `${PACKAGE}@${VERSION}`];
     const err = await new Promise(resolve => {

@@ -181,13 +181,13 @@ export function registerTranscriptTools(ctx, sb, str) {
   });
   // Where a transcript goes inside a computer's runner workspace, for a chat that moves there from this server (the runner module writes it; only this module knows the layout).
   ctx.tool("threads.work-transcript", {
-    description: "The file where the provider keeps a session's transcript inside a runner's workspace, for the folder the session will see as its own. Input: work, cwd, session.", internal: true, callers: ["module"],
+    description: "The file where the provider keeps a thread's transcript inside a runner's workspace, for the folder the thread will see as its own. Input: work, cwd, session.", internal: true, callers: ["module"],
     input: { type: "object", required: ["work", "cwd", "session"], properties: { work: str, cwd: str, session: str } },
     run: async i => { if (!/^[A-Za-z0-9_-]{1,100}$/.test(String(i.session)) || !path.isAbsolute(String(i.work))) return null; return { file: workTranscript(String(i.work), String(i.cwd), String(i.session), typeof i.provider === "string" ? i.provider : undefined) }; },
   });
   // A chat that moves to a computer ends its process here first, quietly (the same close as an idle one): its next turn then starts where the home's book now places it, from the transcript the computer was seeded with.
   ctx.tool("threads.chat-thread", {
-    description: "The thread a chat or session id runs as on this server, and its chat. Internal: the runner module, to move a chat to a computer. Input: thread.", internal: true, callers: ["module"],
+    description: "The thread a chat or provider run id runs as on this server, and its chat. Internal: the runner module, to move a chat to a computer. Input: thread.", internal: true, callers: ["module"],
     input: { type: "object", required: ["thread"], properties: { thread: str } },
     run: async i => resolve(String(i.thread)),
   });

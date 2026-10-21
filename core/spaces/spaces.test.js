@@ -2072,6 +2072,17 @@ test("spaces.names: the Space's own host reads this Space's name and a member's 
   assert.equal((await d.ok("spaces.names", { space, person: "per_nobodyatall000000000000000" }, "module:vyred")).person, null, "a stranger has no name: the run says a team member");
 });
 
+test("a paired owner's computer on a server with no identity of its own is answered its own device row by spaces.devices.list; with no proof, or for another device, it is not", async t => {
+  const kernel = { space: "spc_bbbbbbbbbbbb", for: () => null, chain: async () => ({}), proofFrom: () => ({}), serviceChain: () => ({}) };
+  const d = await device(t, { kernelFor: () => kernel });
+  const facts = { kernelFacts: { kind: "device", device_key_id: "mac00000000001", person: "per_" + "a".repeat(26), path: "wink" } };
+  const r = await d.ok("spaces.devices.list", {}, "cli", facts);
+  assert.deepEqual(r.device, { eid: "mac00000000001", label: null, self: true }, "the device's own row, by the id the daemon proved");
+  assert.deepEqual(r.spaces, []);
+  assert.equal((await d.call("spaces.devices.list", {}, "cli")).error?.code, "no_identity", "no facts, no answer");
+  assert.equal((await d.call("spaces.devices.list", { device: "another0000000" }, "cli", facts)).error?.code, "not_found", "it names no other device");
+});
+
 test("a home with no identity of its own refuses the reads that name a person, unless the daemon proved a paired device (no facts, no person)", async t => {
   const d = await device(t);
   assert.equal((await d.call("spaces.devices.list", {}, "cli")).error?.code, "no_identity");

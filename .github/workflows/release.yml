@@ -388,7 +388,10 @@ jobs:
   # with Vyre's own Android key before it is listed in the signed SHA256SUMS, and check-release-dist.mjs --android-release refuses any APK not signed by the pinned release certificate.
   # Starts with the run, not after prepare: it holds no secret and signs nothing here, and it needs only the version, which is the tag (prepare checks the tag and package.json agree, and `release` needs prepare, so a
   # wrong tag still publishes nothing). It was the longest job of v0.5.1 (23 of the run's 47 minutes), so it was the critical path; Gradle's caches are kept between releases.
+  # PAUSED from 0.6.7: phones are the web until further notice, so this job runs only when the repository variable VYRE_PHONE_BUILDS is 'go'. The job and its steps stay here; setting the variable brings the
+  # Android build, its signing and its checks back with no other change.
   android:
+    if: vars.VYRE_PHONE_BUILDS == 'go'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -510,7 +513,7 @@ jobs:
   release:
     needs: [prepare, images, manifests, app-web, windows, mac, android, node, pictures]
     # manifests is skipped on a dry run; the release job still runs to build and upload the files.
-    if: always() && needs.prepare.result == 'success' && needs.images.result == 'success' && needs.app-web.result == 'success' && needs.windows.result == 'success' && needs.android.result == 'success' && (needs.mac.result == 'success' || needs.mac.result == 'skipped') && (needs.manifests.result == 'success' || needs.manifests.result == 'skipped') && needs.node.result == 'success' && needs.pictures.result == 'success'
+    if: always() && needs.prepare.result == 'success' && needs.images.result == 'success' && needs.app-web.result == 'success' && needs.windows.result == 'success' && (needs.android.result == 'success' || needs.android.result == 'skipped') && (needs.mac.result == 'success' || needs.mac.result == 'skipped') && (needs.manifests.result == 'success' || needs.manifests.result == 'skipped') && needs.node.result == 'success' && needs.pictures.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     # The Ed25519 release key lives only in this environment's secrets; its reviewers (the lead and the
@@ -612,10 +615,12 @@ jobs:
             printf '\n## The apps\n\n- Mac: Vyre-aarch64.dmg (Apple silicon) and Vyre-x86_64.dmg (Intel). Not yet signed with an Apple Developer ID, so you sideload it: open the dmg, drag Vyre to Applications, open it once, and if macOS says it cannot check the app, allow it in System Settings, Privacy and Security, "Open Anyway".\n' >> dist/notes.md
           fi
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        if: needs.android.result == 'success'
         with:
           name: android-app
           path: ${{ runner.temp }}/android
-      - name: Add the Android app to dist (required, never optional; sideloaded), signed with the release key on a publish
+      - name: Add the Android app to dist (required whenever the Android build ran, never optional; sideloaded), signed with the release key on a publish
+        if: needs.android.result == 'success'
         env:
           # The Android release key lives only in this environment's secrets (the same environment as the Ed25519 release key) and is read only in this step.
           ANDROID_KEYSTORE_B64: ${{ env.PUBLISH == 'true' && secrets.ANDROID_KEYSTORE_B64 || '' }}
@@ -645,6 +650,7 @@ jobs:
           fi
           echo "Android: $apk and Vyre-android.apk, from this run's android job (sideloaded)" | tee -a "$GITHUB_STEP_SUMMARY"
           printf -- '- Android: Vyre-android.apk. Not on a store yet, so you sideload it: open the file on your phone and allow installs from your browser or Files app when Android asks. It is signed with the Vyre Android release key, the same key every release, so a newer file installs over an older one and nothing signed with another key can.\n' >> dist/notes.md
+          echo "ANDROID_FLAG=--android" >> "$GITHUB_ENV"
       - name: Pin the images by digest in the released compose.yml (literal lines, as the updater and installer require)
         if: env.PUBLISH == 'true'
         run: |
@@ -686,9 +692,9 @@ jobs:
         run: |
           # MAC_FLAG is --mac only when the Mac step put signed dmgs in dist (the step above sets it).
           if [ "$PUBLISH" = true ]; then
-            node scripts/check-release-dist.mjs dist --pulled --modules --installer --android --android-release --setup ${MAC_FLAG:-} --pubkey "$(sed -n 's/^RELEASE_KEY=//p' dist/vyre)"
+            node scripts/check-release-dist.mjs dist --pulled --modules --installer ${ANDROID_FLAG:+--android --android-release} --setup ${MAC_FLAG:-} --pubkey "$(sed -n 's/^RELEASE_KEY=//p' dist/vyre)"
           else
-            node scripts/check-release-dist.mjs dist --modules --installer --android --setup ${MAC_FLAG:-}
+            node scripts/check-release-dist.mjs dist --modules --installer ${ANDROID_FLAG:+--android} --setup ${MAC_FLAG:-}
           fi
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:

@@ -15,7 +15,7 @@
       { "name": "watchers.create.target", "reach": "modules" },
       { "name": "watchers.preset", "effect": "write", "reach": "asked", "target": "watchers.preset.target", "projectArg": "project" },
       { "name": "watchers.preset.target", "reach": "modules" },
-      { "name": "watchers.shown", "reach": "modules" },
+      { "name": "watchers.shown", "effect": "read", "reach": "anyone" },
       { "name": "watchers.pause", "effect": "write", "reach": "anyone", "projectArg": "project" },
       { "name": "watchers.write", "effect": "write", "reach": "asked" },
       { "name": "watchers.revise", "effect": "write", "reach": "anyone" },

@@ -6,7 +6,7 @@
  */
 export function registerRecallSessions(ctx, sb, str, optsOf) {
   ctx.tool("threads.recall-sessions", {
-    description: "Session ids Recall may attribute to one person: their threads, each thread's rollover windows, and nothing else. For recall.search member scoping only.", internal: true, callers: ["module"],
+    description: "Run ids Recall may attribute to one person: their threads, each thread's rollover windows, and nothing else. For recall.search member scoping only.", internal: true, callers: ["module"],
     input: { type: "object", required: ["person"], properties: { person: str } },
     run: async i => {
       const want = sb.canon(String(i.person));

@@ -62,7 +62,7 @@ export async function projectsFor(sb, run, want = {}) {
   const cwd = want.cwd ? path.resolve(want.cwd) : "";
   const here = cwd ? mapped.find(p => p.folders.some(f => under(cwd, f))) : null;
   if (here && mine.includes(here.slug)) mine = [here.slug, ...mine.filter(s => s !== here.slug)];
-  if (!want.all && mine.length > MAX_PER_SPAWN) { sb.deps.log(`threads: ${person} is on ${mine.length} projects; a session joins the first ${MAX_PER_SPAWN}, the one it works in first`); mine = mine.slice(0, MAX_PER_SPAWN); }
+  if (!want.all && mine.length > MAX_PER_SPAWN) { sb.deps.log(`threads: ${person} is on ${mine.length} projects; a thread joins the first ${MAX_PER_SPAWN}, the one it works in first`); mine = mine.slice(0, MAX_PER_SPAWN); }
   return mine;
 }
 
@@ -146,7 +146,7 @@ export async function syncProjects(sb) {
 export function regroupSocket(have, run, log) {
   const want = socketGid(run);
   if (!have || have.gid === want || typeof have.setGroup !== "function") return;
-  try { have.setGroup(want); have.gid = want; } catch (e) { log(`threads: a session's socket could not be given its account's group (${/** @type {Error} */ (e).message})`); }
+  try { have.setGroup(want); have.gid = want; } catch (e) { log(`threads: a thread's socket could not be given its AI account's group (${/** @type {Error} */ (e).message})`); }
 }
 
 /**
@@ -156,7 +156,7 @@ export function regroupSocket(have, run, log) {
  */
 export function accessTools(ctx, sb) {
   const none = { type: "object", properties: {} };
-  ctx.tool("threads.seats.recheck", { description: "Judge every running session on a person's own account again against the project seat rule and stop the ones under a project that person is no longer on. For the work module, on a team change.", internal: true, input: none, run: async () => ({ stopped: await stopLostSeats(sb) }) });
+  ctx.tool("threads.seats.recheck", { description: "Judge every running thread on a person's own AI account again against the project seat rule and stop the ones under a project that person is no longer on. For the work module, on a team change.", internal: true, input: none, run: async () => ({ stopped: await stopLostSeats(sb) }) });
   ctx.tool("threads.projects.sync", { description: "Give every project's folder under /work to the project's own group (projects.sync, the owner's call, is the way in). For the projects module.", internal: true, input: none, run: async () => syncProjects(sb) });
   return watchProjectFolders(ctx, sb);
 }

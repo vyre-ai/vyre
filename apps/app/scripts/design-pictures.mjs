@@ -190,7 +190,9 @@ try {
       if (t.name === "paper" && PAPER_SKIP.has(id)) { const old = path.join(refs, id, `${s.name}-paper.png`); if (update && fs.existsSync(old)) fs.rmSync(old); continue; }
       errors.length = 0;
       const row = { id, surface: s.name, theme: t.name, status: "same", rules: [] };
-      const got = await shoot(cur, s, t, id);
+      let got = await shoot(cur, s, t, id);
+      // A render that did not show #fixture is tried once more on a fresh page before it counts as missing (a slow runner, not a broken fixture, is the usual cause).
+      if (got.missing) { errors.length = 0; await cur.ctx.close().catch(() => {}); Object.assign(cur, await open(s, t)); got = await shoot(cur, s, t, id); }
       if (got.missing) { row.status = "missing"; row.rules.push(`the fixture did not render${errors.length ? `: ${errors.slice(0, 2).join(" | ").slice(0, 700)}` : ""}`); failed++; report.push(row); console.log(`MISSING  ${id} ${s.name} ${t.name}`); continue; }
       const { after } = got;
       row.rules = got.rules;

@@ -1001,8 +1001,8 @@ export default {
       });
     tool("spaces.devices.list", "The spaces one of your devices reaches, whether it is enrolled in each, and whether you lend it there.",
       obj({ device: str }), async (i, meta) => {
-        const s = me();
-        const dev = await deviceOf(i.device, meta);
+        const s = whoRead(meta); // a read: a paired owner's computer on a server with no identity of its own is answered too (the daemon's proof, never the caller's say)
+        const dev = await deviceOf(i.device, meta, s);
         const out2 = [];
         const hr = homeRow(s);
         if (hr) { const m = await membershipOf(hr.id, /** @type {string} */ (s.id), meta).catch(() => null); if (m) { const enrolled = await isEnrolled(dev.eid, hr.id); out2.push({ space: hr.id, name: hr.name, label: hr.label, displayName: null, role: m.role, enrolled, removed: !enrolled, lent: false, home: true }); } }

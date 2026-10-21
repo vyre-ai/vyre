@@ -6,7 +6,7 @@
 // nowhere else. Networking is the Wink module's and the relay's; the socket
 // is always the local way in and never leaves the machine.
 
-import { rawBody, rawBinary, body } from "./request-body.js";
+import { rawBody, rawBinary, body } from "./request-body.js"; import { timeCalls } from "./slow-calls.js";
 import { memberMcpConfig } from "../../lib/member-mcp.js";
 import { createLimitedGate } from "../modules/device-admin.js";
 import { ZONE_HEADER, zoneFrom } from "../../lib/time/index.js";
@@ -290,7 +290,7 @@ async function startLocked(opts, root, p, release) {
   // of this function can pass it; vyred's own start (main.js) passes nothing, and it is never read
   // from config.json, the environment or the command line.
   const firstPartyRoots = Array.isArray(opts.firstPartyRoots) ? opts.firstPartyRoots.filter(r => typeof r === "string" && path.isAbsolute(r)) : [];
-  registry = new Registry({ db, events, config: cfg, paths: p, spaceDir: (/** @type {string} */ id) => path.join(root, "kernel", "spaces", id), log, rules, handler, upgrader, presence, firstPartyRoots, coreKeys: opts.coreKeys || null });
+  registry = new Registry({ db, events, config: cfg, paths: p, spaceDir: (/** @type {string} */ id) => path.join(root, "kernel", "spaces", id), log, rules, handler, upgrader, presence, firstPartyRoots, coreKeys: opts.coreKeys || null }); timeCalls(registry, log);
   // The kernel is ON unless this is a development build started with VYRE_KERNEL=0 (or opts.kernel false). When on, it gives the home a
   // Space and a first owner, a durable log and store, and the module host: modules from outside Vyre then run only under the supervisor (core/modules/index.js).
   /** @type {any} */ let kernel = null;

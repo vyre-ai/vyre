@@ -115,6 +115,8 @@ export const PEER_MIGRATIONS = [
   `ALTER TABLE wink_devices ADD COLUMN enclave_eid TEXT`,
   `ALTER TABLE wink_devices ADD COLUMN vyre_name TEXT`,
   `ALTER TABLE wink_devices ADD COLUMN needs_repair INTEGER NOT NULL DEFAULT 0`,
+  // The person this device was paired by: set only by setPerson, only after the owner's own present act confirmed the pairing and the identity proof checked out. Never from a caller's input; empty for every other row.
+  `ALTER TABLE wink_devices ADD COLUMN person TEXT`,
 ];
 /** What a device offers to the pairing keys: polling slower than the relay's rate limit, and Node's own crypto and key file (0600). */
 export const POLL_MS = 1500;
@@ -172,7 +174,7 @@ export function createPairing(o) {
   let abandonHook = () => {};
   let clearOwnerHook = () => { throw fail("not_ready", "the pairing tools are not registered"); };
 
-  const rowOf = (/** @type {any} */ r) => r ? { id: r.id, identity: r.identity, kind: r.kind, name: r.name, fingerprint: r.fingerprint, owner: { kind: r.owner_kind, id: r.owner_id }, offers: JSON.parse(r.offers || "{}"), created: r.created, removed: r.removed_at != null, nodeKey: r.node_key || null, stableId: r.stable_id || null, signKey: r.sign_key || null, keyStorage: r.key_storage || "unknown", ...(r.key_storage === "software" ? { software: true } : {}) } : null;
+  const rowOf = (/** @type {any} */ r) => r ? { id: r.id, identity: r.identity, kind: r.kind, name: r.name, fingerprint: r.fingerprint, owner: { kind: r.owner_kind, id: r.owner_id }, offers: JSON.parse(r.offers || "{}"), created: r.created, removed: r.removed_at != null, nodeKey: r.node_key || null, stableId: r.stable_id || null, signKey: r.sign_key || null, keyStorage: r.key_storage || "unknown", person: r.person || null, ...(r.key_storage === "software" ? { software: true } : {}) } : null;
   /** Ends a device's paired person session and grant (presence.person.end-paired, module:wink only). Late-bound: set once the context can call. A failure is logged, never a reason to keep the device. @type {(device?: string) => void} */
   let endPaired = () => {};
   const devices = {
@@ -206,6 +208,12 @@ export function createPairing(o) {
      * @param {string} id @param {{ by: string, keyId: string | null, key: any }} c
      */
     setConfirmed(id, c) { db.prepare("UPDATE wink_devices SET confirmed_by = ?, confirm_key = ?, device_key = ?, hardware = 0, software = 0 WHERE id = ? AND removed_at IS NULL").run(c.by, c.keyId, c.key ? JSON.stringify(c.key) : null, String(id)); },
+    /**
+     * The person this device was paired by. The one place the row's person is written. It holds only for a row the owner's confirmation already made (confirmed_by is set) and only for the very person that
+     * confirmation named: a row nobody confirmed, or a different person, changes nothing. The caller is recordOwnerDevice, inside its verified-proof branch; nothing a caller sends reaches here.
+     * @param {string} id @param {string} person
+     */
+    setPerson(id, person) { return Number(db.prepare("UPDATE wink_devices SET person = ? WHERE id = ? AND removed_at IS NULL AND confirmed_by IS NOT NULL AND confirmed_by = ?").run(String(person), String(id), String(person)).changes) > 0; },
     /** The app's own report of where its key lives. @param {string} id @param {unknown} storage */
     setEnclaveKey(id, key, eid = null, name = null) { db.prepare("UPDATE wink_devices SET enclave_key = ?, enclave_eid = ?, vyre_name = ?, needs_repair = 0 WHERE id = ? AND removed_at IS NULL").run(key ? String(key).slice(0, 200) : null, eid ? String(eid).slice(0, 64) : null, name ? String(name).slice(0, 253) : null, String(id)); },
     setNeedsRepair(id) { db.prepare("UPDATE wink_devices SET needs_repair = 1 WHERE id = ? AND removed_at IS NULL").run(String(id)); },
@@ -214,7 +222,7 @@ export function createPairing(o) {
     record(id) {
       const r = /** @type {any} */ (db.prepare("SELECT * FROM wink_devices WHERE id = ? AND removed_at IS NULL").get(String(id)));
       if (!r || !r.confirmed_by) return null;
-      return { id: r.id, kind: r.kind, owner: r.identity, confirmed: true, confirmedBy: r.confirmed_by, confirmKeyId: r.confirm_key || null, key: r.device_key ? JSON.parse(r.device_key) : null, hardware: r.hardware === 1, keyStorage: r.key_storage || "unknown", name: r.name || "a device", proofStrength: r.proof_strength || null, enclaveKey: r.enclave_key || null, enclaveEid: r.enclave_eid || null, vyreName: r.vyre_name || null, identity: r.identity };
+      return { id: r.id, kind: r.kind, owner: r.identity, person: r.person || null, confirmed: true, confirmedBy: r.confirmed_by, confirmKeyId: r.confirm_key || null, key: r.device_key ? JSON.parse(r.device_key) : null, hardware: r.hardware === 1, keyStorage: r.key_storage || "unknown", name: r.name || "a device", proofStrength: r.proof_strength || null, enclaveKey: r.enclave_key || null, enclaveEid: r.enclave_eid || null, vyreName: r.vyre_name || null, identity: r.identity };
     },
     /** The owner's signing key for one of their devices (SPKI, base64url), used by wink.relay.apply. @param {string} id @param {string} key */
     setSignKey(id, key) { db.prepare("UPDATE wink_devices SET sign_key = ? WHERE id = ? AND removed_at IS NULL").run(key, String(id)); },
@@ -228,7 +236,7 @@ export function createPairing(o) {
     remove(id) {
       endPaired(String(id));
       // S-1: a removed device's signing key goes with it (it could drive wink.relay.apply), and a re-added row never inherits one
-      db.prepare("UPDATE wink_devices SET removed_at = ?, sign_key = NULL, confirmed_by = NULL, confirm_key = NULL, device_key = NULL, software = 0, key_storage = 'unknown' WHERE id = ? AND removed_at IS NULL").run(now(), String(id));
+      db.prepare("UPDATE wink_devices SET removed_at = ?, person = NULL, sign_key = NULL, confirmed_by = NULL, confirm_key = NULL, device_key = NULL, software = 0, key_storage = 'unknown' WHERE id = ? AND removed_at IS NULL").run(now(), String(id));
       if (!o.offers) db.prepare("DELETE FROM wink_compute WHERE device = ?").run(String(id));
     },
   };
@@ -990,6 +998,8 @@ export function createPairing(o) {
         if (!(confirmed && confirmed.key) && pk && pk.data && typeof pk.data.public_key === "string") confirmed = { ...(confirmed || {}), key: pk.data.public_key, alg: pk.data.alg, storage: pk.data.storage };
         if (!(confirmed && confirmed.key)) ctx.log(`wink: ${device} offered no device key in its pairing hello (presenceKey: { public_key: P-256 SPKI base64url, alg: -7 }), so it cannot be given a paired session`);
         session = await openPairedSession(device, identity, { keyId }, { ...(confirmed || {}), ...(input.keyStorage && !(confirmed && confirmed.storage) ? { storage: input.keyStorage } : {}) });
+        // THE ROW'S PERSON is decided here and nowhere else: only when this pairing's identity proof checked out (`proven` is Boolean(mine.proven), set by proveIdentity, never by the caller) and `identity` is that proven id; setPerson then needs the confirm row
+        if (proven) devices.setPerson(device, identity);
         stepLog(device, `paired session ${session ? "opened" : "not opened"}`);
         // (the home's owner was decided above, before this device had any row or session)
         const space = await Promise.resolve(o.space()).catch(() => "");

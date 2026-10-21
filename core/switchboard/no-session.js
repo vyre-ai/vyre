@@ -35,9 +35,9 @@ async function startFresh(sb, id, st, lentOf) {
   try {
     const rec = sb.must(id);
     const words = st.lastPrompt || null;
-    sb.deps.log(`threads: ${String(id).slice(0, 8)} had no session to resume; starting it as a new one`);
+    sb.deps.log(`threads: ${String(id).slice(0, 8)} had nothing to resume (its earlier run is gone); starting it again`);
     sb.spawn(id, { ...st.launch, libraryPlugin: await sb.libraryPlugin(rec, st.launch || {}, id), sandboxSpawn: await sb.sandboxFor(id, rec, st.launch || {}), lentSpawn: await lentOf(sb, id, rec), gitEnv: await sb.gitEnv(rec && rec.project, id), resume: false, lastPrompt: words });
     const now = sb.live.get(id); if (now) now.fresh1 = true;
     if (words) sb.write(id, words, { askedBy: sb.turnAsker.get(id) || null });
-  } catch (e) { sb.deps.log(`threads: ${String(id).slice(0, 8)} could not start as a new session: ${/** @type {Error} */ (e).message}`); st.switching = false; sb.onExit(id, st, 1, null, "", null); }
+  } catch (e) { sb.deps.log(`threads: ${String(id).slice(0, 8)} could not start again: ${/** @type {Error} */ (e).message}`); st.switching = false; sb.onExit(id, st, 1, null, "", null); }
 }

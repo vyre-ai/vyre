@@ -301,7 +301,8 @@ test("/theme.css and /v1/theme serve the real appearance module's answer per dev
   t.after(() => d.stop());
   const c = (/** @type {string} */ tool, input = {}) => call(tool, input, { root });
   const phone = { level: "device", device: "tailnet:alex-phone" };
-  assert.ok(!(await c("settings.set", { key: "appearance.scheme", value: "dark" })).error);
+  // the account level of appearance.scheme is each person's own now (core/settings/person-values.js); a device's value is the device's, whoever set it
+  assert.ok(!(await c("settings.set", { key: "appearance.scheme", value: "dark", level: "device", device: "mac:alex-mbp" })).error);
   let r = await c("settings.set", { key: "appearance.scheme", value: "paper", ...phone });
   assert.ok(!r.error, JSON.stringify(r.error));
   r = await c("settings.set", { key: "appearance.tokens", value: { radius: { card: 16 } }, ...phone });

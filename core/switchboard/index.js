@@ -1457,7 +1457,7 @@ export class Switchboard {
           if (!skillsKeyOk(key) || Buffer.byteLength(text) > SKILLS_CAPS.file) { this.deps.log(`threads: ${rel} in the skills set for ${String(id).slice(0, 8)} is left out (a name or size the account's folder does not take)`); continue; }
           total += Buffer.byteLength(text); seed[key] = text;
         }
-        if (!Object.keys(seed).length || Object.keys(seed).length > SKILLS_CAPS.files || total > SKILLS_CAPS.total) { this.deps.log(`threads: the skills set for ${String(id).slice(0, 8)} is empty or over the limits (128 files, 512 KiB): the session starts without it`); return dir; }
+        if (!Object.keys(seed).length || Object.keys(seed).length > SKILLS_CAPS.files || total > SKILLS_CAPS.total) { this.deps.log(`threads: the skills set for ${String(id).slice(0, 8)} is empty or over the limits (128 files, 512 KiB): the thread starts without it`); return dir; }
         this.libSeed.set(id, seed);
         return path.join(String(o.accountRun.home), ".vyre-skills", sid);
       } catch (e) { this.deps.log(`threads: the skills set for ${String(id).slice(0, 8)} could not be read for the account: ${/** @type {Error} */ (e).message}`); return dir; }
@@ -3443,7 +3443,7 @@ export class Switchboard {
     if (!this.closing && !who) {
       const next = this.spare(purpose, system, model)
         .then(r => { if (this.closing || this.spares.has(key)) return this.stop(r.id).catch(() => {}); this.spares.set(key, r.id); })
-        .catch(e => this.deps.log(`threads: no spare ${purpose} session (${e.message})`))
+        .catch(e => this.deps.log(`threads: no spare ${purpose} thread (${e.message})`))
         .finally(() => this.starting.delete(next));
       this.starting.add(next);
     }
@@ -3571,7 +3571,7 @@ export class Switchboard {
   }
 
   /**
-   * Is a turn streaming in this folder (a session's worktree)? For github's Undo, which must not reset
+   * Is a turn streaming in this folder (a thread's worktree)? For github's Undo, which must not reset
    * a worktree an agent is writing in. Any live thread whose folder is, or is under, `cwd` counts.
    * @param {string} cwd @returns {{ busy: boolean, threads: string[] }}
    */
@@ -4243,19 +4243,19 @@ export default {
     const START_FIELDS = new Set(["project", "cwd", "prompt", "name", "model", "surface", "append", "purpose", "provider", "effort", "lean", "chat", "asker", "parent"]);
     tool("threads.start", "Start a headless Claude Code session in a folder or project home, owned by vyred. Returns the thread; its id is the session id.",
       { type: "object", properties: { project: str, cwd: str, prompt: str, name: str, model: str, surface: str, append: str,
-        purpose: { type: "string", enum: ["chat", "agent", "project", "teammate", "capsule", "job", "memory", "planner", "learn", "helper"], description: "What kind of session: picks its model (sessions.models.get). Default: chat, or project in a project." },
-        provider: { type: "string", description: "The session provider: claude (the default), or one a module added." },
-        agent: { type: "string", description: "A person's own surface only: start the session as this agent (its credentials and project grants). A model's call naming one is bad_input." },
+        purpose: { type: "string", enum: ["chat", "agent", "project", "teammate", "capsule", "job", "memory", "planner", "learn", "helper"], description: "What kind of thread: picks its model (sessions.models.get). Default: chat, or project in a project." },
+        provider: { type: "string", description: "The AI provider: claude (the default), or one a module added." },
+        agent: { type: "string", description: "A person's own surface only: start the thread as this agent (its credentials and project grants). A model's call naming one is bad_input." },
         agent_kind: { type: "string", description: "A person's own surface only: the kind of the agent named in `agent`. A model's call naming one is bad_input." },
-        account: { type: "string", description: "A person's own surface only: the AI account the session runs on (scope-checked, never a silent fallback). A model's call naming one is bad_input." },
+        account: { type: "string", description: "A person's own surface only: the AI account the thread runs on (scope-checked, never a silent fallback). A model's call naming one is bad_input." },
         effort: { type: "string", enum: EFFORTS, description: "Reasoning effort, as /effort: low, medium, high, xhigh or max. Default: the model's own." },
         zone: { type: "string", description: "The person's own IANA time zone, from the device in use (\"Asia/Karachi\"): the brief tells the model what time it is for them. Taken from the calling device when left out." },
         lean: { type: "boolean", description: "A one-question thread: no Vyre plugin, no tools, no MCP servers, none of the user's settings. Cheap to start." },
         slot: { type: "string", description: "First-party stream only: the slot id (model:<provider>/<model>#<n>) of the chat member that starts this run. Anyone else's is ignored." },
-        chat: { type: "string", description: "First-party stream only: the chat this session's reply belongs to. Anyone else's is ignored." }, space: { type: "string", description: "First-party stream only: the TEAM Space this chat belongs to; the session is opened against that Space's kernel. None is the home's own Space. Anyone else's is ignored." }, asker: { type: "string", description: "First-party stream only: the person id (per_...) of who asked (the kernel session is opened for them, in `chat`). Any other form is refused as bad_input. Anyone else's is ignored." },
+        chat: { type: "string", description: "First-party stream only: the chat this thread's reply belongs to. Anyone else's is ignored." }, space: { type: "string", description: "First-party stream only: the TEAM Space this chat belongs to; the thread is opened against that Space's kernel. None is the home's own Space. Anyone else's is ignored." }, asker: { type: "string", description: "First-party stream only: the person id (per_...) of who asked (the kernel session is opened for them, in `chat`). Any other form is refused as bad_input. Anyone else's is ignored." },
         mentions: { type: "array", maxItems: 8, items: { type: "object", required: ["kind", "id"], properties: { kind: str, id: str, name: str } }, description: "The # tags the composer picked ({kind, id}) for the first prompt, from a person's own surface only; as threads.send." },
         pasted: { type: "array", maxItems: 20, items: str, description: "The spans of the prompt the person pasted: a #Name inside one tags nothing. As threads.send." },
-        parent: { type: "string", description: "First-party modules only: the thread this one is started for (a teammate's thread for a person's). A session starting one is its own parent, from what vyred verified." } } },
+        parent: { type: "string", description: "First-party modules only: the thread this one is started for (a teammate's thread for a person's). A thread starting one is its own parent, from what vyred verified." } } },
       async (i, meta) => {
         const { caller, thread, firstParty, agent, peerSession, granted, zone: deviceZone } = meta;
         guard(caller, "start sessions");
@@ -4460,7 +4460,7 @@ export default {
 
     tool("threads.send", "Type into a thread, resuming it if stopped. Only the surface holding its lease may type; a free thread is taken on the first keystroke.",
       { type: "object", required: ["thread", "text"], properties: { thread: str, text: str, surface: str, machine: { type: "string", description: "On a box, the name of the paired Mac to send to, to pick one; otherwise a paired Mac that has the thread gets the words." },
-        chat: { type: "string", description: "First-party stream only: the chat this turn's reply belongs to. Anyone else's is ignored." }, space: { type: "string", description: "First-party stream only: the TEAM Space this chat belongs to; the session is opened against that Space's kernel. None is the home's own Space. Anyone else's is ignored." }, asker: { type: "string", description: "First-party stream only: the person who asked this turn (the kernel session is opened for them, in `chat`). Anyone else's is ignored." },
+        chat: { type: "string", description: "First-party stream only: the chat this turn's reply belongs to. Anyone else's is ignored." }, space: { type: "string", description: "First-party stream only: the TEAM Space this chat belongs to; the thread is opened against that Space's kernel. None is the home's own Space. Anyone else's is ignored." }, asker: { type: "string", description: "First-party stream only: the person who asked this turn (the kernel session is opened for them, in `chat`). Anyone else's is ignored." },
         uuid: { type: "string", description: "First-party modules only: the message's own id, so a delivery they retry (core/stream group chats) is handed over once. Anyone else's is ignored; use an Idempotency-Key." },
         tz: { type: "string", description: "The IANA time zone of the device that sent these words (Europe/London): kept as the person's current zone for this thread, and said on thread.sent. A person's surface or the stream only." },
         mode: { type: "string", enum: ["steer", "queue"], description: "While a turn runs: steer (the default) joins it at Claude's next step, as in Claude Code; queue waits for the turn to end, and can be taken back or edited until then." },
@@ -4509,7 +4509,7 @@ export default {
       }));
 
     tool("threads.continue-here", "Carry a paired Mac's session on in a new thread on this box: its conversation comes over the link (or from the last synced copy when the Mac is asleep), a box session on the same provider starts with that history as context, and the new thread's id comes back. The Mac's own session is untouched and none of its files come over. A person's own surface only; logged as thread.continued.",
-      { type: "object", required: ["thread"], properties: { thread: { type: "string", description: "The Mac session's id." }, machine: { type: "string", description: "The paired Mac's name or id, when more than one could hold it." }, surface: str } },
+      { type: "object", required: ["thread"], properties: { thread: { type: "string", description: "The Mac thread's id." }, machine: { type: "string", description: "The paired Mac's name or id, when more than one could hold it." }, surface: str } },
       async (i, { caller }) => {
         if (!personTurn(caller) || fromLink(caller)) throw Object.assign(new Error("only a person's own surface carries a Mac's session on here"), { code: "denied" });
         if (!ctx.config || ctx.config.role !== "box") throw Object.assign(new Error("continue-here runs on a box: this machine is not one"), { code: "bad_input" });
@@ -4872,15 +4872,15 @@ export default {
     });
     // The model picker needs a provider's models before the person's first session with it: sessions asks right after a sign-in.
     ctx.tool("threads.providers.learn", {
-      description: "Learn a provider account's models and plan without a model turn: start its agent (initialize and a session, which cost nothing), read what it offers, end the session. For sessions after a sign-in; not a public name.", internal: true,
+      description: "Learn a provider account's models and plan without a model turn: start its agent, read what it offers, end it; nothing is billed. For threads after a sign-in; not a public name.", internal: true,
       input: { type: "object", required: ["provider"], properties: { provider: str, account: str } },
       run: async i => sb.learnModels(String(i.provider), i.account ? String(i.account) : null),
     });
     // For other modules only (agents): start or resume with an agent's credentials, scope and
     // instructions. Internal, so no surface or model can hand a thread an environment.
     ctx.tool("threads.quick", {
-      description: "One question to a purpose's warm session (a lean one already started, so no start-up wait): memory (Vyre IQ), planner, helper and the like. A fresh session per question; the system text is fixed per spare, the question's material goes in prompt. Returns { text, ok, cost_usd, warm, ms, thread }.", internal: true,
-      input: { type: "object", required: ["purpose", "prompt"], properties: { person: { type: "string", description: "The person this question is for: it runs on their own AI account (account names which, provider its provider), in a fresh session of its own, never a warm one or the owner's." }, account: { type: "string" }, provider: { type: "string" }, purpose: { type: "string", enum: ["memory", "planner", "learn", "helper", "job"] }, spend_purpose: { type: "string", description: "Who this question is for, as a word (for example digest): letters, digits and _ . - up to 50. The cost of this one answer is recorded in the spend ledger under \"<your module>:<word>\" (spend.summary), never under another module's name; absent, under the session's own purpose." }, stream: { type: "boolean", description: "Hand partial text to the calling module as it arrives (ctx.call opts.onPartial); the answer still returns whole." }, prompt: str, system: str, model: str, timeout_ms: { type: "integer", minimum: 1000, maximum: 600000 } } },
+      description: "One question to a purpose's warm thread (a lean one already started, so no start-up wait): memory (Vyre IQ), planner, helper and the like. A fresh thread per question; the system text is fixed per spare, the question's material goes in prompt. Returns { text, ok, cost_usd, warm, ms, thread }.", internal: true,
+      input: { type: "object", required: ["purpose", "prompt"], properties: { person: { type: "string", description: "The person this question is for: it runs on their own AI account (account names which, provider its provider), in a fresh thread of its own, never a warm one or the owner's." }, account: { type: "string" }, provider: { type: "string" }, purpose: { type: "string", enum: ["memory", "planner", "learn", "helper", "job"] }, spend_purpose: { type: "string", description: "Who this question is for, as a word (for example digest): letters, digits and _ . - up to 50. The cost of this one answer is recorded in the spend ledger under \"<your module>:<word>\" (spend.summary), never under another module's name; absent, under the session's own purpose." }, stream: { type: "boolean", description: "Hand partial text to the calling module as it arrives (ctx.call opts.onPartial); the answer still returns whole." }, prompt: str, system: str, model: str, timeout_ms: { type: "integer", minimum: 1000, maximum: 600000 } } },
       run: async (i, meta) => sb.quick({ purpose: i.purpose, prompt: i.prompt, system: i.system || null, model: i.model || null, timeoutMs: i.timeout_ms || 60_000,
         ...(i.person ? { who: { person: String(i.person), ...(i.account ? { account: String(i.account) } : {}), ...(i.provider ? { provider: String(i.provider) } : {}) } } : {}),
         // The ledger name is always "<the calling module>:<word>": a module books only under its own name (the tool is module-only).
@@ -4893,7 +4893,7 @@ export default {
       input: { type: "object", properties: { cwd: str, project: str, prompt: str, name: str, model: str, surface: str, resume: str,
         // The agent's thinking effort (agents.effort), one of sessions.effort's values.
         effort: { type: "string", enum: ["low", "medium", "high", "xhigh", "max"] },
-        agent: str, agent_kind: str, auth: str, append: str, budget_usd: { type: "number" }, purpose: str, provider: str, env: { type: "object" }, read_only: { type: "array", maxItems: 1, items: str, description: "The agents module only: the one folder this session may READ besides its own, the agent's own agent folder." }, fallback: { type: "object" }, scope: { type: "object" },
+        agent: str, agent_kind: str, auth: str, append: str, budget_usd: { type: "number" }, purpose: str, provider: str, env: { type: "object" }, read_only: { type: "array", maxItems: 1, items: str, description: "The agents module only: the one folder this thread may READ besides its own, the agent's own agent folder." }, fallback: { type: "object" }, scope: { type: "object" },
         effort: { type: "string", enum: EFFORTS },
         // For jobs (Learning's distillation): no plugin, so the job's own prompt never reaches the
         // hooks; no tools; none of the user's settings; and stop after the first answer.
@@ -4957,14 +4957,14 @@ export default {
     });
     // For projects.catalog: which sessions a terminal has open now, for its live flag.
     ctx.tool("threads.live", {
-      description: "Sessions open in a running claude process other than vyred's own threads.", internal: true,
+      description: "Claude Code terminals running now, other than vyred's own threads.", internal: true,
       input: { type: "object", properties: {} },
       run: async () => ({ sessions: [...sb.sessions.live(sb.ours())] }),
     });
     // For the Harness: words queued for a session open in a terminal, handed over at its Stop or
     // next prompt, and the reply that turn gave.
     ctx.tool("threads.inbox", {
-      description: "Words queued for this session, marked handed over (via stop or prompt).", internal: true,
+      description: "Words queued for this thread, marked handed over (via stop or prompt).", internal: true,
       input: { type: "object", required: ["session"], properties: { session: str, via: { type: "string", enum: ["stop", "prompt"] } } },
       run: async i => sb.deliver(i.session, i.via || "stop"),
     });
@@ -4985,7 +4985,7 @@ export default {
     // For vyred only: is this caller the agent it names ({agent, key}), or in the session it names
     // ({session, key})? See the route in core/daemon.
     ctx.tool("threads.vouch", {
-      description: "The live thread of this agent, or this bound session, that holds this key; or null.", internal: true,
+      description: "The live thread of this agent, or this bound terminal, that holds this key; or null.", internal: true,
       input: { type: "object", required: ["key"], properties: { agent: str, session: str, key: str } },
       run: async i => ({ thread: i.agent ? sb.vouch(i.agent, i.key) : i.session ? sb.sessions.vouch(i.session, i.key) : null }),
     });
@@ -5000,13 +5000,13 @@ export default {
       run: async () => modelNames(ctx, MODEL_LISTING_PROVIDERS),
     });
     ctx.tool("threads.interrupt-in", {
-      description: "Interrupt every turn streaming in a folder (a session's worktree) and wait for them to end; the threads stay. github calls it before Undo resets a worktree. Answers who stopped and who still runs.", internal: true, callers: ["module"],
+      description: "Interrupt every turn streaming in a folder (a thread's worktree) and wait for them to end; the threads stay. github calls it before Undo resets a worktree. Answers who stopped and who still runs.", internal: true, callers: ["module"],
       input: { type: "object", required: ["cwd"], properties: { cwd: str } },
       run: async i => sb.haltIn(String(i.cwd)),
     });
     // For github's Undo: is a turn streaming in that worktree? (github asks before it resets one.)
     ctx.tool("threads.busy", {
-      description: "Whether a turn is streaming in a folder (a session's worktree) or in a thread's own folder. github asks before Undo resets a worktree.", internal: true, callers: ["module"],
+      description: "Whether a turn is streaming in a folder (a thread's worktree) or in a thread's own folder. github asks before Undo resets a worktree.", internal: true, callers: ["module"],
       input: { type: "object", properties: { cwd: str, thread: str } },
       run: async i => {
         const dir = i.cwd || (i.thread ? sb.must(String(i.thread)).cwd : null);
@@ -5017,7 +5017,7 @@ export default {
     // For the runner's own-server sealing (core/runner ports.ownServer.resolve): which transcript file a finished turn belongs to, and the provider's projects folder it sits under (`root`,
     // which the seal pins the file to). Only the thread's own provider session, only Claude's layout (<root>/<project>/<session>.jsonl), and nothing for a session this Switchboard has no record of.
     ctx.tool("threads.own-transcript", {
-      description: "The transcript file of a session this Switchboard started, and the provider projects folder it lives under, for the runner to seal each finished turn. A session it has no record of, or one whose provider keeps no such file, is null.", internal: true, callers: ["module"],
+      description: "The transcript file of a thread this Switchboard started, and the provider projects folder it lives under, for the runner to seal each finished turn. One it has no record of, or one whose provider keeps no such file, is null.", internal: true, callers: ["module"],
       input: { type: "object", required: ["session"], properties: { session: str } },
       run: async i => {
         // The session a rollover started is the thread's own: the file under its native id.
@@ -5037,7 +5037,7 @@ export default {
     }); registerTranscriptTools(ctx, sb, str);
     registerRecallSessions(ctx, sb, str, optsOf);
     registerTurnAsker(ctx, sb); ctx.tool("threads.origin", {
-      description: "Whether a session id is a thread this Switchboard started for a person (and on which account), from its own record. A session it has no record of is not.", internal: true, callers: ["module"],
+      description: "Whether a provider run id is a thread this Switchboard started for a person (and on which AI account), from its own record. One it has no record of is not.", internal: true, callers: ["module"],
       input: { type: "object", required: ["session"], properties: { session: str } },
       run: async i => {
         // A native session a rollover started is its thread's, whatever id it carries (threads_rolls).
@@ -5056,7 +5056,7 @@ export default {
       run: async i => ({ thread: String(i.thread), lineage: sb.lineage(String(i.thread)) }),
     });
     ctx.tool("threads.pids", {
-      description: "The processes Claude sessions run in: vyred's own thread children and every live bound session. vyred refuses a person-only call from under any of them.", internal: true,
+      description: "The processes Claude threads run in: vyred's own thread children and every live bound terminal. vyred refuses a person-only call from under any of them.", internal: true,
       input: { type: "object", properties: {} },
       run: async () => ({ pids: [...new Set([...sb.ours(), ...sb.sessions.pids()])], ...sb.groupIds() }),
     });

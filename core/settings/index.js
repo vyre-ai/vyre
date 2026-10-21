@@ -22,6 +22,7 @@ import { readHub, writeHub, hubPath, digest, levelOf } from "./hub.js";
 import { withinOrThrow } from "../../lib/within.js";
 import { isOwnerDevice } from "../../lib/caller.js";
 import { settingTo } from "../../lib/said/setting.js";
+import { PERSON_MIGRATIONS, callPerson, personValues } from "./person-values.js";
 
 const PEOPLE = ["cli", "local", "deck", "capsule"];
 const MIGRATIONS = [
@@ -98,7 +99,7 @@ export const describe = d => ({
   key: d.key, module: d.module, group: d.group || d.module, label: d.label, ...(d.help ? { help: d.help } : {}), type: d.type,
   ...(d.enum ? { enum: d.enum } : {}), ...(d.labels ? { labels: d.labels } : {}), ...(d.choices ? { choices: d.choices } : {}),
   ...(d.min !== undefined ? { min: d.min } : {}), ...(d.max !== undefined ? { max: d.max } : {}),
-  levels: d.levels, apply: d.apply, owner: d.store && d.store.claude ? "C" : "V", ...(d.advanced ? { advanced: true } : {}), ...(d.hidden ? { hidden: true } : {}),
+  levels: d.levels, apply: d.apply, owner: d.store && d.store.claude ? "C" : "V", ...(d.advanced ? { advanced: true } : {}), ...(d.hidden ? { hidden: true } : {}), ...(d.perPerson ? { perPerson: true } : {}),
   ...(d.security ? { security: d.security } : {}), ...(d.confirm ? { confirm: d.confirm } : {}), ...(d.loosens ? { loosens: d.loosens } : {}),
   ...(d.default !== undefined ? { default: d.default } : {}), ...(d.secret ? { secretSetting: true } : {}),
 });
@@ -115,7 +116,9 @@ export default {
       if (!ctx.kernel || typeof ctx.kernel.chain !== "function") return isPerson(meta && meta.caller, meta);
       try { const c = await ctx.kernel.chain(meta); return Boolean(c && Array.isArray(c.hops) && c.hops.length === 1 && c.hops[0].actor && c.hops[0].actor.kind === "person"); } catch { return false; }
     };
-    ctx.store.migrate(MIGRATIONS);
+    ctx.store.migrate([...MIGRATIONS, ...PERSON_MIGRATIONS]);
+    // Per person settings (person-values.js): a declaration with perPerson: true keeps its account level in the calling person's own row, in this Space.
+    const people = personValues(ctx.store.db, () => (ctx.kernel && typeof ctx.kernel.space === "string" ? ctx.kernel.space : ""));
     const conf = () => (ctx.config && ctx.config.settings) || {};
     /** @returns {any[]} */
     const decls = () => (typeof ctx.declaredSettings === "function" ? ctx.declaredSettings() : []);
@@ -140,7 +143,7 @@ export default {
     // account has no target; project is a slug, device a device id, session a thread id. A narrower
     // level wins: session > device > project > account > default.
     /** @typedef {"account"|"project"|"device"|"session"} Lv */
-    /** @typedef {{ project: string|null, device: string|null, session: string|null }} At */
+    /** @typedef {{ project: string|null, device: string|null, session: string|null, person?: string|null }} At */
     const ORDER = /** @type {const} */ (["session", "device", "project", "account"]);
     const targetOf = (/** @type {Lv} */ lv, /** @type {At} */ at) => (lv === "account" ? null : at[lv]);
     const scopeKey = (/** @type {Lv} */ lv, /** @type {string|null} */ target) => (lv === "account" ? "account" : `${lv}:${target}`);
@@ -323,12 +326,32 @@ export default {
       if (own) device = caller;
       const session = i.session == null || i.session === "" ? null : String(i.session);
       if (session && !THREAD.test(session)) throw Object.assign(new Error("session is a thread's id"), { code: "bad_input" });
-      return { project, device, session, ownDevice: own };
+      return { project, device, session, ownDevice: own, person: await callPerson(ctx.kernel, meta) };
     };
 
+    /** The one-time copy of the server-wide values into a person's row, the first time that person reads or writes. @type {Map<string, Promise<void>>} */
+    const seeding = new Map();
+    const seedPerson = (/** @type {string} */ person) => {
+      if (people.seeded(person)) return Promise.resolve();
+      let run = seeding.get(person);
+      if (!run) {
+        run = (async () => {
+          /** @type {Record<string, any>} */ const values = {};
+          for (const d of decls().filter(x => x.perPerson === true && x.levels.includes("account"))) { try { values[d.key] = await read(env, d, "account", null); } catch { /* unreadable now: it stays server-wide until the person sets it */ } }
+          people.seed(person, values);
+        })().finally(() => { seeding.delete(person); });
+        seeding.set(person, run);
+      }
+      return run;
+    };
     /** One level's stored value, or undefined, and why it couldn't be read. */
-    const level = async (/** @type {any} */ d, /** @type {Lv} */ lv, /** @type {string|null} */ target) => {
+    const level = async (/** @type {any} */ d, /** @type {Lv} */ lv, /** @type {string|null} */ target, /** @type {string|null|undefined} */ person = null) => {
       if (!d.levels.includes(lv) || (lv !== "account" && !target)) return { value: undefined };
+      // A per person key's account level is the calling person's own row; with no row (or no person) the server-wide value stands.
+      if (lv === "account" && d.perPerson === true && person) {
+        try { await seedPerson(person); const mine = people.get(person, d.key); if (mine !== undefined) return { value: mine }; }
+        catch (e) { return { value: undefined, error: /** @type {any} */ (e).code || "failed", message: /** @type {Error} */ (e).message }; }
+      }
       try { return { value: await read(env, d, lv, target) }; }
       catch (e) { return { value: undefined, error: /** @type {any} */ (e).code || "failed", message: /** @type {Error} */ (e).message }; }
     };
@@ -339,7 +362,7 @@ export default {
      * @param {any} d @param {At} at
      */
     const effective = async (d, at, clear = true) => {
-      const got = await Promise.all(ORDER.map(lv => level(d, lv, targetOf(lv, at))));
+      const got = await Promise.all(ORDER.map(lv => level(d, lv, targetOf(lv, at), at.person)));
       const by = Object.fromEntries(ORDER.map((lv, n) => [lv, got[n]]));
       const show = (/** @type {any} */ v) => (clear ? v : maskFor(d, v));
       const win = ORDER.find(lv => by[lv].value !== undefined);
@@ -475,7 +498,8 @@ export default {
         if (!intent) throw Object.assign(new Error(o.refusal || "the person did not ask for this change"), { code: "denied" });
       }
       const whereTo = await whereIs(env, d, lv, target);
-      const before = await level(d, lv, target);
+      const mine = d.perPerson === true && lv === "account" && at.person ? at.person : null; // this change is the calling person's own row
+      const before = await level(d, lv, target, mine);
       const tag = target ? { [lv]: target } : {};
       // What would change, for the person to see first. Nothing is written.
       if (i.preview) return { key: d.key, level: lv, ...tag, where: whereTo, before: before.value, after: value,
@@ -483,9 +507,11 @@ export default {
       await checked(d, value, lv, target);
       // A change the person asked an agent for is still the person's: stores that call a module's
       // setter call it as vyred acting for them ("local"), and the log names the agent.
-      await write(env, d, lv, target, value, asked ? "local" : ((await personCall(meta)) ? asPerson(caller) : (() => { throw Object.assign(new Error(`${caller} is not a person's surface`), { code: "denied" }); })()), caller);
-      const r = mirror(d, lv, target, value);
-      const id = logChange(d, lv, target, before.value, value, caller, asked ? intent : null);
+      const by = asked ? "local" : ((await personCall(meta)) ? asPerson(caller) : (() => { throw Object.assign(new Error(`${caller} is not a person's surface`), { code: "denied" }); })());
+      if (mine) { await seedPerson(mine); if (value === undefined) people.del(mine, d.key); else people.set(mine, d.key, value); }
+      else await write(env, d, lv, target, value, by, caller);
+      const r = mine ? commit() : mirror(d, lv, target, value);
+      const id = logChange(d, mine ? "person" : lv, mine || target, before.value, value, caller, asked ? intent : null);
       ctx.events.emit("settings.changed", { key: d.key, level: lv, ...tag, apply: d.apply, rev: r, change: id, by: asked ? caller : "person", ...said(d, value) });
       // An agent changed a guard because the person asked: asking is approving, so there is no confirm, but the person is
       // always told, loudly, with an Undo that needs no proof (settings.undo). The event never carries a value.
@@ -568,9 +594,11 @@ export default {
         if (row.undone) throw Object.assign(new Error("that change is already undone"), { code: "bad_input" });
         const d = declOf(row.key);
         if (d.secret) throw Object.assign(new Error(`${d.key} is secret; set it again in Settings`), { code: "bad_input" });
-        const at = { [row.level]: row.target };
         const prev = row.prev === null ? undefined : JSON.parse(row.prev);
-        const r = await change({ key: row.key, level: row.level, ...(row.target ? at : {}), confirm: true }, meta, prev);
+        // A change to one person's own row is undone only by that person, on the account level it was made from.
+        if (row.level === "person" && (await callPerson(ctx.kernel, meta)) !== row.target) throw Object.assign(new Error("that change is another person's own setting"), { code: "denied" });
+        const at = { [row.level]: row.target };
+        const r = await change(row.level === "person" ? { key: row.key, level: "account", confirm: true } : { key: row.key, level: row.level, ...(row.target ? at : {}), confirm: true }, meta, prev);
         ctx.store.db.prepare("UPDATE settings_changes SET undone = 1 WHERE id = ?").run(row.id);
         return r;
       },
@@ -581,10 +609,13 @@ export default {
       effect: "read",
       description: "Recent settings changes, newest first: {id, key, level, target, by, said, at, undone}. Give key for one setting's history.",
       input: { type: "object", properties: { key: str, limit: { type: "number" } } },
-      run: async (i) => {
+      run: async (i, meta) => {
         const limit = Math.min(Math.max(Number(i.limit) || 20, 1), 200);
-        const rows = i.key ? ctx.store.db.prepare("SELECT id, key, level, target, by, said, at, undone FROM settings_changes WHERE key = ? ORDER BY at DESC LIMIT ?").all(String(i.key), limit)
-          : ctx.store.db.prepare("SELECT id, key, level, target, by, said, at, undone FROM settings_changes ORDER BY at DESC LIMIT ?").all(limit);
+        // a change to one person's own row is shown to that person only
+        const me = (await callPerson(ctx.kernel, meta)) || "";
+        const cols = "SELECT id, key, level, target, by, said, at, undone FROM settings_changes WHERE (level != 'person' OR target = ?)";
+        const rows = i.key ? ctx.store.db.prepare(`${cols} AND key = ? ORDER BY at DESC LIMIT ?`).all(me, String(i.key), limit)
+          : ctx.store.db.prepare(`${cols} ORDER BY at DESC LIMIT ?`).all(me, limit);
         return rows.map((/** @type {any} */ r) => ({ ...r, undone: Boolean(r.undone) }));
       },
     });
@@ -625,6 +656,48 @@ export default {
         ctx.events.emit("settings.changed", { key: d.key, level: lv, ...(target ? { project: target } : {}), apply: d.apply, rev, ...said(d, value), by: who });
         ctx.log(`${d.key} ${value === undefined ? "reset" : "set"} at ${lv}${target ? " " + target : ""} by ${who}`);
         return effective(d, { project, device: null, session: null, ownDevice: false }, false);
+      },
+    });
+
+    // The per person values, for a module that acts for a person (push decides who gets a notification). Modules only: the person is the one the calling module names from its own call's chain, and a
+    // module writes only its own "<module>." keys, the same rule as settings.write. Never a path for a person's own change: that is settings.set, with the person taken from the kernel's chain.
+    const PERSON = /^[A-Za-z0-9][A-Za-z0-9_.:@-]{0,127}$/;
+    ctx.tool("settings.person.get", {
+      description: "A module reads one person's own settings, or asks whether anyone in this Space holds a value. Modules only.",
+      internal: true,
+      callers: ["module"],
+      input: { type: "object", properties: { person: str, keys: { type: "array", items: str }, holds: { type: "object", properties: { key: str, value: {} } } } },
+      run: async i => {
+        if (i.holds) return { holds: people.anyHolds(String(i.holds.key), i.holds.value) };
+        if (!PERSON.test(String(i.person))) throw Object.assign(new Error("person is a person's id"), { code: "bad_input" });
+        /** @type {Record<string, any>} */ const values = {};
+        for (const d of decls().filter(x => x.perPerson === true && (!Array.isArray(i.keys) || i.keys.includes(x.key)))) { const l = await level(d, "account", null, i.person); if (l.value !== undefined) values[d.key] = l.value; }
+        return { values };
+      },
+    });
+    ctx.tool("settings.person.set", {
+      description: "A module sets or clears one of its own per-person settings for the person it serves. Modules only.",
+      internal: true,
+      callers: ["module"],
+      input: { type: "object", required: ["person", "key"], properties: { person: str, key: str, value: {} } },
+      run: async (i, { caller }) => {
+        const who = String(caller);
+        const refuse = (/** @type {string} */ m) => { throw Object.assign(new Error(m), { code: "denied" }); };
+        const mod = who.startsWith("module:") ? who.slice("module:".length) : null;
+        if (!mod) refuse("settings.person.set is for modules");
+        if (!PERSON.test(String(i.person))) throw Object.assign(new Error("person is a person's id"), { code: "bad_input" });
+        const d = declOf(i.key);
+        if (d.perPerson !== true) refuse(`${d.key} is not a per-person setting`);
+        if (d.module !== mod || !String(i.key).startsWith(mod + ".")) refuse(`${mod} may write only its own settings (${mod}.*)`);
+        if (d.confirm || d.security === "loosens") refuse(`${d.key} needs the person's confirm; only the person changes it`);
+        const value = i.value === undefined || i.value === null ? undefined : coerce(d, i.value);
+        const before = await level(d, "account", null, i.person);
+        await seedPerson(i.person);
+        if (value === undefined) people.del(i.person, d.key); else people.set(i.person, d.key, value);
+        const r = commit();
+        logChange(d, "person", i.person, before.value, value, who, null);
+        ctx.events.emit("settings.changed", { key: d.key, level: "account", apply: d.apply, rev: r, by: who, ...said(d, value) });
+        return { ok: true };
       },
     });
 

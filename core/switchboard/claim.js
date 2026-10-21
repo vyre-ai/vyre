@@ -28,7 +28,7 @@ export function register(ctx, sb) {
   const input = { type: "object", required: ["session"], properties: { session: { type: "string" } } };
 
   ctx.tool("threads.claimed", {
-    description: "Whether a Claude Code session id is a live headless thread in this vyred, and who holds it.", internal: true,
+    description: "Whether a Claude Code run id is a live headless thread in this vyred, and who holds it.", internal: true,
     input, run: async ({ session }) => claimed(sb, session),
   });
 
@@ -37,7 +37,7 @@ export function register(ctx, sb) {
   // switchboard checks it again rather than trusting the caller: a thread that stopped in
   // between is not contended, and no event is emitted for it.
   ctx.tool("threads.contend", {
-    description: "Say a second writer opened a live headless thread's session (a terminal resume); emits thread.contended.", internal: true,
+    description: "Say a second writer opened a live headless thread (a terminal resume); emits thread.contended.", internal: true,
     input, run: async ({ session }) => {
       const c = claimed(sb, session);
       if (!c.headless) return { emitted: false, ...c };

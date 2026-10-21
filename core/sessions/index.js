@@ -166,10 +166,10 @@ export default {
         binary: cfg.driver === "sdk" ? claudeBin(dir, cfg) || "bundled" : "claude" };
     };
 
-    tool("sessions.status", "How sessions run on this machine: driver (sdk or cli), Claude credential kind, Claude Code, idle close, cap, and whether the Agent SDK is installed.",
+    tool("sessions.status", "How threads run on this machine: driver (sdk or cli), Claude credential kind, Claude Code, idle close, cap, and whether the Agent SDK is installed.",
       { type: "object", properties: {} }, async () => status());
 
-    tool("sessions.setup", "Install the Claude Agent SDK now (it installs itself on first use otherwise) and wait. Says how much it downloads. Sessions use it from the next one on.",
+    tool("sessions.setup", "Install the Claude Agent SDK now (it installs itself on first use otherwise) and wait. Says how much it downloads. Threads use it from the next one on.",
       { type: "object", properties: {} },
       async () => {
         const cfg = sessionsConfig(ctx.config);
@@ -202,7 +202,7 @@ export default {
         return row;
       }, PEOPLE);
 
-    tool("sessions.prompt.preview", "Preview the system prompt a session would start with for an agent and project, and how its levels combine. Excludes Vyre's own launch text.",
+    tool("sessions.prompt.preview", "Preview the system prompt a thread would start with for an agent and project, and how its levels combine. Excludes Vyre's own launch text.",
       { type: "object", properties: { agent: str, agent_kind: str, project: str, purpose: { type: "string", enum: ["capsule"], description: "capsule: Lumen's quick answer prompt (Vyre IQ), with no facts." } } },
       async i => i.purpose === "capsule" ? composeIq({ own: prompts.current("capsule") })
         : prompts.compose({ agent: i.agent || null, agentKind: i.agent_kind || null, project: i.project || null }));
@@ -237,7 +237,7 @@ export default {
         return { account: row.id, provider: row.provider, kind: row.kind, models: await modelsOfAccount(row) };
       });
 
-    tool("sessions.models.get", "Which model each session purpose and project runs on, and where it comes from. An agent's own model wins.",
+    tool("sessions.models.get", "Which model each thread purpose and project runs on, and where it comes from. An agent's own model wins.",
       { type: "object", properties: {} },
       async (_i, meta) => {
         const person = await personOf(meta), who = person && person !== accounts.owner() ? person : null;
@@ -246,7 +246,7 @@ export default {
         return { purposes: Object.fromEntries(PURPOSES.map(p => [p, modelFor({ purpose: p, person })])), projects };
       });
 
-    tool("sessions.models.set", "Set the model for a purpose (purpose:<chat|agent|project|teammate|capsule|job|memory|planner|learn|helper>) or a project (project:<slug>): an alias (opus, sonnet, haiku) or a full model id. model null removes the override. Applies from the next session.",
+    tool("sessions.models.set", "Set the model for a purpose (purpose:<chat|agent|project|teammate|capsule|job|memory|planner|learn|helper>) or a project (project:<slug>): an alias (opus, sonnet, haiku) or a full model id. model null removes the override. Applies from the next thread.",
       { type: "object", required: ["scope"], properties: { scope: str, model: { type: ["string", "null"] } } },
       async (i, meta) => {
         const caller = meta && meta.caller;
@@ -264,7 +264,7 @@ export default {
       }, PEOPLE);
 
     ctx.tool("sessions.models.resolve", {
-      description: "The model a session starting now runs on, and where that comes from.", internal: true,
+      description: "The model a thread starting now runs on, and where that comes from.", internal: true,
       input: { type: "object", properties: { purpose: str, project: str, model: str, person: str } },
       run: async i => modelFor(i),
     });
@@ -312,7 +312,7 @@ export default {
     };
     // The Switchboard tells us what a session's provider said about itself (init: models, plan), so providers.list can fill a model picker. Internal.
     ctx.tool("sessions.providers.learn", {
-      description: "Record what a provider reported in a session: the models its account can use (id, label) and its plan. For providers.list; not a public name.", internal: true,
+      description: "Record what a provider reported in a thread: the models its AI account can use (id, label) and its plan. For providers.list; not a public name.", internal: true,
       input: { type: "object", required: ["provider"], properties: { provider: str, account: str, models: { type: "array", maxItems: 200, items: { type: "object", required: ["id"], properties: { id: str, label: str } } }, plan: str } },
       run: async i => {
         const models = Array.isArray(i.models) && i.models.length ? JSON.stringify(i.models.map(m => ({ id: String(m.id).slice(0, 100), label: String(m.label || m.id).slice(0, 100) }))) : null;
@@ -326,7 +326,7 @@ export default {
     });
     // R031-85: what each harness can do, detected from what it said at the start of a session. Internal learn; a public read.
     ctx.tool("sessions.harness.learn", {
-      description: "Record what a harness showed it can do at session start: { provider, version?, caps: { skills, plugins, mcp, subagents, ... : true | false | null }, counts?, auth? }. For the capability store; not a public name.", internal: true,
+      description: "Record what a harness showed it can do at thread start: { provider, version?, caps: { skills, plugins, mcp, subagents, ... : true | false | null }, counts?, auth? }. For the capability store; not a public name.", internal: true,
       input: { type: "object", required: ["provider", "caps"], properties: { provider: str, version: { type: ["string", "null"] }, caps: { type: "object" }, counts: { type: "object" }, auth: { type: "array", items: str } } },
       run: async i => {
         const caps = Object.fromEntries(Object.entries(i.caps || {}).filter(([k, v]) => /^[a-z_]{2,20}$/.test(k) && (v === true || v === false || v === null)));
@@ -337,14 +337,14 @@ export default {
     });
     ctx.tool("sessions.harness.get", {
       description: "What each harness can do: { provider, version, caps, counts, auth, at }. Narrow with `provider`. A harness never started has no row.",
-      input: { type: "object", properties: { provider: { ...str, description: "Narrow to one harness. caps are true, false or null (not shown), detected when a session of it last started" } } },
+      input: { type: "object", properties: { provider: { ...str, description: "Narrow to one harness. caps are true, false or null (not shown), detected when a thread of it last started" } } },
       run: async i => {
         const rows = /** @type {any[]} */ (i && i.provider ? db.prepare("SELECT * FROM sessions_harness_caps WHERE provider = ?").all(String(i.provider)) : db.prepare("SELECT * FROM sessions_harness_caps ORDER BY provider").all());
         return { harnesses: rows.map(r => ({ provider: r.provider, version: r.version, caps: JSON.parse(String(r.caps)), counts: JSON.parse(String(r.counts || "{}")), auth: JSON.parse(String(r.auth || "[]")), at: r.at })) };
       },
     });
     ctx.tool("sessions.providers.snapshot", {
-      description: "Every session provider this module speaks for (claude, codex, grok), each with its own accounts and the models it offers. For providers.list (core/providers) to assemble; not a public name itself.", internal: true,
+      description: "Every AI provider this module speaks for (claude, codex, grok), each with its own AI accounts and the models it offers. For providers.list (core/providers) to assemble; not a public name itself.", internal: true,
       input: { type: "object", properties: {} },
       run: async (_i, meta) => { const who = await personOf(meta); return Promise.all(PROVIDERS.map(async p => ({ ...p,
         accounts: await Promise.all(accounts.list(p.id, who).map(async a => ({ id: a.id, label: a.label, kind: a.kind, plan: accountPlan(p.id, a.id), ...(p.id === "grok" ? { privacy: a.privacy } : {}), signed_in: a.kind === "login" ? (a.synthetic ? true : a.signed_in_at != null) : !a.vault_item ? true : (await vaultHas(a.vault_item)) !== false, default: a.is_default }))),
@@ -447,8 +447,8 @@ export default {
         const listed = accounts.list(i.provider ? String(i.provider) : undefined, await personOf(meta));
         // Who a signed-in login account is signed in as (the non-secret email and org its own login left), so the person's confirm of an account the
         // assistant started can tell whose it is; null reads as "account not identified".
-        const PRIVACY_ON = "Privacy mode on: xAI does not keep this account's sessions; Grok cannot make video.";
-        const PRIVACY_OFF = "Privacy mode off: xAI keeps this account's sessions and may train on them; Grok can make video.";
+        const PRIVACY_ON = "Privacy mode on: xAI does not keep this account's chats; Grok cannot make video.";
+        const PRIVACY_OFF = "Privacy mode off: xAI keeps this account's chats and may train on them; Grok can make video.";
         const rows = await Promise.all(listed.map(async a0 => { const a = a0.provider === "grok" && !a0.synthetic ? { ...a0, privacy_label: a0.privacy ? PRIVACY_ON : PRIVACY_OFF, privacy_note: "Change it in Grok's /privacy settings; Vyre shows what you chose." } : a0;
           return a.kind === "login" && !a.synthetic && a.signed_in_at != null ? { ...a, identity: await identityOf(a) } : a; }));
         // Vault item names go to people, modules and the assistant; another agent sees the accounts without them.
@@ -668,7 +668,7 @@ export default {
     });
     // The person's choice about whether xAI keeps this Grok account's sessions (and so whether Grok can make video). The setting itself lives on xAI's side for the
     // account and is changed there (in Grok's own /privacy settings); this records what the person chose so Vyre says it plainly and a surface can offer the choice.
-    tool("sessions.accounts.set", "Set an account's privacy choice (Grok only): privacy true is privacy mode on, xAI does not keep the account's sessions and Grok cannot make video; false is off, xAI keeps them and may train on them, and Grok can make video. Records the choice; the setting itself is changed on xAI's side, in Grok's /privacy settings. For an OpenCode account, go_only true uses only OpenCode Go when that key lists Go models, and false uses the regular models.",
+    tool("sessions.accounts.set", "Set an account's privacy choice (Grok only): privacy true is privacy mode on, xAI does not keep the account's chats and Grok cannot make video; false is off, xAI keeps them and may train on them, and Grok can make video. Records the choice; the setting itself is changed on xAI's side, in Grok's /privacy settings. For an OpenCode account, go_only true uses only OpenCode Go when that key lists Go models, and false uses the regular models.",
       { type: "object", required: ["account"], properties: { account: str, go_only: { type: "boolean", description: "OpenCode only. True uses only OpenCode Go when this key lists Go models. False uses the regular models." }, privacy: { type: "boolean" } } },
       async (i, meta) => {
         await mine(accounts.row(String(i.account)), meta);
@@ -703,7 +703,7 @@ export default {
       },
     });
     ctx.tool("sessions.accounts.resolve", {
-      description: "Which account a session on this provider uses, for a project/agent/explicit choice, scope-checked either way. any: the person's own account on any provider, this one first.", internal: true,
+      description: "Which AI account a thread on this provider uses, for a project/agent/explicit choice, scope-checked either way. any: the person's own account on any provider, this one first.", internal: true,
       input: { type: "object", required: ["provider"], properties: { provider: str, account: str, project: str, agent: str, person: str, job: { type: "boolean" }, any: { type: "boolean" } } },
       run: async i => (i.any === true && !i.account ? accounts.own(i) : accounts.resolve(i)),
     });
@@ -769,7 +769,7 @@ export default {
     ctx.tool("sessions.slots", {
       description: "The concurrency ledger (for the Switchboard and teammates): take a teammate or subagent slot (waiting its turn, or not), release one, release all an owner holds, or read what is held.", internal: true,
       input: { type: "object", required: ["action"], properties: { action: { type: "string", enum: ["take", "release", "release-owner", "status"] }, kind, project: str, owner: str, key: str,
-        wait: { type: "boolean" }, timeout_ms: { type: "integer" }, id: str, auth: { type: "string", description: "The credential the new session runs on: its plan's usage pause applies." } } },
+        wait: { type: "boolean" }, timeout_ms: { type: "integer" }, id: str, auth: { type: "string", description: "The credential the new thread runs on: its plan's usage pause applies." } } },
       run: async i => {
         if (i.action === "status") return slots.status();
         if (i.action === "release") return { released: i.id ? slots.release(String(i.id)) : slots.releaseKey(String(i.owner), String(i.key)) };
@@ -795,7 +795,7 @@ export default {
       { type: "object", properties: { project: str } },
       async i => ({ box: boxLimits(), ...(i.project ? { project: projectLimits(i.project) } : {}) }));
 
-    tool("sessions.limits.set", "Set a project's limits: at most this many active teammates (max_active) and subagents across all its sessions (max_subagents). null removes one. Over a limit, new ones wait their turn.",
+    tool("sessions.limits.set", "Set a project's limits: at most this many active teammates (max_active) and subagents across all its threads (max_subagents). null removes one. Over a limit, new ones wait their turn.",
       { type: "object", required: ["project"], properties: { project: str, max_active: { type: ["integer", "null"] }, max_subagents: { type: ["integer", "null"] } } },
       async i => {
         for (const [key, k] of [["max_active", "teammate"], ["max_subagents", "subagent"]]) {
@@ -811,10 +811,10 @@ export default {
       const r = /** @type {any} */ (db.prepare("SELECT mode, by, at FROM sessions_modes WHERE project = ?").get(String(project)));
       return r ? { mode: String(r.mode), by: r.by == null ? null : String(r.by), at: Number(r.at) } : null;
     };
-    tool("sessions.mode.get", "The permission mode new sessions in a project start in (sessions.mode.set), or null for Claude Code's default (ask).",
+    tool("sessions.mode.get", "The permission mode new threads in a project start in (sessions.mode.set), or null for Claude Code's default (ask).",
       { type: "object", required: ["project"], properties: { project: str } },
       async i => ({ project: String(i.project), ...(projectMode(i.project) || { mode: null }) }));
-    tool("sessions.mode.set", "The permission mode new sessions in a project start in: default (ask), acceptEdits, plan or bypassPermissions (\"Doesn't ask\": the security floor and the Gate still hold; only sessions with Vyre's plugin take it). The person's own; default (or no mode) clears it. A running session keeps its mode (threads.mode changes that).",
+    tool("sessions.mode.set", "The permission mode new threads in a project start in: default (ask), acceptEdits, plan or bypassPermissions (\"Doesn't ask\": the security floor and the Gate still hold; only threads with Vyre's plugin take it). The person's own; default (or no mode) clears it. A running thread keeps its mode (threads.mode changes that).",
       { type: "object", required: ["project"], properties: { project: str, mode: { type: "string", enum: SESSION_MODES } } },
       async (i, { caller }) => {
         const project = String(i.project);
@@ -831,7 +831,7 @@ export default {
       }, PEOPLE);
 
     ctx.tool("sessions.mode.resolve", {
-      description: "The mode a new session in a project starts in, for the Switchboard.", internal: true,
+      description: "The mode a new thread in a project starts in, for the Switchboard.", internal: true,
       input: { type: "object", properties: { project: str } },
       run: async i => ({ mode: i.project ? (projectMode(i.project) || { mode: null }).mode : null }),
     });
@@ -899,7 +899,7 @@ export default {
     };
 
     ctx.tool("sessions.prompt.compose", {
-      description: "The system prompt for a session starting now: the environment brief, then the levels around Vyre's own launch text, then the project's own context (context, for a driver with no SessionStart hook). purpose \"capsule\" is Lumen's quick answer (Vyre IQ): the whole prompt, with append read as its facts.", internal: true,
+      description: "The system prompt for a thread starting now: the environment brief, then the levels around Vyre's own launch text, then the project's own context (context, for a driver with no SessionStart hook). purpose \"capsule\" is Lumen's quick answer (Vyre IQ): the whole prompt, with append read as its facts.", internal: true,
       input: { type: "object", properties: { agent: str, agent_kind: str, project: str, person: str, no_project_docs: { type: "boolean" }, append: str, purpose: str, facts: { type: "array", items: str }, provider: str, context: str, artifacts_dir: str, zone: str, space_zone: str, now: { type: "number" }, contacts: { type: "array", items: { type: "object" } } } },
       run: async i => i.purpose === "capsule"
         ? (r => ({ ...r, text: `${r.text}\n\n${timeLine({ now: Number.isFinite(Number(i.now)) ? Number(i.now) : Date.now(), person: zoneFrom(i.zone, zoneFrom(i.space_zone, "UTC")), space: zoneFrom(i.space_zone, "") || null, contacts: Array.isArray(i.contacts) ? i.contacts : [] })}` }))(composeIq({ facts: Array.isArray(i.facts) ? i.facts.map(String) : factsFrom(i.append), own: prompts.current("capsule") }))

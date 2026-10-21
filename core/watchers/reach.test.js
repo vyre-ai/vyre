@@ -20,7 +20,7 @@ const REACH = {
   "watchers.create": "asked", "watchers.preset": "asked", "watchers.pause": "anyone",
   "watchers.resume": "person", "watchers.delete": "person", "watchers.run": "person", "watchers.hook": "hook",
   "watchers.write": "asked", "watchers.routine.create": "asked", "watchers.revise": "anyone", "watchers.own.resume": "anyone", "watchers.own.run": "anyone", "watchers.own.delete": "anyone",
-  "watchers.create.target": "modules", "watchers.preset.target": "modules", "watchers.shown": "modules", "watchers.duty.create": "modules", "watchers.duty.update": "modules", "watchers.duty.delete": "modules", "watchers.duty.run": "modules", "watchers.duty.resume": "modules", "watchers.hook.run": "modules",
+  "watchers.create.target": "modules", "watchers.preset.target": "modules", "watchers.shown": "anyone", "watchers.duty.create": "modules", "watchers.duty.update": "modules", "watchers.duty.delete": "modules", "watchers.duty.run": "modules", "watchers.duty.resume": "modules", "watchers.hook.run": "modules",
 };
 
 test("every watchers tool names its reach, and it is the one decided", () => {

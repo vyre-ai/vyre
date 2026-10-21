@@ -54,6 +54,7 @@
     },
     {
       "key": "appearance.scheme",
+      "perPerson": true,
       "group": "appearance",
       "label": "Scheme",
       "help": "Follow the device, or always dark or paper.",

@@ -1,7 +1,7 @@
 {
   "name": "sessions",
   "version": "0.1.0",
-  "description": "How the sessions Vyre starts run (ADR 0030): the Claude Agent SDK driver's status and install, and the system prompt at three levels, versioned.",
+  "description": "How the threads Vyre starts run (ADR 0030), and the AI accounts they run on: the Claude Agent SDK driver's status and install, and the system prompt at three levels, versioned.",
   "roles": [
     "box",
     "local"

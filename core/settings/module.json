@@ -32,7 +32,9 @@
         "effect": "write"
       },
       "settings.undo",
-      "settings.changes"
+      "settings.changes",
+      "settings.person.get",
+      "settings.person.set"
     ]
   },
   "watches": {

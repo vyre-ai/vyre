@@ -16,7 +16,7 @@ test("release.yml: images are pinned by script, SHA256SUMS is signed with the Ed
   const pin = at("node scripts/pin-release-compose.mjs"), sign = at("node scripts/sign-manifest.mjs"), gate = at("node scripts/check-release-dist.mjs dist --pulled"), blob = at("cosign sign-blob --yes"), publish = at("gh release create");
   assert.ok(pin < sign && sign < gate && gate < blob && blob < publish, "order: pin, Ed25519 sign, gate, cosign blob, publish");
   assert.match(yml, /VYRE_SIGNING_KEY: \$\{\{ env\.PUBLISH == 'true' && secrets\.VYRE_RELEASE_SIGNING_KEY \|\| '' \}\}/, "the key is the release environment's secret, only on a publish");
-  assert.match(yml, /check-release-dist\.mjs dist --pulled --modules --installer --android --android-release --setup \$\{MAC_FLAG:-\} --pubkey/, "a publish is gated with images required and the signature checked against the pinned key");
+  assert.match(yml, /check-release-dist\.mjs dist --pulled --modules --installer \$\{ANDROID_FLAG:\+--android --android-release\} --setup \$\{MAC_FLAG:-\} --pubkey/, "a publish is gated with images required and the signature checked against the pinned key");
   assert.ok(!/\$\{VYRE_IMAGE:-\$BOX\}/.test(yml), "the old sed that kept a variable is gone");
   // The identity boxes demand is this workflow at a version tag: images are signed here with `cosign sign --yes` (keyless).
   assert.match(yml, /cosign sign --yes "\$ref"/);
@@ -214,7 +214,9 @@ test("release.yml: a tag that already has a release is refused in prepare before
 
 test("release.yml: the Android APK is built in this run, checked, required in dist under both names, and the notes say it is sideloaded", () => {
   // The Android job starts with the run (it is the longest job and holds nothing that signs): it has no needs, takes its version from the tag, and the release job still needs prepare, which refuses a bad tag.
-  assert.match(yml, /\n  android:\n    runs-on: ubuntu-latest\n/);
+  // Paused from 0.6.7 (phones are the web): the job runs only when the repository variable VYRE_PHONE_BUILDS is 'go', and the release job accepts it skipped.
+  assert.match(yml, /\n  android:\n    if: vars\.VYRE_PHONE_BUILDS == 'go'\n    runs-on: ubuntu-latest\n/);
+  assert.match(yml, /\(needs\.android\.result == 'success' \|\| needs\.android\.result == 'skipped'\)/, "a paused Android build does not stop the release");
   assert.ok(!/\n  android:\n    needs:/.test(yml), "android waits for nothing");
   assert.match(yml, /TAG: \$\{\{ github\.event_name == 'push' && github\.ref_name \|\| inputs\.tag \}\}\n        run: \|\n          VERSION=\$\{TAG#v\}/, "its version is the tag's, the same expression prepare uses");
   const job = yml.slice(yml.indexOf("\n  android:\n"), yml.indexOf("\n  # Join the per-arch digests"));

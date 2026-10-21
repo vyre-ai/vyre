@@ -1261,6 +1261,46 @@ test("the owner record is written BEFORE spaces.owner.adopt asks for it (windows
 });
 
 
+test("the device row's person is set only by a pairing whose identity proof checked out and the owner confirmed, never by anything a caller sends", async () => {
+  const kp = crypto.generateKeyPairSync("ed25519");
+  const pub = kp.publicKey.export({ format: "der", type: "spki" }).subarray(-32).toString("base64url");
+  const BOX = "Qm94S2V5", TAG = "t".repeat(43);
+  const w = world({ confirm: true, requireProof: true, releaseProof: false, identityEntry: async (_i, eid) => (eid === "e1" ? { eid: "e1", kind: "device", pub, identity: ME } : null),
+    call: async (tool, input) => {
+      if (tool === "relay.pair.pending.confirm") return { data: { key: crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7, storage: "software" } };
+      if (tool === "relay.device.presence") return { data: { key: "pk1" } };
+      if (tool === "spaces.owner.adopt") return { data: { owner: input.person } };
+      return undefined;
+    } });
+  const proof = { eid: "e1", sig: crypto.sign(null, pairToMessage(BOX, "app1", TAG), kp.privateKey).toString("base64url") };
+  // the caller also sends a person of its own: it is not read
+  const input = { owner: { kind: "identity", id: ME, name: "Alex", vyre: "alex" }, identity: ME, person: "per_zzzzzzzzzzzzzzzzzzzzzzzzzz", deviceKind: "phone", proof, pairing: { commit: "0".repeat(64), tag: TAG } };
+  const run = () => w.tools.get("wink.server.adopt").run(input, { caller: "device:app1" });
+  assert.equal((await run()).pending, true);
+  assert.equal(w.p.devices.get("app1"), null, "no row, so no person, before the owner's answer");
+  await atServer(w, "wink.server.pair.answer", await rightYes(w, "amber coral app1").catch(() => ({ yes: true, pick: 1 })));
+  await run().catch(e => e);
+  const row = w.p.devices.get("app1");
+  assert.equal(row && row.person, ME, "the person on the row is the proven identity");
+  assert.equal(w.p.devices.record("app1").person, ME, "and the record the daemon reads says so");
+  w.p.devices.remove("app1");
+  assert.equal(w.p.devices.get("app1").person, null, "a removed device has no person");
+});
+
+test("the row's person: add never takes one, and setPerson holds only for a row the owner confirmed and only for the person that confirmation named", () => {
+  const w = world();
+  const row = w.p.devices.add({ id: "d9", identity: ME, kind: "computer", name: "Alex's Mac", person: "per_other", target: { kind: "identity", id: ME } });
+  assert.equal(row.person, null, "a device added by anything but the proven pairing has no person");
+  assert.equal(w.p.devices.setPerson("d9", ME), false, "nobody confirmed this row");
+  assert.equal(w.p.devices.get("d9").person, null);
+  w.p.devices.setConfirmed("d9", { by: ME, keyId: "k1", key: null });
+  assert.equal(w.p.devices.setPerson("d9", "per_other"), false, "a person the confirmation did not name");
+  assert.equal(w.p.devices.get("d9").person, null);
+  assert.equal(w.p.devices.setPerson("d9", ME), true);
+  assert.equal(w.p.devices.get("d9").person, ME);
+  assert.equal(w.p.devices.record("d9").person, ME);
+});
+
 const fixtureBuild = (kind) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), `bk-${kind}-`));
   fs.mkdirSync(path.join(dir, "lib"));

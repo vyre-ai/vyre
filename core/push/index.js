@@ -21,6 +21,7 @@
 import crypto from "node:crypto";
 import { personOfChain, personOfMeta } from "../../lib/lent-placement.js";
 import { vapidKeys, send } from "./webpush.js";
+import { makePersonKinds, PERSON_KINDS } from "./person-kinds.js";
 
 export const MIGRATIONS = [
   `CREATE TABLE push_devices (id TEXT PRIMARY KEY, endpoint TEXT NOT NULL UNIQUE, p256dh TEXT NOT NULL, auth TEXT NOT NULL,
@@ -196,6 +197,7 @@ export default {
   async start(ctx) {
     ctx.store.migrate(MIGRATIONS);
     const db = ctx.store.db;
+    const pk = makePersonKinds(ctx);
     const opts = (ctx.config && ctx.config.push) || {};
     const subject = String(opts.subject || "https://vyre.sh");
     const hosts = [...SERVICES, ...(Array.isArray(opts.hosts) ? opts.hosts.map(String) : [])];
@@ -247,6 +249,8 @@ export default {
       const out = { sent: 0, failed: 0, dropped: 0 };
       await Promise.all(devices.map(async d => {
         if (thread && d.by && await chatMuted(ctx, String(d.by), thread)) return;
+        // this person's own switch for the kind (their row, else the server-wide value)
+        if (d.by && await pk.off(await personForMute(ctx, String(d.by)), message.kind, Boolean(settings().kinds[message.kind]))) return;
         if (d.expires && d.expires < Date.now()) { db.prepare("DELETE FROM push_devices WHERE id = ?").run(d.id); out.dropped++; return; }
         const r = await send({ endpoint: d.endpoint, keys: { p256dh: d.p256dh, auth: d.auth } }, message,
           { privateKey: k.privateKey, publicKey: k.publicKey, subject, urgency: ["ask", "draft", "planner"].includes(message.kind) ? "high" : "normal" });
@@ -306,7 +310,7 @@ export default {
     /** Sends now what may go: kinds, quiet hours, the daily budget and a device, checked when it is sent. @param {string | null} [onlyDevice] */
     const post = async (n, loud = false, onlyDevice = null) => {
       const s = settings();
-      if (!s.kinds[n.kind] || (!loud && isQuiet(s.quiet, testHooks.now()))) return;
+      if (!(s.kinds[n.kind] || await pk.anyOn(n.kind)) || (!loud && isQuiet(s.quiet, testHooks.now()))) return;
       if (!db.prepare("SELECT 1 FROM push_devices LIMIT 1").get()) return;
       if (CAPPED.has(n.kind) && !loud) {
         // Read the limit first: the count is then read and written with no await between, so
@@ -355,7 +359,7 @@ export default {
             if (skip) return;
           }
         }
-        if (!s.kinds[n.kind] || (!loud && isQuiet(s.quiet, testHooks.now()))) return;
+        if (!(s.kinds[n.kind] || await pk.anyOn(n.kind)) || (!loud && isQuiet(s.quiet, testHooks.now()))) return;
         if (!db.prepare("SELECT 1 FROM push_devices LIMIT 1").get()) return;
         if (HELD.has(n.kind)) {
           const free = heldOffDevices();
@@ -439,7 +443,9 @@ export default {
 
     tool("push.settings", "Quiet hours ({start: \"22:00\", end: \"07:00\", timezone?}, or null for none), which kinds notify (ask, draft, watch, lesson, planner; lesson is off by default), and planner_label: show a planner item's own words on the lock screen (off by default). With no input, the current settings.",
       { type: "object", properties: { quiet: { anyOf: [{ type: "object" }, { type: "null" }] }, kinds: { type: "object" }, planner_label: { type: "boolean" } } },
-      async i => {
+      async (i, meta) => {
+        // A person's own call changes that person's own switches (settings, per person); quiet hours and a call with no person stay server-wide.
+        const me = await pk.person(meta);
         if (i.quiet !== undefined) {
           const q = i.quiet;
           if (q !== null && !(/^\d{1,2}:\d{2}$/.test(String(q.start)) && /^\d{1,2}:\d{2}$/.test(String(q.end)))) throw new Error("quiet hours are {start: \"HH:MM\", end: \"HH:MM\"}");
@@ -451,10 +457,16 @@ export default {
           if (bad.length) throw new Error(`no such kind: ${bad.join(", ")} (kinds: ${KINDS.join(", ")})`);
           // A notice says a guard was loosened as asked: nobody, the person included, switches it off here.
           if ("notice" in i.kinds) throw new Error("notice cannot be turned off: it says a guard was loosened as you asked");
-          state.set("kinds", { ...(state.get("kinds") || {}), ...Object.fromEntries(Object.entries(i.kinds).map(([k, v]) => [k, Boolean(v)])) });
+          const wanted = Object.fromEntries(Object.entries(i.kinds).map(([k, v]) => [k, Boolean(v)]));
+          const own = me ? await pk.write(me, wanted) : false; // false: no person, or no settings module to keep the person's row, so the switch stays server-wide
+          const shared = own ? Object.fromEntries(Object.entries(wanted).filter(([k]) => !PERSON_KINDS.includes(k))) : wanted;
+          if (Object.keys(shared).length) state.set("kinds", { ...(state.get("kinds") || {}), ...shared });
         }
-        if (i.planner_label !== undefined) state.set("planner_label", Boolean(i.planner_label));
-        return { ...settings(), quiet_now: isQuiet(settings().quiet) };
+        if (i.planner_label !== undefined) state.set("planner_label", Boolean(i.planner_label)); // what rides on the lock screen is the box's choice, one for every device
+        const now = settings();
+        if (!me) return { ...now, quiet_now: isQuiet(now.quiet) };
+        const mine = await pk.read(me);
+        return { ...now, kinds: { ...now.kinds, ...mine }, quiet_now: isQuiet(now.quiet) };
       });
 
     tool("push.seen", "A person is using this screen: call it when the screen is shown, when it is hidden, and on the first input after a minute of none. Asks, drafts and watches wait until 3 minutes after the last call; planner rings do not. standalone: the app runs installed (emits push.seen at most once per surface in 10 minutes). device: this screen's push device id (push.subscribe's answer), carried in the event.",

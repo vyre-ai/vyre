@@ -1,7 +1,7 @@
-// core/space-sessions/index.js: the session engine for a Space. One Space per session; a checkpoint state that carries taint and permissions;
+// core/space-sessions/index.js: the checkpoint engine for a Space (a thread in a Space, and the checkpoint it saves). One Space per thread; a checkpoint state that carries taint and permissions;
 // resume from a checkpoint; Continue in another space; the hours and spend budgets. It owns no files, keys or placement:
 //   - the runner (core/runner) owns the sandbox, the encrypted workspace, sync to and from the member's computer, the key lease and where a
-//     session runs. We call its `decide` for placement and give it the state to store with each checkpoint (`sessionState`).
+//     thread runs. We call its `decide` for placement and give it the state to store with each checkpoint (`sessionState`).
 //   - the vault owns the key leases (kernel/seal/leases.js), the grants store owns the two-grant check (gateway.grants.offers).
 // A factory over ports, so it runs under a fake kernel today and under the real gateway later.
 import { createContinue } from "./continue.js";

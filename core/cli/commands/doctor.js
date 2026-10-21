@@ -30,6 +30,7 @@ import { out, dim, bold, signal, beacon } from "../style.js";
 import { INSTALL } from "../brand.js";
 import { json, emit, EXIT, viewing } from "../kit.js";
 import { execFileSync, spawnSync } from "node:child_process";
+import { readLog, summarize, logLines } from "./doctor-log.js";
 import { parsePmset, powerDrift, pmsetArgs, fileVault, PMSET } from "../../../lib/online.js";
 
 /** The whole run's budget, and one check's. */
@@ -352,12 +353,20 @@ async function live() {
 }
 
 export default {
-  name: "doctor", order: 12, usage: "vyre doctor [--json] [--repair]",
+  name: "doctor", order: 12, usage: "vyre doctor [--json] [--repair] [--log]",
   summary: "check Vyre, your link, the relay, your devices, passkey, pairing, Claude and Lumen, and say what to fix",
-  help: "Read-only and under 2 s. ✓ passed, ✗ failed (the line under it is what to do), ? could not be checked.\nExit 0 when nothing failed, 1 when something did. --json: { ok, role, checks: [{ id, label, ok, detail, fix }] }.",
+  help: "Read-only and under 2 s. ✓ passed, ✗ failed (the line under it is what to do), ? could not be checked.\nExit 0 when nothing failed, 1 when something did. --json: { ok, role, checks: [{ id, label, ok, detail, fix }] }.\nThe last lines count the server log of the last 24 h: errors, warnings by kind, calls over 2 s, retries, module restarts. --log prints only those (with --json, as data).",
   /** @param {string[]} args */
   async run(args = []) {
     if (viewing()) return live();
+    // --log: only the last 24 h of this machine's server log, counted (doctor-log.js).
+    if (args.includes("--log")) {
+      const lines = readLog(config.paths().logs);
+      if (!lines) { out(dim("  there is no server log here yet")); return EXIT.OK; }
+      const sum = summarize(lines);
+      if (json() || args.includes("--json")) emit(sum); else for (const l of logLines(sum)) out(l);
+      return EXIT.OK;
+    }
     let r = await diagnose();
     // --repair: put a Mac server's power settings right (root: one password prompt). FileVault is never changed by Vyre; its line says what to do.
     if (args.includes("--repair")) {
@@ -375,6 +384,8 @@ export default {
     const bad = r.checks.filter(c => c.ok === false).length;
     out("");
     out(dim(`  ${bad ? `${bad} to fix` : "nothing to fix"} · checked in ${(r.ms / 1000).toFixed(1)} s`));
+    const lines = readLog(config.paths().logs);
+    if (lines) { out(""); for (const l of logLines(summarize(lines))) out(l); }
     return ok ? EXIT.OK : EXIT.FAILED;
   },
 };
