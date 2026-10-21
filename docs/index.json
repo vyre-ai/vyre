@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":360,"tool":1994,"event":556,"config":307,"env":306,"screen":0,"concept":39},
+  "counts": {"command":360,"tool":1996,"event":556,"config":307,"env":306,"screen":0,"concept":39},
   "things": [
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
     {"kind":"event","name":"account.changed","definedIn":"core/sessions/index.js","page":"reference/events.md#models","module":"sessions","mentions":[]},
@@ -1833,6 +1833,8 @@
     {"kind":"config","name":"settings.claude_dir","definedIn":"core/settings/index.js","page":null,"mentions":[]},
     {"kind":"tool","name":"settings.get","definedIn":"core/settings/index.js","page":"reference/tools.md#settingsget","module":"settings","mentions":[{"page":"adr/0035-settings-hub.md","line":31,"anchor":"context"},{"page":"adr/0035-settings-hub.md","line":174,"anchor":"5-the-live-read"},{"page":"adr/0035-settings-hub.md","line":185,"anchor":"5-the-live-read"},{"page":"adr/0035-settings-hub.md","line":192,"anchor":"5-the-live-read"},{"page":"design/settings-inventory.md","line":57,"anchor":"storage-plan"}]},
     {"kind":"event","name":"settings.loosened","definedIn":"core/settings/index.js","page":"reference/events.md#settings","module":"settings","mentions":[]},
+    {"kind":"tool","name":"settings.person.get","definedIn":"core/settings/index.js","page":"reference/tools.md#settingspersonget","module":"settings","mentions":[]},
+    {"kind":"tool","name":"settings.person.set","definedIn":"core/settings/index.js","page":"reference/tools.md#settingspersonset","module":"settings","mentions":[]},
     {"kind":"tool","name":"settings.request","definedIn":"core/settings/index.js","page":"reference/tools.md#settingsrequest","module":"settings","mentions":[]},
     {"kind":"tool","name":"settings.reset","definedIn":"core/settings/index.js","page":"reference/tools.md#settingsreset","module":"settings","mentions":[{"page":"adr/0035-settings-hub.md","line":31,"anchor":"context"},{"page":"design/settings-inventory.md","line":58,"anchor":"storage-plan"}]},
     {"kind":"tool","name":"settings.resolve","definedIn":"core/settings/index.js","page":"reference/tools.md#settingsresolve","module":"settings","mentions":[{"page":"adr/0035-settings-hub.md","line":186,"anchor":"5-the-live-read"},{"page":"adr/0035-settings-hub.md","line":238,"anchor":"who-does-what"}]},

@@ -602,6 +602,7 @@ export const READ_TOOLS = [
  "watchers.items",
  "watchers.list",
  "watchers.logs",
+ "watchers.shown",
  "wink.card",
  "wink.install.status",
  "wink.offers",

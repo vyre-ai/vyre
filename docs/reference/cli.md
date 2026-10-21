@@ -140,11 +140,12 @@ vyre box [status|add <user@host> [--yes] [--version <v>|latest]|update|backup [f
 Check Vyre, your link, the relay, your devices, passkey, pairing, Claude and Lumen, and say what to fix.
 
 ```
-vyre doctor [--json] [--repair]
+vyre doctor [--json] [--repair] [--log]
 ```
 
 Read-only and under 2 s. ✓ passed, ✗ failed (the line under it is what to do), ? could not be checked.
 Exit 0 when nothing failed, 1 when something did. --json: { ok, role, checks: [{ id, label, ok, detail, fix }] }.
+The last lines count the server log of the last 24 h: errors, warnings by kind, calls over 2 s, retries, module restarts. --log prints only those (with --json, as data).
 
 ### vyre status
 

@@ -88,7 +88,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`runner`](#runner) | `core/runner` | `local`, `box` | 25 | 10 | capsule, cli, deck |
 | [`screen`](#screen) | `local/screen-mac` | `local` | 2 | 0 | none |
 | [`sessions`](#sessions) | `core/sessions` | `box`, `local` | 44 | 9 | cli |
-| [`settings`](#settings) | `core/settings` | `box`, `local` | 10 | 2 | cli, deck |
+| [`settings`](#settings) | `core/settings` | `box`, `local` | 12 | 2 | cli, deck |
 | [`sidebar`](#sidebar) | `core/sidebar` | `box`, `local` | 7 | 1 | cli |
 | [`sideview`](#sideview) | `local/sideview` | `local` | 3 | 0 | none |
 | [`sight`](#sight) | `core/sight` | `box`, `local` | 5 | 1 | none |
@@ -932,7 +932,7 @@ Screen context on macOS: the front app, window, focused control, URL and visible
 
 ## sessions
 
-How the sessions Vyre starts run (ADR 0030): the Claude Agent SDK driver's status and install, and the system prompt at three levels, versioned.
+How the threads Vyre starts run (ADR 0030), and the AI accounts they run on: the Claude Agent SDK driver's status and install, and the system prompt at three levels, versioned.
 
 - Folder: `core/sessions`, version 0.1.0
 - Runs on: `box`, `local`
@@ -951,7 +951,7 @@ One way to read and change every setting, at account, project, device or session
 - Folder: `core/settings`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [10](tools.md#settings), 2 of them only for other modules
+- Tools: [12](tools.md#settings), 4 of them only for other modules
 - Emits: [2 events](events.md#settings)
 - Shows on: cli, deck
 - Needs kernel: `{"actions":[]}`
