@@ -83,9 +83,11 @@ test("a task listed from B, decided while A is showing and active, reaches B onl
   assert.deepEqual(route, { box: "boxb", space: "spc_bbbbbbbbbbbb" });
   await w.ports.peerCall("tasks.decide", { id: "tsk_b1", space: route.space }, route.box);
   assert.deepEqual(w.sent.filter((x) => x[1] === "tasks.decide").map((x) => [x[0], x[2].space]), [["boxb", "spc_bbbbbbbbbbbb"]], "B only, with B's Space");
-  const unseen = await m.routeCall({ tool: "tasks.decide", input: { id: "tsk_nobody" }, showing: "spc_aaaaaaaaaaaa" });
-  assert.equal(unseen.error?.code, "item_unknown_server");
+  const unseen = await m.routeCall({ tool: "tasks.decide", input: { id: "tsk_nobody" }, showing: "all" });
+  assert.equal(unseen.error?.code, "item_unknown_server", "an unseen id with no Space showing is refused");
   assert.equal(w.sent.filter((x) => x[1] === "tasks.decide").length, 1, "the unknown id sent nothing");
+  const here = await m.routeCall({ tool: "tasks.decide", input: { id: "tsk_nobody" }, showing: "spc_aaaaaaaaaaaa" });
+  assert.deepEqual(here, { box: "boxa", space: "spc_aaaaaaaaaaaa" }, "with a Space showing it goes there");
   m.setPorts(null);
 });
 

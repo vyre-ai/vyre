@@ -214,8 +214,10 @@ test("route: a new thread made from a chat goes to the server of the Space showi
   assert.equal(go({ tool: "work.chat.thread.new", input: { id: "0190c3f2-aaaa-4abc-8def-000000000009" }, itemSpaces, showing: "all" }).error?.code, "item_unknown_server");
 });
 
-test("route: an id never seen is refused with several servers, even when a Space is showing", () => {
-  const r = go({ tool: "tasks.decide", input: { id: "tsk_zzz" }, itemSpaces, showing: A });
+test("route: an id never seen goes to the Space showing; with no Space showing it is refused", () => {
+  assert.deepEqual(go({ tool: "tasks.decide", input: { id: "tsk_zzz" }, itemSpaces, showing: A }), { box: "boxa", space: A });
+  assert.deepEqual(go({ tool: "work.agent.thread.new", input: { agent: "qi", id: "chat_0190c3f2aaaa4abc8def000000000009" }, itemSpaces, showing: B }), { box: "boxb", space: B }, "a new thread with an agent");
+  const r = go({ tool: "tasks.decide", input: { id: "tsk_zzz" }, itemSpaces, showing: "all" });
   assert.equal(r.error?.code, "item_unknown_server");
   assert.equal(r.box, undefined);
   assert.match(r.error?.message ?? "", /Open the Space/);

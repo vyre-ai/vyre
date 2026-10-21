@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6.8
 
+- fix(app): with two servers paired, an id never listed yet goes to the server of the Space showing, for every tool. 0.6.7 did this only for work.chat, threads and stream tools, so a new thread with an agent (work.agent.thread.new: a chat with an agent, Home's Ask) was still refused with "Vyre does not know which Space this belongs to". Only with no Space showing is it refused (apps/app/src/real/server-route.js).
 - fix(doctor): `vyre doctor` no longer stops with "Cannot access 'lines' before initialization": the log summary's variable shadowed the check printer (core/cli/commands/doctor.js).
 
 ## 0.6.7
