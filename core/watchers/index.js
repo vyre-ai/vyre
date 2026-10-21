@@ -326,7 +326,7 @@ export default {
       run: async call => createTarget(call, { read: name => folderMod.read(ctx.paths.watchers, name) }) });
     ctx.tool("watchers.preset.target", { description: "For the gate: the key watchers.preset acts on, watchers.preset:<project>/<kind>.", input: { type: "object" }, run: async call => presetTarget(call) });
     // The cards a thread was shown, with the hash each carried when shown (never recomputed), for the assistant's recorder.
-    ctx.tool("watchers.shown", { description: "The watcher cards shown in a thread, with the hash each card carried when it was shown: { project, kinds, watchers: [{ name, hash, title, state, project, at }] }. Answered from a record made when watchers.card or watchers.preset served the card, never from the folder now. The assistant's recorder and a paired device read it.", input: { type: "object", required: ["thread"], properties: { thread: str } },
+    ctx.tool("watchers.shown", { description: "The watcher cards shown in a thread, each with the hash it carried when shown. Answered from the record made when the card was served.", input: { type: "object", required: ["thread"], properties: { thread: str } },
       run: async ({ thread }, meta = {}) => {
         // the same person check the other watcher reads use: a caller sees the cards of the projects it may see (a person, a module and a paired device see all)
         const can = await scopeFor(meta, projectOfCwd, projectOfThread);

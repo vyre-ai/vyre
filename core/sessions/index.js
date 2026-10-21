@@ -447,8 +447,8 @@ export default {
         const listed = accounts.list(i.provider ? String(i.provider) : undefined, await personOf(meta));
         // Who a signed-in login account is signed in as (the non-secret email and org its own login left), so the person's confirm of an account the
         // assistant started can tell whose it is; null reads as "account not identified".
-        const PRIVACY_ON = "Privacy mode on: xAI does not keep this account's chats; Grok cannot make video.";
-        const PRIVACY_OFF = "Privacy mode off: xAI keeps this account's chats and may train on them; Grok can make video.";
+        const PRIVACY_ON = "Privacy mode on: xAI does not keep this account's sessions; Grok cannot make video.";
+        const PRIVACY_OFF = "Privacy mode off: xAI keeps this account's sessions and may train on them; Grok can make video.";
         const rows = await Promise.all(listed.map(async a0 => { const a = a0.provider === "grok" && !a0.synthetic ? { ...a0, privacy_label: a0.privacy ? PRIVACY_ON : PRIVACY_OFF, privacy_note: "Change it in Grok's /privacy settings; Vyre shows what you chose." } : a0;
           return a.kind === "login" && !a.synthetic && a.signed_in_at != null ? { ...a, identity: await identityOf(a) } : a; }));
         // Vault item names go to people, modules and the assistant; another agent sees the accounts without them.
@@ -668,7 +668,7 @@ export default {
     });
     // The person's choice about whether xAI keeps this Grok account's sessions (and so whether Grok can make video). The setting itself lives on xAI's side for the
     // account and is changed there (in Grok's own /privacy settings); this records what the person chose so Vyre says it plainly and a surface can offer the choice.
-    tool("sessions.accounts.set", "Set an account's privacy choice (Grok only): privacy true is privacy mode on, xAI does not keep the account's chats and Grok cannot make video; false is off, xAI keeps them and may train on them, and Grok can make video. Records the choice; the setting itself is changed on xAI's side, in Grok's /privacy settings. For an OpenCode account, go_only true uses only OpenCode Go when that key lists Go models, and false uses the regular models.",
+    tool("sessions.accounts.set", "Set an account's privacy choice (Grok only): privacy true is privacy mode on, xAI does not keep the account's sessions and Grok cannot make video; false is off, xAI keeps them and may train on them, and Grok can make video. Records the choice; the setting itself is changed on xAI's side, in Grok's /privacy settings. For an OpenCode account, go_only true uses only OpenCode Go when that key lists Go models, and false uses the regular models.",
       { type: "object", required: ["account"], properties: { account: str, go_only: { type: "boolean", description: "OpenCode only. True uses only OpenCode Go when this key lists Go models. False uses the regular models." }, privacy: { type: "boolean" } } },
       async (i, meta) => {
         await mine(accounts.row(String(i.account)), meta);

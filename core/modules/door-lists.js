@@ -246,7 +246,7 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "vitals.advice", "vitals.explain", "vitals.status", "vitals.summary", "vitals.watch",
   "vyre.core",
   "waiting.count", "waiting.list",
-  "watchers.card", "watchers.create", "watchers.delete", "watchers.items", "watchers.list", "watchers.logs", "watchers.pause", "watchers.preset", "watchers.resume",
+  "watchers.card", "watchers.create", "watchers.delete", "watchers.items", "watchers.list", "watchers.logs", "watchers.pause", "watchers.preset", "watchers.resume", "watchers.shown",
   "watchers.own.delete", "watchers.own.resume", "watchers.own.run", "watchers.revise", "watchers.routine.create", "watchers.run", "watchers.test", "watchers.write",
   "wink.access", "wink.approve", "wink.cancel", "wink.card", "wink.decline", "wink.device.key",
   "wink.invite", "wink.offer.set", "wink.offers", "wink.pair.server", "wink.pair.status", "wink.pair.targets", 

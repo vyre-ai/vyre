@@ -38,6 +38,8 @@ async function world(t) {
   t.after(async () => { await reg.stop(); db.close(); });
   assert.equal(reg.modules.get("settings")?.state, "running", reg.modules.get("settings")?.error);
   assert.equal(reg.modules.get("bakery")?.state, "running", reg.modules.get("bakery")?.error);
+  // a first party module is known by its folder (the loader's one rule): the stub stands in for push
+  reg.modules.set("bakery", { ...reg.modules.get("bakery"), dir: path.join(CORE, "bakery") });
   const ok = async (/** @type {string} */ tool, /** @type {any} */ input, /** @type {string} */ caller, /** @type {any} */ meta) => { const r = await reg.call(tool, input, caller, meta); assert.ok(!r.error, `${tool}: ${JSON.stringify(r.error)}`); return r.data; };
   return { reg, ok, root };
 }

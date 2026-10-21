@@ -1997,6 +1997,10 @@
    "module": "watchers",
    "reason": "guard: the body refuses any caller that is not the verified agent that owns the watcher, and a Watcher that already passed its test (the person asks again, through watchers.write, which is reach asked); the new code runs only inside the watcher wall"
   },
+  "watchers.shown": {
+   "module": "watchers",
+   "reason": "read-only: the cards shown in a thread, filtered by the same project check as watchers.list"
+  },
   "watchers.test": {
    "module": "watchers",
    "reason": "guard: a dry run files nothing and runs inside the wall (no sockets of its own; GET and HEAD only, to hosts the watcher declared; a credential only through the person's per-watcher grant; ask() capped per day); an agent may not dry-run on a real event (refused in code), and watchers.create still needs the person's words and the card's hash"

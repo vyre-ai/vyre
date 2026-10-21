@@ -268,7 +268,7 @@ test("doctor --view: checks frames as each check answers, all waiting first, the
   const vyre = args => new Promise(res => execFile(process.execPath, [bin, ...args], { env }, (e, stdout) => res({ code: e ? e.code : 0, out: stdout })));
   const c = /** @type {any} */ (await vyre(["commands", "doctor", "--json"]));
   const doc = JSON.parse(c.out).commands[0];
-  assert.deepEqual([doc.verbs, doc.flags], [[], [{ name: "json" }, { name: "repair" }]]);
+  assert.deepEqual([doc.verbs, doc.flags], [[], [{ name: "json" }, { name: "repair" }, { name: "log" }]]);
   const r = /** @type {any} */ (await vyre(["doctor", "--view"]));
   assert.equal(r.code, 1, "vyred is not running here, which fails");
   const f = r.out.trim().split("\n").map(l => JSON.parse(l));

@@ -33,8 +33,14 @@
       },
       "settings.undo",
       "settings.changes",
-      "settings.person.get",
-      "settings.person.set"
+      {
+        "name": "settings.person.get",
+        "reach": "modules"
+      },
+      {
+        "name": "settings.person.set",
+        "reach": "modules"
+      }
     ]
   },
   "watches": {

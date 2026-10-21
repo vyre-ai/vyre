@@ -34,6 +34,7 @@ const OPERATIONAL = {
   projects: "what this computer knows of a project: folders and picked threads, per machine (the Project itself is a record)",
   recall: "the search index over the person's sessions (derived, rebuildable)",
   sessions: "provider accounts, routes, limits and model overrides of this box",
+  settings: "each person's own theme and notification switches in this Space, the values and the change log of this box (private operational state)",
   store: "the kernel store's own migrations",
   stream: "imports bookkeeping of the event stream",
   switchboard: "threads, asks and leases of the sessions this box runs",
