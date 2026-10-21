@@ -15,7 +15,7 @@ export default function GlassScreen() {
   const name = String(raw ?? "");
   const box = name === "box";
   if (Platform.OS !== "web") {
-    return <Frame title="Glass" sub="Watch an agent's computer."><Card><EmptyState title="Glass is in the web app" body="Open Vyre in a browser on your computer to watch, take over and browse files. Phone and Mac come in a later release." /></Card></Frame>;
+    return <Frame title="Computer" sub="Watch an agent's computer."><Card><EmptyState title="Computer opens in the browser" body="Open Vyre in a browser on your computer to watch, take over and browse files." /></Card></Frame>;
   }
   return box ? <Box /> : <Computer name={name} />;
 }
