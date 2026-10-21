@@ -27,6 +27,7 @@ import { ArrowNav } from "./ArrowNav";
 import { closeWho, useWho } from "./who";
 import { SidebarLabel } from "./SidebarLabel";
 import { allItems, currentItem, isTopLevel, phoneSplit, type NavItem as PureItem } from "./nav.js";
+import { HomeScreenHint } from "./HomeScreenHint";
 
 export type NavItem = Omit<PureItem, "icon"> & { icon: IconName };
 export type NavGroup = { name: string; items: NavItem[] };
@@ -292,6 +293,7 @@ function PhoneShell(p: ShellProps) {
         </View>
       ) : null}
       <View className="min-h-0 flex-1">{p.children}</View>
+      <HomeScreenHint />
       <View role="navigation" accessibilityLabel="Places" className="flex-row border-t border-edge px-s2" style={[glass(color.bg), { paddingBottom: inset.bottom }]}>
         {tabs.map((it) => <Tab key={it.id} it={it} on={cur === it.id} onPress={() => p.onNavigate(it.href)} />)}
         <Tab it={{ id: "more", label: "More", icon: "more", href: "" }} on={inMore || more} onPress={() => setMore(true)} />
