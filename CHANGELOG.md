@@ -5,6 +5,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 ## 0.6.7
 
 - fix(modules): comms, computer, documents, events, mentions and outside declare "vyre": "1", so a start no longer warns that apiVersion is deprecated. The computer module, and the architecture map's sentence for it, say computers.
+- feat(settings): the list is Your account here, the Space for owners and admins, and Everywhere. The heading is the Space's name. Audit is back. Design changes are the owner's. Rules, groups, servers and MCP leave the archive as pages that fold in.
 
 ## 0.6.6
 
