@@ -71,6 +71,11 @@
     <priority>0.5</priority>
   </url>
   <url>
+    <loc>https://vyre.run/terms/</loc>
+    <lastmod>2026-10-22</lastmod>
+    <priority>0.5</priority>
+  </url>
+  <url>
     <loc>https://vyre.run/computer/</loc>
     <lastmod>2026-10-20</lastmod>
     <priority>0.8</priority>

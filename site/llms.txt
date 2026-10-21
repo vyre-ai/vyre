@@ -23,6 +23,7 @@ Current release: 0.5.1. Site: https://vyre.run. Source: https://github.com/vyre-
 - [Vyre for real estate brokerages](https://vyre.run/for/real-estate-brokerages/): Lead response, qualification, listing or buyer agreement signed, a transaction from a Playbook, key dates from the contract date, documents, client updates, closing and follow-up.
 - [Weekly update](https://vyre.run/updates/): one email a week at most with what changed in Vyre; sign up or leave in one click
 - [Privacy](https://vyre.run/privacy/): what Vyre knows about you, which is almost nothing
+- [Terms](https://vyre.run/terms/): Vyre is free under Apache 2.0, you run it yourself, and you pay your own AI providers
 
 ## Compare
 - [Compare Vyre with other tools](https://vyre.run/compare/): how Vyre fits next to automation tools, work management tools, AI assistants and practice software
