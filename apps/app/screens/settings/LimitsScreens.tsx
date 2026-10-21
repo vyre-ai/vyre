@@ -2,24 +2,25 @@
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
 import { Banner, Button, Card, Chip, Divider, EmptyState, ErrorState, Field, LoadingState, Segmented, Text, showToast } from "@vyre/ui";
-import { Page } from "../places/Frame";
+import { EmbedPage } from "./embed";
+import { within } from "../../src/state/kept-model.js";
 import { limits } from "./limits";
 import { EMPTY_FORM, KINDS, permissionMeta, sentence, spendName, spendWords, type Intent, type PermissionForm, type SpendRow } from "./limits-model.ts";
 
 const say = (e: unknown, f = "That did not go through.") => (e instanceof Error && e.message ? e.message : f);
 
-export function SpendScreen() {
+export function SpendScreen({ embedded = false }: { embedded?: boolean } = {}) {
   const [data, setData] = useState<{ day: string; rows: SpendRow[] } | null>(null);
   const [err, setErr] = useState("");
   const [editing, setEditing] = useState("");
   const [amount, setAmount] = useState("");
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState("");
-  const load = useCallback(() => { setErr(""); limits.spend().then(setData).catch((e) => setErr(say(e, "Spend could not be read."))); }, []);
+  const load = useCallback(() => { setErr(""); within(limits.spend()).then(setData).catch((e) => setErr(say(e, "Spend could not be read."))); }, []);
   useEffect(load, [load]);
   const finish = (fn: () => Promise<unknown>) => { setBusy(true); setProblem(""); fn().then(() => { setEditing(""); load(); showToast("The cap is changed."); }).catch((e) => setProblem(say(e))).finally(() => setBusy(false)); };
   return (
-    <Page title="Spending limits" back="/u/settings">
+    <EmbedPage embedded={embedded} title="Spending limits" back="/u/settings">
       <Banner>{`Today, ${data?.day || "UTC"} (UTC). At a provider's daily cap its work pauses with one line saying how to raise it; nothing asks first.`}</Banner>
       {err ? <Card flush><ErrorState title="Spend did not load" reason={err} retry={load} /></Card> : null}
       {!data && !err ? <LoadingState rows={3} /> : null}
@@ -48,11 +49,11 @@ export function SpendScreen() {
           ))}
         </Card>
       ) : null}
-    </Page>
+    </EmbedPage>
   );
 }
 
-export function PermissionsScreen() {
+export function PermissionsScreen({ embedded = false }: { embedded?: boolean } = {}) {
   const [items, setItems] = useState<Intent[] | null>(null);
   const [err, setErr] = useState("");
   const [problem, setProblem] = useState("");
@@ -60,7 +61,7 @@ export function PermissionsScreen() {
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState<PermissionForm>(EMPTY_FORM);
   const [agents, setAgents] = useState<string[]>([]);
-  const load = useCallback(() => { setErr(""); limits.permissions().then(setItems).catch((e) => { setItems([]); setErr(say(e, "Permissions could not be read.")); }); }, []);
+  const load = useCallback(() => { setErr(""); within(limits.permissions()).then(setItems).catch((e) => { setItems([]); setErr(say(e, "Permissions could not be read.")); }); }, []);
   useEffect(load, [load]);
   const set = (k: keyof PermissionForm) => (v: string) => setForm((f) => ({ ...f, [k]: v }));
   const open = () => { setAdding(true); if (!agents.length) limits.agentNames().then(setAgents).catch(() => {}); };
@@ -83,7 +84,7 @@ export function PermissionsScreen() {
     </Card>
   );
   return (
-    <Page title="Standing permissions" back="/u/settings">
+    <EmbedPage embedded={embedded} title="Standing permissions" back="/u/settings">
       <Banner>What Vyre may send, post or pay without asking each time. A send or payment you did not ask for always asks you first. Taking permission back works at once.</Banner>
       {problem ? <Text size="caption" tone="warn">{problem}</Text> : null}
       {err ? <Card flush><ErrorState title="Permissions did not load" reason={err} retry={load} /></Card> : null}
@@ -104,6 +105,6 @@ export function PermissionsScreen() {
           </View>
         </Card>
       ) : <View className="self-start"><Button size="sm" label="Add a permission" onPress={open} /></View>}
-    </Page>
+    </EmbedPage>
   );
 }

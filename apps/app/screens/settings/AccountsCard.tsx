@@ -12,6 +12,7 @@ import { accounts as realAccounts } from "./accounts";
 import { ACCOUNTS_COPY } from "../first-run/ai-accounts-model.js";
 import { showingJoined } from "../../src/real/team-join";
 import { tool } from "../../src/real/box";
+import { within } from "../../src/state/kept-model.js";
 import { DISCONNECT_NOTE, WRONG_FLOW, aiRefusal, codeInput, codeMatchesFlow, disconnectInput, safeLink, startInput } from "../../src/real/ai-connect.js";
 
 export type AccountsApi = typeof realAccounts;
@@ -55,7 +56,7 @@ export function AiAccountsList({ source = realAccounts }: { source?: AccountsApi
   const run = useRef(0);
   const load = useCallback(() => {
     setErr("");
-    source.list().then((r) => { LAST.set(lastKey, r); setRows(r); })
+    within(source.list()).then((r) => { LAST.set(lastKey, r); setRows(r); })
       .catch((e) => { const had = LAST.get(lastKey); if (had) { setRows(had); setProblem(`This is the last list read. ${say(e, "It could not be refreshed.")}`); } else { setRows([]); setErr(say(e, "Your AI accounts could not be read.")); } });
     source.assistant().then(setAssistant).catch(() => setAssistant(null));
   }, [source, lastKey]);

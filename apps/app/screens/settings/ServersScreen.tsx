@@ -2,16 +2,18 @@
 // (src/real/space-servers.ts); the Mac lists what its own daemon is paired to (spaces.servers). Adding goes through the same card every server joins by (AddServerCard).
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
-import { Button, Card, Chip, EmptyState, Row, Text } from "@vyre/ui";
-import { Page } from "../places/Frame";
+import { Button, Card, Chip, EmptyState, ErrorState, Row, Text } from "@vyre/ui";
+import { EmbedPage } from "./embed";
+import { within } from "../../src/state/kept-model.js";
 import { listPairings, loadPairing, subscribePairings } from "../../src/api/relay";
 import { peerWanted } from "../../src/real/peer";
 import { tool } from "../../src/real/box";
 import { AddServerCard } from "./AddServerCard";
 import { ADD, FOUND, foundLine, foundRows, serverRows, serversLine } from "./servers-model.js";
 
-export default function ServersScreen() {
+export default function ServersScreen({ embedded = false }: { embedded?: boolean } = {}) {
   const [rows, setRows] = useState<ReturnType<typeof serverRows> | null>(null);
+  const [err, setErr] = useState("");
   const [adding, setAdding] = useState(false);
   // What the person's other devices found (the list in the personal vault). Read when this screen opens and not again; it is gone when the screen is.
   const [found, setFound] = useState<{ found: any[]; confirm: any[]; failed: any[] }>({ found: [], confirm: [], failed: [] });
@@ -20,6 +22,7 @@ export default function ServersScreen() {
   const refreshFromList = useCallback(() => { void import("../../src/real/space-list-app").then((m) => m.fromListBoxes()).then(setFromList).catch(() => {}); }, []);
   useEffect(refreshFromList, [refreshFromList, rows]);
   const load = useCallback(async () => {
+    setErr("");
     if (peerWanted()) {
       const { listAllSpaces, offlineServers } = await import("../../src/real/space-servers");
       const [pairings, active, spaces] = await Promise.all([listPairings(), loadPairing(), listAllSpaces().catch(() => null)]);
@@ -29,7 +32,11 @@ export default function ServersScreen() {
     const d = await tool<{ servers?: { id: string; name: string }[] }>("spaces.servers").catch(() => null);
     setRows(serverRows({ pairings: (d?.servers ?? []).map((s) => ({ box: s.id, name: s.name })), spaces: [], offline: [], active: null }));
   }, []);
-  useEffect(() => { void load(); return subscribePairings(() => { void load(); }); }, [load]);
+  useEffect(() => {
+    const go = () => { void within(load()).catch((e) => setErr(e instanceof Error ? e.message : "Servers did not load.")); };
+    go();
+    return subscribePairings(go);
+  }, [load]);
   useEffect(() => {
     if (!peerWanted()) return;
     let live = true;
@@ -46,7 +53,8 @@ export default function ServersScreen() {
   };
   const foundList = foundRows(found);
   return (
-    <Page title="Servers" sub={serversLine(rows?.length ?? 0)} back="/u/settings">
+    <EmbedPage embedded={embedded} title="Servers" sub={serversLine(rows?.length ?? 0)} back="/u/settings">
+      {err ? <Card flush><ErrorState title="Servers did not load" reason={err} retry={() => { void within(load()).catch((e) => setErr(e instanceof Error ? e.message : "Servers did not load.")); }} /></Card> : null}
       {rows && rows.length ? (
         <Card flush>{rows.map((r) => <Row key={r.key} title={r.name} sub={fromList.includes(r.key) ? `Connected to ${r.name} from your list. ${r.sub}` : r.sub} end={fromList.includes(r.key) ? <Button label="Remove" onPress={() => void import("../../src/real/space-list-app").then((m) => m.removeFromList(r.key)).then(() => { refreshFromList(); void load(); })} /> : r.active && rows.length > 1 ? <Chip>Main</Chip> : undefined} />)}</Card>
       ) : rows ? (
@@ -71,6 +79,6 @@ export default function ServersScreen() {
           <View className="flex-row"><Button label={ADD.action} onPress={() => setAdding(true)} /></View>
         </Card>
       )}
-    </Page>
+    </EmbedPage>
   );
 }

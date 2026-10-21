@@ -4,6 +4,7 @@ import { View } from "react-native";
 import { Banner, Button, Card, Chip, Divider, EmptyState, ErrorState, Field, LoadingState, Row, Segmented, Select, Switch, Text, showToast } from "@vyre/ui";
 import { Page, Sec } from "../places/Frame";
 import { keys } from "./keys";
+import { within } from "../../src/state/kept-model.js";
 import { APPLY, canReset, choicesOf, controlOf, numberInput, refusal, sourceLine, valueLine, visible, type KeyDef, type KeyValue, type Schema } from "./keys-model.ts";
 
 export function KeysScreen() {
@@ -12,7 +13,7 @@ export function KeysScreen() {
   const [err, setErr] = useState("");
   const find: string = "";   // the one search bar finds a setting; this page lists them
   const [advanced, setAdvanced] = useState(false);
-  const load = useCallback(() => { setErr(""); Promise.all([keys.schema(), keys.values()]).then(([s, v]) => { setSchema(s); setValues(v); }).catch((e) => setErr(refusal(e))); }, []);
+  const load = useCallback(() => { setErr(""); within(Promise.all([keys.schema(), keys.values()])).then(([s, v]) => { setSchema(s); setValues(v); }).catch((e) => setErr(refusal(e))); }, []);
   useEffect(load, [load]);
   const put = (v: KeyValue) => setValues((m) => new Map(m).set(v.key, v));
   const groups = schema ? visible(schema, find, advanced) : [];

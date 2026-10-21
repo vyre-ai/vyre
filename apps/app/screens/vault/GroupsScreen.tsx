@@ -2,7 +2,9 @@
 // they are in. The sample world edits in memory; the real one is spaces.groups.* on the Space's kernel.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Card, EmptyState, ErrorState, LoadingState, Text, showToast } from "@vyre/ui";
-import { Footnote, Page } from "../places/Frame";
+import { Footnote } from "../places/Frame";
+import { EmbedPage } from "../settings/embed";
+import { within } from "../../src/state/kept-model.js";
 import { useMembers } from "../spaces/state";
 import { MOCK } from "../../src/real/box";
 import { GroupsPanel } from "./GroupsPanel";
@@ -10,7 +12,7 @@ import type { Who } from "./ShareSheet";
 import { realGroups, type GroupsData } from "./groups-data";
 import { AGENTS, GROUPS0, PEOPLE } from "./share-sample";
 
-export function GroupsScreen() {
+export function GroupsScreen({ embedded = false }: { embedded?: boolean } = {}) {
   const { spaces, space, load } = useMembers();
   useEffect(() => { void load(); }, [load]);
   const mine = MOCK ? "owner" : spaces.find((s) => s.id === space)?.role;
@@ -25,13 +27,13 @@ export function GroupsScreen() {
       remove: async (id) => { groups = groups.filter((x) => x.id !== id); },
     };
   }, [space]);
-  const reload = useCallback(() => { setErr(""); data.load().then(setWorld).catch((e) => setErr(String(e?.message || "The space did not answer."))); }, [data]);
+  const reload = useCallback(() => { setErr(""); within(data.load()).then(setWorld).catch((e) => setErr(String(e?.message || "The space did not answer."))); }, [data]);
   useEffect(reload, [reload]);
   const admin = mine === "owner" || mine === "admin";
-  if (err) return <Page title="Groups" back="/u/settings"><ErrorState title="The groups did not load" reason={err} retry={reload} /></Page>;
-  if (!world) return <Page title="Groups" back="/u/settings"><LoadingState rows={3} /></Page>;
+  if (err) return <EmbedPage embedded={embedded} title="Groups" back="/u/settings"><ErrorState title="The groups did not load" reason={err} retry={reload} /></EmbedPage>;
+  if (!world) return <EmbedPage embedded={embedded} title="Groups" back="/u/settings"><LoadingState rows={3} /></EmbedPage>;
   return (
-    <Page title="Groups" sub="Sets of people and agents you give things to at once." back="/u/settings">
+    <EmbedPage embedded={embedded} title="Groups" sub="Sets of people and agents you give things to at once." back="/u/settings">
       {admin ? (
         <GroupsPanel groups={world.groups} people={world.people} agents={world.agents}
           onSave={async (g) => { await data.save(g); showToast(`${g.name} saved.`); reload(); }}
@@ -40,6 +42,6 @@ export function GroupsScreen() {
         <Card>{world.groups.length ? <Text>{world.groups.map((g) => g.name).join(", ")}</Text> : <EmptyState title="You are in no groups" body="An owner or an admin makes groups and puts people and agents in them." />}</Card>
       )}
       {!admin ? <Footnote icon="info">Only an owner or an admin changes groups.</Footnote> : null}
-    </Page>
+    </EmbedPage>
   );
 }

@@ -1,5 +1,4 @@
-import RulesScreen from "../../../screens/rules/RulesScreen";
-import { ArchivedGate } from "../../../screens/settings/labs";
+import { Redirect } from "expo-router";
 
-/** Archived (screens/settings/archived.js): opens only with Labs on. */
-export default function Route() { return <ArchivedGate href="/u/settings/rules"><RulesScreen /></ArchivedGate>; }
+/** Merged into People and roles. */
+export default function Route() { return <Redirect href={"/u/settings/roles" as never} />; }

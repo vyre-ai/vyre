@@ -1,5 +1,4 @@
-import S from "../../../screens/settings/ServersScreen";
-import { ArchivedGate } from "../../../screens/settings/labs";
+import { Redirect } from "expo-router";
 
-/** Archived (screens/settings/archived.js): opens only with Labs on. */
-export default function Route() { return <ArchivedGate href="/u/settings/servers"><S /></ArchivedGate>; }
+/** Merged into Devices and computers. */
+export default function Route() { return <Redirect href={"/u/settings/devices" as never} />; }

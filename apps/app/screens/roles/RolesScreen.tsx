@@ -7,6 +7,8 @@ import { MOCK } from "../../src/real/box";
 import { ACCESS, ADMIN_ONLY, ADMIN_ONLY_LINE, CAN_DO, TOOLS, TOOL_NOTES, WHERE, builtInName, canDuplicate, canEditRoles, holdersLine, nameProblem, removeRefusal, rolesRefusal, sees, setAccess, setCan, setHidden, setProject, setWhere, type Role } from "./roles";
 import { useRoles } from "./state";
 import { PeopleSection } from "./PeopleSection";
+import RulesScreen from "../rules/RulesScreen";
+import { GroupsScreen } from "../vault/GroupsScreen";
 import { InviteForm, useInviteList } from "../devices/InviteBody";
 import { assignable } from "../spaces/roles.js";
 
@@ -49,6 +51,8 @@ export function RolesScreen() {
       <Sec title="Your roles" meta={custom.length ? String(custom.length) : undefined}>
         {custom.length ? <Card flush>{custom.map(row)}</Card> : <Card><EmptyState title="No roles of your own yet" body="Make one from a built-in role, like Paralegal or Contractor, and change what it can do." action={{ label: "New role", onPress: () => setMaking(true) }} /></Card>}
       </Sec>
+      <Sec title="Rules"><RulesScreen embedded /></Sec>
+      <Sec title="Groups"><GroupsScreen embedded /></Sec>
       <Footnote icon="shield">A role is never above Admin. A new member gets only the projects they are on, with no mail, calendar or computers, until a role turns them on.</Footnote>
       <Sheet open={inviting && !!card} onClose={() => setInviting(false)} title="Invite someone">
         {card ? <InviteForm card={card} onChanged={invites.refresh} /> : null}

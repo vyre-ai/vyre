@@ -9,6 +9,7 @@ import RealConnectApps from "./RealConnectApps";
 import RealConnected from "./RealConnected";
 import RealMcp from "./RealMcp";
 import RealMine from "./RealMine";
+import McpScreen from "../settings/McpScreen";
 import RealSending from "./RealSending";
 import { PlaceTag } from "../../src/real/PlaceTag";
 
@@ -24,7 +25,7 @@ export default function ConnectionsScreen() {
         {tab === "all" ? <><RealConnected open={setTab} /><RealSending /></> : null}
         {tab === "add" ? <RealConnectApps /> : null}
         {tab === "any" ? <RealAnyApp /> : null}
-        {tab === "mcp" ? <><RealMcp /><RealMine /></> : null}
+        {tab === "mcp" ? <><RealMcp /><RealMine /><McpScreen embedded /></> : null}
         {tab === "access" ? <RealAccess /> : null}
       </View>
     </Frame>

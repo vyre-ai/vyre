@@ -4,14 +4,16 @@
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
 import { Banner, Button, Card, Chip, Divider, EmptyState, Field, Row, Segmented, Sheet, Text, showToast, ErrorState, LoadingState } from "@vyre/ui";
-import { Footnote, Frame, Sec } from "../places/Frame";
+import { Footnote, Sec } from "../places/Frame";
+import { EmbedFrame } from "../settings/embed";
+import { within } from "../../src/state/kept-model.js";
 import { acceptReal, disableReal, dismissReal, enableReal, listReal, proposeReal, removeReal, roleReal, setReal } from "./real";
 import { KINDS, ROLES, build, disabled, groups, proposer, ruleRefusal, type Draft, type Listing } from "./model";
 
 const say = (e: unknown) => ruleRefusal((e as { code?: string }).code, e instanceof Error ? e.message : "");
 const BLANK: Draft = { kind: "never", binds: ["assistants"], actions: "", resource: "", approverKind: "role", approver: "owner", label: "" };
 
-export default function RulesScreen() {
+export default function RulesScreen({ embedded = false }: { embedded?: boolean } = {}) {
   const [data, setData] = useState<Listing | null>(null);
   const [owner, setOwner] = useState(false);
   const [err, setErr] = useState("");
@@ -21,7 +23,7 @@ export default function RulesScreen() {
 
   const load = useCallback(() => {
     setErr("");
-    listReal().then(setData).catch((e) => setErr(say(e)));
+    within(listReal()).then(setData).catch((e) => setErr(say(e)));
     roleReal().then((r) => setOwner(r === "owner")).catch(() => setOwner(false));
   }, []);
   useEffect(load, [load]);
@@ -48,7 +50,7 @@ export default function RulesScreen() {
   const g = data ? groups(data.rules) : [];
   const off = data ? disabled(data.rules) : [];
   return (
-    <Frame title="Rules" sub="What agents and members may never do, only draft, or always ask about." top>
+    <EmbedFrame embedded={embedded} title="Rules" sub="What agents and members may never do, only draft, or always ask about." top>
       <Footnote icon="shield">A rule only tightens. No rule grants anything, and a grant never waives a rule.</Footnote>
       {err ? <Card flush><ErrorState title="Rules did not load" reason={err} retry={load} /></Card> : null}
       {!err && data === null ? <LoadingState rows={3} /> : null}
@@ -105,13 +107,13 @@ export default function RulesScreen() {
               <Chip selected={draft.binds.includes("members")} onPress={() => toggle("members")}>Members</Chip>
             </View>
             <Field label="Actions" placeholder="mail.send, calendar.write" value={draft.actions} onChangeText={(actions) => set({ actions })} />
-            <Field label="Only on (optional)" placeholder="vyre://space/mailbox/*" value={draft.resource} onChangeText={(resource) => set({ resource })} />
+            <Field label="Only on (optional)" placeholder="One place, if the rule covers only that" value={draft.resource} onChangeText={(resource) => set({ resource })} />
             {draft.kind === "always_ask" ? (
               <View className="gap-s2">
                 <Segmented label="Who approves" value={draft.approverKind} onChange={(approverKind) => set({ approverKind, approver: approverKind === "role" ? "owner" : "" })} options={[["role", "A role"], ["person", "A person"]]} />
                 {draft.approverKind === "role"
                   ? <View className="flex-row flex-wrap gap-s2">{ROLES.map((r) => <Chip key={r} selected={draft.approver === r} onPress={() => set({ approver: r })}>{r}</Chip>)}</View>
-                  : <Field label="Person" placeholder="their id" value={draft.approver} onChangeText={(approver) => set({ approver })} />}
+                  : <Field label="Person" placeholder="Their name" value={draft.approver} onChangeText={(approver) => set({ approver })} />}
               </View>
             ) : null}
             <Field label="Name" placeholder="Josh approves every calendar date" value={draft.label} onChangeText={(label) => set({ label })} />
@@ -120,6 +122,6 @@ export default function RulesScreen() {
           </View>
         ) : null}
       </Sheet>
-    </Frame>
+    </EmbedFrame>
   );
 }

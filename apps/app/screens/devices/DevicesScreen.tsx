@@ -2,7 +2,8 @@ import { useEffect } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
 import { Avatar, Card, Divider, Row, Switch, Text, showToast, markRef, ErrorState, LoadingState } from "@vyre/ui";
-import { Group, Page } from "../places/Frame";
+import { Group, Page, Sec } from "../places/Frame";
+import ServersScreen from "../settings/ServersScreen";
 import { useDevices } from "./state";
 import { deviceSub, spacesLine } from "./wink.js";
 import { PlaceTag } from "../../src/real/PlaceTag";
@@ -15,7 +16,7 @@ export function DevicesScreen() {
   useEffect(() => { void load(); }, [load]);
   const devices = items.filter((i) => i.kind === "Device");
   return (
-    <Page title="Devices" sub="Each device joins each space on its own." back="/u/settings">
+    <Page title="Devices and computers" sub="Phones and computers signed in, and the servers they reach." back="/u/settings">
       <PlaceTag of="home" />
       {devices.length ? (
         <Card flush>
@@ -34,6 +35,7 @@ export function DevicesScreen() {
       <Group>
         <Card flush><Row dense title="Make it faster" sub="Let your devices talk to each other directly when they can." end={<Switch label="Make it faster" on={faster} onChange={(v) => { setFaster(v); showToast(v ? "Direct connections are on." : "Direct connections are off."); }} />} /></Card>
       </Group>
+      <Sec title="Servers"><ServersScreen embedded /></Sec>
       <VaultDevices />
     </Page>
   );
