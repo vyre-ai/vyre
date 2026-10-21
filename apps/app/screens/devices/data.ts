@@ -14,7 +14,7 @@ export const SPACE_NAMES: Record<string, string> = { mine: "Mine", juniper: "Jun
 
 export function loadAccess(): AccessItem[] {
   return [
-    { id: "d1", kind: "Device", device: "computer", family: "device", name: "Alex's Mac", allows: "Opens your projects and your vault, and uses your computers.", since: "12 Aug", last: "Now" },
+    { id: "d1", kind: "Device", device: "computer", family: "device", name: "Alex's computer", allows: "Opens your projects and your vault, and uses your computers.", since: "12 Aug", last: "Now" },
     { id: "d2", kind: "Device", device: "phone", family: "device", name: "Alex's iPhone", allows: "Does everything you can, until you remove it. Face ID approves each send and payment.", since: "12 Aug", last: "2 min ago" },
     { id: "d3", kind: "Device", device: "server", family: "device", name: "nova", software: true, allows: "Runs your spaces and keeps working when your computer sleeps.", since: "21 Aug", last: "Now" },
     { id: "p1", kind: "Person", family: "person", name: "Chris Park", allows: "Owner of Juniper Studio. Reads and adds to Intake and Billing.", since: "20 Aug", last: "Today" },

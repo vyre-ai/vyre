@@ -184,7 +184,7 @@ function FromProjects({ reload, io }: { reload: () => void; io: Io }) {
       {done ? (
         <Card><View className="gap-s3">
           <View className="flex-row items-center gap-s3"><IconTile name="ok" tone="ok" /><Text strong size="title">{plural(done.rewritten?.length ?? 0, "file", "files")} moved</Text></View>
-          <Text>{plural(done.added.length, "set of keys is", "sets of keys are")} in your Vault. Each file now holds references, and its other settings are as they were. Run an app with vyre run in its folder and it reads the keys from the Vault.</Text>
+          <Text>{plural(done.added.length, "set of keys is", "sets of keys are")} in your Vault. Each file now holds references, and its other settings are as they were. An app opened from its folder reads the keys from the Vault.</Text>
           {done.unchanged?.length ? <Text size="caption" tone="label">{plural(done.unchanged.length, "file was", "files were")} left as it is.</Text> : null}
           {done.committed?.length ? <Banner tone="warn" icon="warning"><Text>{plural(done.committed.length, "file is", "files are")} committed to git, so the old values stay in its history. Change those keys at the provider.</Text></Banner> : null}
           <View className="self-start"><Button kind="ghost" label="Done" onPress={() => setDone(null)} /></View>

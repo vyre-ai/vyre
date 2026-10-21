@@ -1,8 +1,8 @@
 {
   "name": "computer",
   "version": "0.1.0",
-  "apiVersion": 1,
-  "description": "Vyre Computer: one front door over the cloud computer, your Macs and the screen engines. Computers are chosen by name; interface first, screen last.",
+  "vyre": "1",
+  "description": "Vyre Computer: one front door over the cloud computer, your computers and the screen engines. Computers are chosen by name; interface first, screen last.",
   "roles": [
     "box",
     "local"

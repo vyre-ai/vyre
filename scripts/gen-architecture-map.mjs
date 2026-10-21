@@ -154,7 +154,7 @@ export const MODULES = {
   "core/sessions": ["sessions", "How the sessions Vyre starts run: drivers, status and system prompts."],
   "core/settings": ["ui", "One way to read and change every setting, at any level."],
   "core/sidebar": ["ui", "The sidebar each person arranges: built-in places, module screens, saved views."],
-  "core/computer": ["outside", "Vyre Computer: one front door over the cloud computer, your Macs and the screen engines; computers by name, interface first, screen last."],
+  "core/computer": ["outside", "Vyre Computer: one front door over the cloud computer, your computers and the screen engines; computers by name, interface first, screen last."],
   "core/identity": ["identity", "One username and one master password, with a recovery key and a link to GitHub."],
   "core/sight": ["outside", "One screen service for the Mac and every agent's computer: what is on it, what was just done."],
   "core/signin": ["identity", "`vyre signin`: the owner's phone approves a terminal."],

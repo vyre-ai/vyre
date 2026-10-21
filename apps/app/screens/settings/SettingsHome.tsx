@@ -45,7 +45,7 @@ export function SettingsHome() {
     blocks: { places: { type: "list", props: { density: "tight" }, content: { rows: settingsGroups(name, MOCK ? undefined : role, { labs }).flatMap((g) => g.rows.map(([title, sub, href, icon]) => ({ id: href, title, subtitle: sub, icon, group: g.title, ...(state(href) ? { accessory: state(href) } : {}) }))) } } },
   };
   return (
-    <Frame title="Settings" top actions={<StarLink />}>
+    <Frame title={name} sub="This Space" top actions={<StarLink />}>
       <ServerLine />
       <BlockScreen screen={screen} handlers={{
         open: (_b, row) => router.push(row.id as never),

@@ -22,6 +22,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - feat(web): a phone can save Vyre to the home screen, and the page links its manifest and icons (apps/app/ui/shell/HomeScreenHint.tsx, apps/app/public/index.html).
 - fix(shell): a sidebar search that only one place starts with finds that place, and one that several labels contain stays ambiguous (lib/sidebar/model.js, lib/sidebar/model.test.js).
 - chore(design): picture references for the five-place sidebar, the phone home-screen hint, Draft a document, and the Computer tab (design-refs).
+- fix(modules): comms, computer, documents, events, mentions and outside declare "vyre": "1", so a start no longer warns that apiVersion is deprecated. The computer module, and the architecture map's sentence for it, say computers.
+- feat(settings): the list is Your account here, the Space for owners and admins, and Everywhere. The heading is the Space's name. Audit is back. Design changes are the owner's. Rules, groups, servers and MCP leave the archive as pages that fold in.
+- fix(copy): an update tells you to use the app that installed Vyre. Agents' computers and limits names that page. Settings and the vault say computer.
+- feat(settings): Rules and Groups sit on People and roles, Servers on Devices and computers, and Outside, Spend and Permissions on What agents may do. MCP keys sit on Connections. Audit is a normal page, with names behind Details. Apps lists the modules installed here. A read that runs long stops at 20 seconds and offers Try again.
+- feat(vault): Folders and Advanced open as sheets on the Vault. The separate vault routes and the sharing design page are gone.
+- feat(settings): the settings picture is named for the Space and shows Your account here, the Space, and Everywhere.
+- chore: the generated settings picture, the architecture map and the module reference say computers, and name the Space.
+- fix(settings): Types is a Settings row, so Customize is no longer filed as a page taken off the list.
+- chore: the settings pictures name the Space and show Your account here, the Space, and Everywhere.
+- chore: the docs index follows the architecture map, which now says computers.
 
 ## 0.6.6
 

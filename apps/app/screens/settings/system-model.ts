@@ -99,16 +99,16 @@ export function sharesOf(d: any): { enabled: boolean; why: string; shares: Share
 }
 export const accessWord = (a?: string) => (a === "rw" ? "Read and write" : "Read only");
 export const flipAccess = (a?: string): "ro" | "rw" => (a === "rw" ? "ro" : "rw");
-/** What the audit found: shares with secrets inside, and devices beyond the paired Macs that can reach them. */
+/** What the audit found: shares with secrets inside, and devices beyond the paired computers that can reach them. */
 export function auditLines(a: any): { ok: boolean; lines: string[] } {
   const lines: string[] = list(a?.unsafe, "share").map((u) => {
     const found: string[] = Array.isArray(u.found) ? u.found.map(String).filter(Boolean) : [];
     return u.why ? `${u.share} could not be checked for secrets: ${u.why}${found.length ? `. Found so far: ${found.join(", ")}` : ""}.` : `${u.share} has secrets inside: ${found.length ? found.join(", ") : "files that look like keys"}`;
   });
   const f = list(a?.findings, "");
-  if (f.length) lines.push(`${plural(f.length, "device")} outside your paired Macs can reach these shares: ${f.map((x) => x.node || "a device").join(", ")}. Only your network policy decides this. Remove them in your network's access settings. Vyre does not change it.`);
+  if (f.length) lines.push(`${plural(f.length, "device")} outside your paired computers can reach these shares: ${f.map((x) => x.node || "a device").join(", ")}. Only your network policy decides this. Remove them in your network's access settings. Vyre does not change it.`);
   const ok = !lines.length;
-  if (ok) lines.push(`Only your paired Macs can reach them.${a?.checked != null ? ` Checked ${plural(a.checked, "online device")}.` : ""}`);
+  if (ok) lines.push(`Only your paired computers can reach them.${a?.checked != null ? ` Checked ${plural(a.checked, "online device")}.` : ""}`);
   return { ok, lines };
 }
 

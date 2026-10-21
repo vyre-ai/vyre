@@ -9,7 +9,7 @@ export function loadAccount() {
     name: "Alex Rivera", vyreName: "alex.vyre.run", line: "Owner of Mine, Admin of Juniper Studio",
     ways: [
       { id: "w1", name: "Alex's iPhone", line: "Passkey, Face ID. Added 12 Aug", here: true, family: "device" as AvatarFamily },
-      { id: "w2", name: "Alex's Mac", line: "Passkey, Touch ID. Added 12 Aug", here: false, family: "device" as AvatarFamily },
+      { id: "w2", name: "Alex's computer", line: "Passkey, Touch ID. Added 12 Aug", here: false, family: "device" as AvatarFamily },
     ],
     contacts: [{ id: "c1", name: "Chris Park" }, { id: "c2", name: "Mei Tanaka" }],
     code: "R7K4-Q2MX-9HDP-W3NB", newCode: "H3NV-8TQ2-LD5K-X9RM", checked: "3 Sep",

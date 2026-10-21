@@ -1,7 +1,7 @@
 {
   "name": "outside",
   "version": "0.1.0",
-  "apiVersion": 1,
+  "vyre": "1",
   "description": "Outside agents: Dots, Muse, Hermes, ChatGPT or your own Claude Code elsewhere reach the records, memory and files you choose through one address, hold only what you give, ask before they change anything, and stop the moment you end them.",
   "roles": ["box"],
   "requires": [],

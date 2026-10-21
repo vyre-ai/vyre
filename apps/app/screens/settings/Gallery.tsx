@@ -27,7 +27,7 @@ export function ComponentGallery() {
       {block("Buttons", (
         <View className="flex-row flex-wrap gap-s2">
           <Button kind="primary" label="Primary" /><Button label="Secondary" /><Button kind="ghost" label="Ghost" /><Button kind="danger" label="Danger" />
-          <Button kind="hold" label="Remove Alex's Mac" /><Button kind="primary" icon="plus" label="Add" /><Button kind="ghost" icon="filter" label="Filter" /><Button label="Working" loading /><Button label="Locked" disabled />
+          <Button kind="hold" label="Remove Alex's computer" /><Button kind="primary" icon="plus" label="Add" /><Button kind="ghost" icon="filter" label="Filter" /><Button label="Working" loading /><Button label="Locked" disabled />
           <IconButton icon="search" label="Search" /><IconButton icon="plus" label="Add" kind="primary" />
         </View>
       ))}
@@ -60,7 +60,7 @@ export function ComponentGallery() {
         <View className="flex-row flex-wrap items-center gap-s3">
           {["Doe estate plan", "Roe succession plan", "Shah will update", "Ortiz power of attorney", "Site rebuild", "Passport renewal"].map((n) => <Avatar key={n} of={markRef("project", n)} size={44} space={SPACES[0]} />)}
           {SPACES.map((sp) => <SpaceMark key={sp.id} space={sp} size={56} />)}
-          {["Alex's iPhone", "Alex's Mac", "nova", "Juniper archive"].map((n) => <Avatar key={n} of={markRef("device", n)} size={44} />)}
+          {["Alex's iPhone", "Alex's computer", "nova", "Juniper archive"].map((n) => <Avatar key={n} of={markRef("device", n)} size={44} />)}
           <IconTile name="kits" size={44} />
         </View>
       ))}

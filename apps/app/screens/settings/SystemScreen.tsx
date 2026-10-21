@@ -11,16 +11,17 @@ import { computerView, winkCard, accessWord, auditLines, flipAccess, handbackLab
 
 import { spaceName } from "../../src/state/space-name.js";
 import { callT } from "../../src/real/call-tool";
+import { within } from "../../src/state/kept-model.js";
 
 const say = (e: unknown, f = "That did not go through.") => (e instanceof Error && e.message ? e.message : f);
 
 export function SystemScreen() {
   const [info, setInfo] = useState<any>(null);
   const [err, setErr] = useState("");
-  const load = useCallback(() => { setErr(""); system.info().then(setInfo).catch((e) => setErr(say(e, "Your computer did not say what it runs on."))); }, []);
+  const load = useCallback(() => { setErr(""); within(system.info()).then(setInfo).catch((e) => setErr(say(e, "Your computer did not say what it runs on."))); }, []);
   useEffect(load, [load]);
   return (
-    <Page title="This computer" back="/u/settings">
+    <Page title="Agents' computers and limits" sub="What runs for this Space, and the limits on it." back="/u/settings">
       <ServerLine />
       {err ? <Card flush><ErrorState title="This did not load" reason={err} retry={load} /></Card> : null}
       {!info && !err ? <LoadingState rows={4} /> : null}
@@ -29,7 +30,7 @@ export function SystemScreen() {
       <AgentComputer />
       <History />
       <Tests />
-      <Banner>The cards below are for people who run their own home computer. A command is shown to copy and run yourself. Vyre never runs one for you.</Banner>
+      <Banner>The cards below are for people who run their own home computer. Vyre never runs one of these for you.</Banner>
       <Advanced />
       {RC.vyreDrive ? <Drive /> : null}
     </Page>
@@ -207,11 +208,11 @@ function Drive() {
   return (
     <Sec title="VyreDrive">
       <Card flush>
-        <View className="gap-s1 p-s3"><Text strong>{d.enabled ? "On" : "Off"}</Text><Text size="caption" tone="label">VyreDrive opens your home's folders in Finder on your Mac.</Text>{d.why ? <Text size="caption" tone="warn">{`Not available: ${d.why}`}</Text> : null}</View>
+        <View className="gap-s1 p-s3"><Text strong>{d.enabled ? "On" : "Off"}</Text><Text size="caption" tone="label">VyreDrive opens your home's folders on this computer.</Text>{d.why ? <Text size="caption" tone="warn">{`Not available: ${d.why}`}</Text> : null}</View>
         {d.enabled && !d.shares.length ? <View className="p-s3"><Text tone="muted">Your home offers no folders yet.</Text></View> : null}
         {d.shares.map((s) => (
           <View key={s.name}><Divider />
-            <Row title={s.name} sub={`${s.shared ? "Shared" : "Not shared"}, ${accessWord(s.access).toLowerCase()}${s.mounted ? ", mounted on this Mac" : ""}`}
+            <Row title={s.name} sub={`${s.shared ? "Shared" : "Not shared"}, ${accessWord(s.access).toLowerCase()}${s.mounted ? ", mounted on this computer" : ""}`}
               end={canSwitch && s.shared ? <Button size="sm" kind="secondary" disabled={busy} label={s.access === "rw" ? "Make read only" : "Make read and write"} onPress={() => flip(s.name, s.access)} /> : undefined} />
           </View>
         ))}

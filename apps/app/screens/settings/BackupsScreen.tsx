@@ -5,6 +5,7 @@ import { View } from "react-native";
 import { Banner, Button, Card, Chip, Divider, EmptyState, ErrorState, Field, LoadingState, Row, Text, showToast } from "@vyre/ui";
 import { Page } from "../places/Frame";
 import { callT } from "../../src/real/call-tool";
+import { within } from "../../src/state/kept-model.js";
 import { errorNote } from "../../src/real/error-note.js";
 import { spaceWords, backupLine, whenLine, vaultBackupLines, type SpaceBackup } from "./backups-model.js";
 
@@ -29,7 +30,7 @@ export function BackupsSection() {
   const [vProblem, setVProblem] = useState("");
   const load = useCallback(() => {
     setErr(""); setErrNote(null);
-    void callT<{ spaces?: SpaceBackup[] }>("spaces.bundle.status", {}).then((r) => { if (r.error) { const n = errorNote(r.error, "Backups could not be read."); setErr(n.reason); setErrNote({ code: n.code, recourse: n.recourse }); } else setRows(r.data?.spaces ?? []); });
+    void within(callT<{ spaces?: SpaceBackup[] }>("spaces.bundle.status", {})).then((r) => { if (r.error) { const n = errorNote(r.error, "Backups could not be read."); setErr(n.reason); setErrNote({ code: n.code, recourse: n.recourse }); } else setRows(r.data?.spaces ?? []); }).catch((e) => setErr(e instanceof Error && e.message ? e.message : "Backups could not be read."));
     void callT<NonNullable<Parameters<typeof vaultBackupLines>[0]>>("vault.autobackup.status", {}).then((r) => { if (!r.error) setVb(r.data ?? null); });
   }, []);
   useEffect(load, [load]);
@@ -52,7 +53,7 @@ export function BackupsSection() {
       <Text tone="muted">Each Space is backed up under its owner's recovery code.</Text>
       {err ? <Card flush><ErrorState title="Backups did not load" reason={err} retry={load} recourse={errNote?.recourse} code={errNote?.code} /></Card> : null}
       {!rows && !err ? <LoadingState rows={3} /> : null}
-      {rows && !rows.length ? <Card><EmptyState title="No Spaces here" body="A box that holds Spaces lists each one here." /></Card> : null}
+      {rows && !rows.length ? <Card><EmptyState title="No Spaces here" body="A server that holds Spaces lists each one here." /></Card> : null}
       {rows && rows.length ? (
         <Card flush>
           {rows.map((r, i) => (

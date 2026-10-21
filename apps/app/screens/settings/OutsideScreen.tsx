@@ -4,7 +4,9 @@ import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { Banner, Button, Card, Chip, Divider, EmptyState, ErrorState, Field, LoadingState, Row, Switch, Text, showToast } from "@vyre/ui";
-import { Page, Sec } from "../places/Frame";
+import { Sec } from "../places/Frame";
+import { EmbedPage } from "./embed";
+import { within } from "../../src/state/kept-model.js";
 import { endsLine, givesLine, recordsGrant, usedLine, type Agent, type RecordType, type Registered } from "./outside-model";
 import { outside } from "./outside";
 
@@ -14,7 +16,7 @@ const copy = (text: string) => { Clipboard.setStringAsync(text).catch(() => {});
 /** Sample world only (the screenshot pass): the screen as it looks with these agents and open states, calling nothing. */
 export type OutsideSample = { agents: Agent[]; shown?: Registered; giving?: string; types?: RecordType[]; picked?: string[]; write?: boolean; ending?: string };
 
-export default function OutsideScreen({ sample }: { sample?: OutsideSample } = {}) {
+export default function OutsideScreen({ sample, embedded = false }: { sample?: OutsideSample; embedded?: boolean } = {}) {
   const [agents, setAgents] = useState<Agent[] | null>(sample ? sample.agents : null);
   const [err, setErr] = useState("");
   const [problem, setProblem] = useState("");
@@ -28,7 +30,7 @@ export default function OutsideScreen({ sample }: { sample?: OutsideSample } = {
   const [write, setWrite] = useState(sample?.write ?? false);
   const [ending, setEnding] = useState(sample?.ending ?? "");
   const [project, setProject] = useState("");
-  const load = useCallback(() => { setErr(""); outside.list().then(setAgents).catch((e) => { setAgents([]); setErr(say(e, "Your outside agents could not be read.")); }); }, []);
+  const load = useCallback(() => { setErr(""); within(outside.list()).then(setAgents).catch((e) => { setAgents([]); setErr(say(e, "Your outside agents could not be read.")); }); }, []);
   useEffect(() => { if (!sample) load(); }, [load, sample]);
 
   const act = async (id: string, fn: () => Promise<unknown>) => {
@@ -47,7 +49,7 @@ export default function OutsideScreen({ sample }: { sample?: OutsideSample } = {
   };
   const now = Date.now();
   return (
-    <Page title="Outside agents" back="/u/settings">
+    <EmbedPage embedded={embedded} title="Outside agents" back="/u/settings">
       <Banner>An outside agent is one that is not a Vyre chat: Dots, Muse, Hermes, ChatGPT, your own Claude Code elsewhere. It reaches only what you give it, asks before it changes anything, and stops the moment you end it.</Banner>
       {problem ? <Text size="caption" tone="warn">{problem}</Text> : null}
       {shown ? (
@@ -114,6 +116,6 @@ export default function OutsideScreen({ sample }: { sample?: OutsideSample } = {
           <View className="self-start"><Button label="Connect it" disabled={!name.trim() || busy === "new"} onPress={connect} /></View>
         </Card>
       </Sec>
-    </Page>
+    </EmbedPage>
   );
 }

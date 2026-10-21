@@ -4,7 +4,9 @@ import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { Banner, Button, Card, Chip, Divider, EmptyState, ErrorState, Field, LoadingState, MenuRow, Row, SecretField, Segmented, Switch, Text, showToast } from "@vyre/ui";
-import { Page, Sec } from "../places/Frame";
+import { Sec } from "../places/Frame";
+import { EmbedPage } from "./embed";
+import { within } from "../../src/state/kept-model.js";
 import { changeLine, usedLine, type Change, type Connection, type Made } from "./mcp-model";
 import { mcp } from "./mcp";
 
@@ -34,7 +36,7 @@ function MadeCard({ made, onDone }: { made: Made; onDone: () => void }) {
 /** Sample world only (the screenshot pass): the screen with these keys and changes, calling nothing. */
 export type McpSample = { connections: Connection[]; changes: Change[]; made?: Made; ending?: string };
 
-export default function McpScreen({ sample }: { sample?: McpSample } = {}) {
+export default function McpScreen({ sample, embedded = false }: { sample?: McpSample; embedded?: boolean } = {}) {
   const [conns, setConns] = useState<Connection[] | null>(sample ? sample.connections : null);
   const [changes, setChanges] = useState<Change[]>(sample ? sample.changes : []);
   const [err, setErr] = useState("");
@@ -47,7 +49,7 @@ export default function McpScreen({ sample }: { sample?: McpSample } = {}) {
   const [only, setOnly] = useState("");
   const load = useCallback(() => {
     setErr("");
-    mcp.list().then(setConns).catch((e) => { setConns([]); setErr("Your keys could not be read. Try again."); console.warn("mcpconn.list failed:", e instanceof Error ? e.message : e); });
+    within(mcp.list()).then(setConns).catch((e) => { setConns([]); const m = e instanceof Error ? e.message : ""; setErr(/taking too long/i.test(m) ? m : "Your keys could not be read. Try again."); console.warn("mcpconn.list failed:", e instanceof Error ? e.message : e); });
     mcp.activity().then(setChanges).catch(() => setChanges([]));
   }, []);
   useEffect(() => { if (!sample) load(); }, [load, sample]);
@@ -57,7 +59,7 @@ export default function McpScreen({ sample }: { sample?: McpSample } = {}) {
   };
   const now = Date.now();
   return (
-    <Page title="Your AI keys" back="/u/settings">
+    <EmbedPage embedded={embedded} title="Your AI keys" back="/u/settings">
       <Banner icon="info">A key lets one of your AIs act as you in Vyre, with the access you have and no more. Name it for what it is. Sending, publishing and paying still wait for your yes.</Banner>
       {problem ? <Banner tone="warn">{problem}</Banner> : null}
       {made ? <MadeCard made={made} onDone={() => setMade(null)} /> : null}
@@ -103,6 +105,6 @@ export default function McpScreen({ sample }: { sample?: McpSample } = {}) {
           {changes.filter((c) => !only || c.name === only).slice(0, 12).map((c, i) => <View key={`${c.at}-${i}`}>{i ? <Divider /> : null}<Row dense title={changeLine(c, now)} /></View>)}
         </Card>
       </Sec>
-    </Page>
+    </EmbedPage>
   );
 }

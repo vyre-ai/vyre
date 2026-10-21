@@ -38,12 +38,13 @@ test("three autonomy levels and five budget steps", () => {
   assert.equal(BUDGET_STEPS.length, 5);
 });
 
-test("settings is your account in the Space, the Space and Everywhere with nothing behind an Advanced switch, and the space group carries the space name", () => {
+test("settings is your account here, the Space and Everywhere, and the space group carries the space name", () => {
   const g = settingsGroups("Juniper Studio");
-  assert.deepEqual(g.map((x) => x.title), ["Your account in Juniper Studio", "Juniper Studio", "Everywhere"]);
+  assert.deepEqual(g.map((x) => x.title), ["Your account here", "Juniper Studio", "Everywhere"]);
   assert.ok(g.every((x) => !("advanced" in x)), "no Advanced group: the owner found half-built pages there (owner, 20 Oct)");
   assert.ok(g.flatMap((x) => x.rows).every((r) => r[2].startsWith("/u/")));
-  assert.deepEqual(g.map((x) => x.rows.length), [5, 8, 3], "a short list an owner reads in one look");
+  assert.deepEqual(g.map((x) => x.rows.length), [5, 14, 3]);
+  assert.deepEqual(g[0].rows.map((r) => r[0]), ["Your profile", "AI accounts", "Notifications", "Appearance", "Sidebar"]);
 });
 
 test("Skills and plugins is one row, opening the library with its own Personal and Space switch", () => {
@@ -57,13 +58,15 @@ test("settings hides what a role cannot use", () => {
   assert.ok(!hrefs("member").includes("/u/settings/roles"));
   assert.ok(!hrefs("manager").includes("/u/settings/privacy"));
   assert.ok(!hrefs("temp").includes("/u/settings/assistant-access"), "a temp member is not offered what agents may do");
-  assert.ok(hrefs("member").includes("/u/spaces"));
+  assert.ok(!hrefs("member").includes("/u/spaces"), "Look and name is for owners and admins");
+  assert.ok(hrefs("admin").includes("/u/spaces"));
+  assert.ok(hrefs("owner").includes("/u/design"));
+  assert.ok(!hrefs("admin").includes("/u/design"), "design changes are the owner's");
   assert.ok(hrefs("temp").includes("/u/sidebar"), "everyone arranges their own sidebar");
-  // the archived pages, shown with Labs on, keep their role limits
-  assert.ok(hrefs("admin", true).includes("/u/settings/audit"));
-  assert.ok(!hrefs("member", true).includes("/u/settings/audit"));
-  assert.ok(hrefs("member", true).includes("/u/settings/rules"));
-  assert.ok(!hrefs("temp", true).includes("/u/settings/rules"));
+  assert.ok(hrefs("admin").includes("/u/settings/audit"), "audit is on the list again");
+  assert.ok(!hrefs("member").includes("/u/settings/audit"));
+  assert.ok(hrefs("member", true).includes("/u/access"));
+  assert.ok(!hrefs("member", true).includes("/u/settings/rules"), "rules are folded into People and roles");
 });
 
 test("archived pages: off the list by default, back as a last Labs group with Labs on, each with a reason", async () => {
@@ -75,7 +78,9 @@ test("archived pages: off the list by default, back as a last Labs group with La
     assert.ok(["archived", "merged", "moved"].includes(a.kind));
     if (a.kind === "merged") assert.ok(a.into, `${a.title} says where it went`);
   }
-  for (const href of ["/u/settings/audit", "/u/settings/rules"]) assert.ok(archivedAt(href), `${href} is archived (owner, 20 Oct)`);
+  assert.ok(archivedAt("/u/access"), "Access stays behind Labs");
+  assert.equal(archivedAt("/u/settings/audit"), null, "audit is a Settings row again");
+  assert.equal(archivedAt("/u/settings/rules"), null, "a merged page is not gated");
   assert.equal(archivedAt("/u/settings/devices"), null);
   assert.equal(archivedAt("/u/settings/backups"), null, "a merged page is not gated: its route goes to where it went");
   const labs = settingsGroups("Juniper Studio", undefined, { labs: true });

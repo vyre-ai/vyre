@@ -5,6 +5,8 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "expo-router";
 import { Card, IconTile, Row, Text, type IconName } from "@vyre/ui";
 import { Frame } from "../places/Frame";
+import { EmbedFrame } from "../settings/embed";
+import { within } from "../../src/state/kept-model.js";
 import { claimBlocked } from "../shell/rc";
 import { ON_PHONE } from "../../src/real/on-phone.js";
 import ImportPage from "./ImportPage";
@@ -26,12 +28,12 @@ const PARTS: { id: Part | "ssh" | "devices" | "backups"; icon: IconName; title: 
   { id: "all", icon: "list", title: "Every item, with its history", sub: "Earlier versions, and expert kinds: a service-account key file, an Apps Script web app, an MCP token" },
 ];
 
-export default function VaultAdvanced() {
+export default function VaultAdvanced({ embedded = false }: { embedded?: boolean } = {}) {
   const router = useRouter();
   const [part, setPart] = useState<Part | null>(null);
   const [ssh, setSsh] = useState(false);
   const [rows, setRows] = useState<ListRow[]>([]);
-  const load = useCallback(() => { listReal().then((r) => setRows(r.items)).catch(() => setRows([])); }, []);
+  const load = useCallback(() => { within(listReal()).then((r) => setRows(r.items)).catch(() => setRows([])); }, []);
   useEffect(load, [load]);
   const openItem = () => router.push("/u/vault" as never);
   const props = { rows, reload: load, openItem };
@@ -56,9 +58,9 @@ export default function VaultAdvanced() {
     else setPart(id);
   };
   return (
-    <Frame title="Advanced" sub="The Vault's rarer tools." onBack={() => router.push("/u/vault" as never)}>
+    <EmbedFrame embedded={embedded} title="Advanced" sub="The Vault's rarer tools." onBack={embedded ? undefined : () => router.push("/u/vault" as never)}>
       <Card flush>{PARTS.map((p) => <Row key={p.id} dense chevron lead={<IconTile name={p.icon} />} title={p.title} sub={p.sub} onPress={() => pick(p.id)} />)}</Card>
       <SshSheet open={ssh} onClose={() => setSsh(false)} onMade={() => { setSsh(false); load(); }} />
-    </Frame>
+    </EmbedFrame>
   );
 }

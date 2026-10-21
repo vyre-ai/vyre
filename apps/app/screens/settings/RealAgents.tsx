@@ -24,7 +24,7 @@ export function RealAi() {
           {budgeted.map((u) => (
             <View key={u.agent} className="gap-s1"><Text size="secondary">{`${u.agent}: ${budgetLine(u)}`}</Text><Meter value={usedShare(u)} label={`${u.agent} budget used`} /></View>
           ))}
-          <Text size="caption" tone="label">Set a budget per agent with vyre agents update.</Text>
+          <Text size="caption" tone="label">A budget for each agent is set on that agent's page.</Text>
         </Card>
       ) : null}
     </Page>

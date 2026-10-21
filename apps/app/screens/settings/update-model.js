@@ -17,10 +17,10 @@ export function noticeLines(s, o = {}) {
   };
 }
 
-/** How to update when the app cannot do it from here: the one command, or the app that installed Vyre. @param {Status} s */
+/** How to update when the app cannot do it from here: the app that installed Vyre. Never a command. @param {Status} s */
 export function howToLine(s) {
   if (s.canApply) return "";
-  return s.command ? `To update, run ${s.command} on your server.` : "Update from the app that installed Vyre.";
+  return "Update from the app that installed Vyre.";
 }
 
 /**

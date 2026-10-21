@@ -49,7 +49,7 @@ export function RealDeviceSpaces({ device, name, computer }: { device: string; n
               </View>
             ))}
           </Card>
-          <Banner><Text>The first time you share this computer with a space, the box asks for your approval. After that it does not ask again.</Text></Banner>
+          <Banner><Text>The first time you share this computer with a space, Vyre asks for your approval. After that it does not ask again.</Text></Banner>
         </Group>
       ) : null}
     </>
