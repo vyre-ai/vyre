@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { refIcon, refRoute } from "./ref-model.js";
 
 test("a reference opens the page of what it names", () => {
-  assert.equal(refRoute("vyre://acme/agent/juno"), "/u/assistants/juno");
+  assert.equal(refRoute("vyre://acme/agent/juno"), "/u/agents/juno");
   assert.equal(refRoute("vyre://acme/project/p_7"), "/u/project/p_7");
   assert.equal(refRoute("vyre://acme/tag/estate%20plan"), "/u/tags/estate%20plan");
   assert.equal(refRoute("vyre://acme/matter/m_9"), "/u/records/matter");

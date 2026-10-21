@@ -46,8 +46,8 @@ export function agentCards(d) {
     .map((a) => ({ name: a.name, title: displayName(a), sub: roleLine(a, a.kind === "assistant" ? "Your assistant" : a.builtin ? "Builds your Space by conversation" : "Agent"), href: agentHref(a.name) }));
 }
 
-/** The page of one agent (the Agents home opens the same one). @param {string} name */
-export const agentHref = (name) => `/u/assistants/${encodeURIComponent(name)}`;
+/** The one page of an agent. @param {string} name */
+export const agentHref = (name) => `/u/agents/${encodeURIComponent(name)}`;
 
 /** The area a tool family belongs to, in the words the Areas list uses; any other family is its module's name with a capital. */
 const FAMILY_WORDS = /** @type {Record<string, string>} */ ({ vault: "Vault", mail: "Mail and messages", comms: "Mail and messages", records: "Records and contacts", files: "Files and Drive", flows: "Flows", work: "Projects and tasks", projects: "Projects and tasks", tasks: "Projects and tasks", documents: "Documents and signing", publish: "Publishing", connectors: "Connections", memory: "Memory", planner: "Calendar and planner", calendar: "Calendar and planner" });

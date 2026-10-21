@@ -99,7 +99,7 @@ export const skillHits = (d: unknown): Row[] => arr((d as { skills?: unknown } |
 export const projectHits = (base: Base, q: string): Row[] => { const ws = words(q); return base.projects.filter((p) => hasAll(`${p.name} ${p.slug}`, ws)).map((p) => ({ key: `p:${p.slug}`, kind: "project", title: p.name, href: `/u/project/${encodeURIComponent(p.slug)}` })); };
 export function peopleHits(base: Base, q: string): Row[] {
   const ws = words(q);
-  const agents = base.agents.filter((a) => hasAll(`${a.name} ${a.instructions}`, ws)).map((a): Row => ({ key: `a:${a.name}`, kind: "agent", title: a.name, sub: a.kind === "assistant" ? "your agent" : a.instructions.split("\n")[0] || "agent", href: "/u/assistants" }));
+  const agents = base.agents.filter((a) => hasAll(`${a.name} ${a.instructions}`, ws)).map((a): Row => ({ key: `a:${a.name}`, kind: "agent", title: a.name, sub: a.kind === "assistant" ? "your agent" : a.instructions.split("\n")[0] || "agent", href: `/u/agents/${encodeURIComponent(a.name)}` }));
   const people = base.records.filter((r) => r.person && hasAll(`${r.title} ${r.sub}`, ws)).map((r): Row => ({ key: `r:${r.id}`, kind: "person", title: r.title, sub: r.sub.slice(0, 60), href: `/u/record/${r.id}` }));
   return [...agents, ...people];
 }

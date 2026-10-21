@@ -161,7 +161,7 @@ export function ChatPanel(p: ChatPanelProps) {
       {p.participants.map((x) => (
         <Row key={x.id} dense lead={<Face name={x.name} family={fam(x.family)} size={32} id={x.id} />} title={x.name}
           sub={x.id === p.viewer ? "You" : x.family === "assistant" ? `Agent${x.role ? `, ${x.role}` : ""}` : x.role ?? "Person"}
-          onPress={x.family === "assistant" ? () => { p.onClose(); router.push(`/u/assistants/${encodeURIComponent(x.name)}?tab=activity` as never); } : p.onOpenParticipant ? () => p.onOpenParticipant?.(x.id) : undefined} accessibilityLabel={`${x.name}, open card`} />
+          onPress={x.family === "assistant" ? () => { p.onClose(); router.push(`/u/agents/${encodeURIComponent(x.name)}?tab=activity` as never); } : p.onOpenParticipant ? () => p.onOpenParticipant?.(x.id) : undefined} accessibilityLabel={`${x.name}, open card`} />
       ))}
       {addBlock}
 
@@ -256,7 +256,7 @@ export function ChatPanel(p: ChatPanelProps) {
         {backRow}
         <View style={{ alignItems: "center", gap: 6 }}><Face name={name} family="assistant" size={56} id={who?.id ?? name} /><Text size="title" medium>{agentWords(name)}</Text></View>
         <Tabs items={[["threads", "Threads"], ["computer", "Computer"], ["details", "Details"]]} value={drillTab} onChange={setDrillTab} />
-        {drillTab === "threads" ? threadsOf(name) : drillTab === "computer" ? <ComputerTab agents={[name]} onLeave={p.onClose} /> : <View style={{ gap: 16 }}><AgentRoutines agent={name} /><Row dense title={`Open ${agentWords(name)}`} sub="Model, effort, what it can see and use" chevron onPress={() => { p.onClose(); router.push(`/u/assistants/${encodeURIComponent(name)}` as never); }} /></View>}
+        {drillTab === "threads" ? threadsOf(name) : drillTab === "computer" ? <ComputerTab agents={[name]} onLeave={p.onClose} /> : <View style={{ gap: 16 }}><AgentRoutines agent={name} /><Row dense title={`Open ${agentWords(name)}`} sub="Model, effort, what it can see and use" chevron onPress={() => { p.onClose(); router.push(`/u/agents/${encodeURIComponent(name)}` as never); }} /></View>}
       </View>
     );
   };

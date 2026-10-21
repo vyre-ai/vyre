@@ -32,14 +32,14 @@ test("each agent is a card: the assistant first, then the others by name, shown 
   const cards = agentCards([{ name: "zed", kind: "agent", description: "Reviews contracts\nmore", instructions: "You are Zed. Do many things." }, { name: "qi", kind: "assistant", instructions: "Your name is Qi. You work for Sam." }, { name: "amy", kind: "agent" },
     { name: "engineer", kind: "agent", builtin: true, instructions: "You are the Engineer. You set up the Space for the person you are talking to, by asking and then doing it." }, { nope: 1 }]);
   assert.deepEqual(cards, [
-    { name: "qi", title: "Qi", sub: "Your assistant", href: "/u/assistants/qi" },
-    { name: "amy", title: "Amy", sub: "Agent", href: "/u/assistants/amy" },
-    { name: "engineer", title: "Engineer", sub: "Builds your Space by conversation", href: "/u/assistants/engineer" },
-    { name: "zed", title: "Zed", sub: "Reviews contracts", href: "/u/assistants/zed" }]);
+    { name: "qi", title: "Qi", sub: "Your assistant", href: "/u/agents/qi" },
+    { name: "amy", title: "Amy", sub: "Agent", href: "/u/agents/amy" },
+    { name: "engineer", title: "Engineer", sub: "Builds your Space by conversation", href: "/u/agents/engineer" },
+    { name: "zed", title: "Zed", sub: "Reviews contracts", href: "/u/agents/zed" }]);
   assert.ok(cards.every((c) => !/^You are /.test(c.sub)), "instructions are never a description");
   assert.deepEqual(agentCards({ agents: [{ name: "a", kind: "agent" }] }).map((c) => c.name), ["a"]);
   assert.deepEqual(agentCards(null), []);
-  assert.equal(agentHref("a b"), "/u/assistants/a%20b");
+  assert.equal(agentHref("a b"), "/u/agents/a%20b");
 });
 
 test("a display name: the assistant's as typed when it matches its id, otherwise the id in words", async () => {

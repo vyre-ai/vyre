@@ -5,6 +5,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 ## 0.6.7
 
 - feat(shell): the sidebar is Home, Chats, Projects, Records and Files, with Vault and Settings at the foot. Apps, Sites, Agents, Flows, Calendar, Memory and Build are not places (lib/sidebar/model.js, apps/app/ui/shell/ShellSample.tsx, apps/app/ui/shell/sidebar-stack.js).
+- feat(shell): one name for each place. /u opens Home, /u/templates opens Playbooks, /u/drive opens Files, and an agent's old addresses open /u/agents/:name. /u/now/needs, /u/now/doing and /u/planner are gone (apps/app/src/shell/route-aliases.js).
 
 ## 0.6.6
 

@@ -1,4 +1,3 @@
-import { AgentsHome } from "../../../screens/agents/AgentsHome";
-
-/** /u/agents: the Agents home. /u/assistants is the same page under its old name. */
-export default function Route() { return <AgentsHome />; }
+import { AliasRoute } from "../../../src/shell/AliasRoute";
+/** /u/agents opens Chats. One agent is /u/agents/:name. */
+export default function Route() { return <AliasRoute from="/u/agents" />; }

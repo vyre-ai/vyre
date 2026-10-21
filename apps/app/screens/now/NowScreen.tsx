@@ -75,7 +75,7 @@ export default function NowScreen() {
       {real ? <ModuleNowCards /> : null}
       {q.error && !world ? <ErrorState title="Now did not load" reason={q.error.message} retry={q.reload} />
         : !world ? <LoadingState rows={4} />
-        : <NowView world={world} notice={play.notice} onMore={(k) => go(`/u/now/${k}`)} onAction={(t, id, input, extra) => run(t, id, input, extra)} onOpen={(t) => void run(t, "open")} />}
+        : <NowView world={world} notice={play.notice} onAction={(t, id, input, extra) => run(t, id, input, extra)} onOpen={(t) => void run(t, "open")} />}
       {real ? <PhoneApprovals want={want} /> : null}
       {scenario ? <Button kind="ghost" size="sm" label="Play: client pays" onPress={play.replay} /> : null}
       {sheets}

@@ -75,7 +75,7 @@ export function AgentsHome() {
     setBusy(r.name);
     (stopped ? agentResume(r.name) : agentStop(r.name)).then(() => { showToast(stopped ? `${r.name} is working again.` : `Paused ${r.name}. It keeps its notes.`); load(); }).catch((e) => showToast(say(e))).finally(() => setBusy(null));
   };
-  const open = (r: Row, tab?: string) => router.push(`/u/assistants/${encodeURIComponent(r.name)}${tab ? `?tab=${tab}` : ""}` as never);
+  const open = (r: Row, tab?: string) => router.push(`/u/agents/${encodeURIComponent(r.name)}${tab ? `?tab=${tab}` : ""}` as never);
   const go = (route: string) => router.push(route as never);
   const talk = (r: Row) => { setBusy(r.name); startChat({ people: [], agents: [r.name] }).then((x) => { if ("chat" in x) go(`/u/chats/${encodeURIComponent(x.chat)}`); else showToast(x.say); }).catch((e) => showToast(say(e))).finally(() => setBusy(null)); };
   const withIt = (r: Row) => chats.rows.filter((c) => chatHas(c, r.name));
