@@ -251,7 +251,9 @@ export default {
         at = said;
       };
       take(i.at);
+      // A to-do's due is its date. A reminder or an alarm may say the same time as due ("in 2 minutes").
       if (kind === "todo" && i.due !== undefined) take(i.due);
+      else if ((kind === "reminder" || kind === "alarm") && at == null && i.due !== undefined) take(i.due);
       if (i.date !== undefined && i.date !== null) { if (!parseDate(i.date)) throw fail(`"${i.date}" is not a date (YYYY-MM-DD)`); date = String(i.date); }
       if (i.wall !== undefined && i.wall !== null) { const w = parseWall(i.wall); if (!w) throw fail(`"${i.wall}" is not a time (HH:MM)`); wall = wallString(w); }
       let repeat = null;
@@ -486,8 +488,14 @@ export default {
         const given = Object.fromEntries(Object.entries(i).filter(([k, v]) => v !== undefined && k !== "text"));
         input = { ...(p || {}), ...given, title: given.title ?? (p && p.title) ?? i.text.trim() };
       }
-      const kind = input.kind || "note";
+      const kindGiven = input.kind !== undefined && input.kind !== null && String(input.kind) !== "";
+      let kind = input.kind || "note";
       if (!KINDS.includes(kind)) throw fail(`kind is one of ${KINDS.join(", ")}`);
+      // A due with no kind is a reminder. A note has no time, so a due on one is refused instead of dropped.
+      if (input.due !== undefined && input.due !== null && String(input.due).trim() !== "" && kind === "note") {
+        if (kindGiven) throw fail("a note does not take a due; add a reminder instead");
+        kind = "reminder";
+      }
       agentKind(kind, w);
       if (kind === "task" && !(await mayScheduleJobs(w))) throw memberRefusal();
       if (kind === "task") await taskScope({ thread: input.thread || null, project: input.project || null }, w);
