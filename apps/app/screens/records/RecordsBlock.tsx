@@ -21,6 +21,7 @@ import { BusyBlocks } from "./BusyBlocks";
 import { AddColumn } from "./AddColumn";
 import { BoardWithStats } from "./BoardWithStats";
 import { defaultScope, filterByScope, scopeFilter, scopeNote, scopesFor } from "./scope-views.js";
+import { TagViewChips } from "./TagViewChips";
 import { NewViewSheet } from "./NewViewSheet";
 import { ImportSheet } from "./ImportSheet";
 import { AddTypeSheet } from "../customize/AddTypeSheet";
@@ -244,6 +245,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
           <Text size="caption" tone="label">Views</Text>
           <Chip selected={!binOpen && !viewName} onPress={() => { setViewName(undefined); setPicked(null); setCleared(false); setBinOpen(false); }}>{`All ${vd.plural.toLowerCase()}`}</Chip>
           {named.map((n) => <Chip key={n.name} selected={!binOpen && viewName === n.name} icon={n.name.startsWith(MINE) ? "lock" : undefined} onPress={() => { setViewName(n.name); setPicked(null); setCleared(false); setBinOpen(false); }}>{n.label}</Chip>)}
+          <TagViewChips rows={all} chips={chips} onChips={setChips} />
           {def.name !== "note" ? <Chip selected={binOpen} icon="trash" onPress={() => setBinOpen(!binOpen)}>Bin</Chip> : null}
           <View className="flex-1" />
           {switcher}
@@ -268,6 +270,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
           <Text size="caption" tone="label">Views</Text>
           <Chip selected={!binOpen && !viewName} onPress={() => { setViewName(undefined); setPicked(null); setCleared(false); setBinOpen(false); }}>{`All ${vd.plural.toLowerCase()}`}</Chip>
           {named.map((n) => <Chip key={n.name} selected={!binOpen && viewName === n.name} icon={n.name.startsWith(MINE) ? "lock" : undefined} onPress={() => { setViewName(n.name); setPicked(null); setCleared(false); setBinOpen(false); }}>{n.label}</Chip>)}
+          <TagViewChips rows={all} chips={chips} onChips={setChips} />
           {def.name !== "note" ? <Chip selected={binOpen} icon="trash" onPress={() => setBinOpen(!binOpen)}>Bin</Chip> : null}
         </View>
       ) : null}

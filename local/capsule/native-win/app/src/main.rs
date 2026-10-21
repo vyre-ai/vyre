@@ -7,6 +7,7 @@
 //! nothing but a frozen data constant injected. The trust rules are in `vyre_capsule_win::shell`.
 
 mod ncrypt;
+mod window_frame;
 
 use std::sync::Mutex;
 
@@ -42,7 +43,7 @@ fn logged<T>(who: &str, r: Result<T, String>) -> Result<T, String> {
     r
 }
 
-const APP_NAME: &str = "Vyre Lumen";
+const APP_NAME: &str = "Vyre";
 
 const TRAY_DARK_TASKBAR: &[u8] = include_bytes!("../icons/lumen-tray-white.ico");
 const TRAY_LIGHT_TASKBAR: &[u8] = include_bytes!("../icons/lumen-tray-black.ico");
@@ -132,6 +133,15 @@ fn bundled_dir(app: &AppHandle) -> Option<std::path::PathBuf> {
     if bundled::has_build(&dir) { Some(dir) } else { None }
 }
 
+/// System font, and no second scrollbar: the page draws with Segoe UI and its own scroll.
+fn window_polish() -> String {
+    r#"(function () {
+  var s = document.createElement("style");
+  s.textContent = "html,body{font-family:\"Segoe UI Variable Text\",\"Segoe UI\",sans-serif}::-webkit-scrollbar{width:0;height:0;display:none}";
+  (document.head || document.documentElement).appendChild(s);
+})();"#.into()
+}
+
 /// Open (or reveal) the app's own window: the bundled web build at its own origin, with this computer's keys behind it and no server needed. This is the first run on Windows (paste the
 /// reservation code, become yourself, then Join a team or Add a server) and every run after.
 fn show_app(app: &AppHandle, path: &str) {
@@ -154,11 +164,13 @@ fn show_app(app: &AppHandle, path: &str) {
     };
     let built = builder
         .title(APP_NAME)
-        .inner_size(560.0, 760.0)
-        // WebView2 serves a custom scheme at http(s)://<scheme>.localhost; https makes the page a secure context, as the Mac's is.
+        .inner_size(window_frame::DEFAULT_W, window_frame::DEFAULT_H)
+        .min_inner_size(window_frame::MIN_W, window_frame::MIN_H)
+        // WebView2 serves a custom scheme at http(s)://<scheme>.localhost; https makes the page a secure context.
         .use_https_scheme(true)
         .on_page_load(|w, p| log("note", "page", &format!("{:?} {}", p.event(), p.url())))
         .initialization_script(shell_signal(&app.package_info().version.to_string(), true))
+        .initialization_script(window_polish())
         .on_navigation(move |url| {
             if bundled::is_page(url.as_str()) { return true; }
             open_external(&nav_app, url.as_str());
@@ -172,11 +184,17 @@ fn show_app(app: &AppHandle, path: &str) {
     match built {
         Ok(w) => {
             log("note", "show_app", "the window was built");
+            let frame = window_frame::load(app);
+            window_frame::apply(&w, &frame);
+            let app_for_frame = app.clone();
             let w2 = w.clone();
             w.on_window_event(move |e| {
                 if let tauri::WindowEvent::CloseRequested { api, .. } = e {
                     api.prevent_close();
+                    window_frame::save(&app_for_frame, &w2);
                     let _ = w2.hide();
+                } else if matches!(e, tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_)) {
+                    window_frame::save(&app_for_frame, &w2);
                 }
             });
         }
@@ -191,8 +209,7 @@ fn show_first_run(app: &AppHandle) {
 
 /// Open (or reveal) the main panel at `path` on the pinned origin.
 fn show_panel(app: &AppHandle, path: &str) {
-    // One origin for the life of the app (lead ruling, 8 Oct): the window stays on https://vyreapp.localhost before and after pairing, so the identity key (a Windows Hello passkey bound to that origin's rp)
-    // signs in the same place, and the person's server is reached over the relay, as the Mac's window does at vyreapp://box.
+    // One origin for the life of the app: the window stays on https://vyreapp.localhost before and after pairing, and the person's server is reached over the relay.
     show_app(app, path);
 }
 

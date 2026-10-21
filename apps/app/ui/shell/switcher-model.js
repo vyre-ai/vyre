@@ -4,7 +4,7 @@
 
 /** Where each action opens. Space settings is the Look and name page; Invite people is the People invite. */
 export const SWITCHER_HREF = Object.freeze({ create: "/onboard?path=create", join: "/onboard?path=join", invite: "/u/wink/invite", settings: "/u/spaces" });
-export const ACCOUNT_HREF = Object.freeze({ profile: "/u/profile", ai: "/u/settings/ai", settings: "/u/settings", everywhere: "/u/settings/account" });
+export const ACCOUNT_HREF = Object.freeze({ profile: "/u/settings/profile", ai: "/u/settings/ai", settings: "/u/settings", everywhere: "/u/settings/account" });
 
 /**
  * The Spaces, in the order given, with a check on the one showing and its shortcut (Cmd 1 to Cmd 9). There is no "All spaces": a person is in exactly one Space at a time.

@@ -11,6 +11,17 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - feat(doctor): `vyre doctor` ends with the server log of the last 24 h counted: errors, warnings by kind, calls over 2 s, retries, module restarts (`--log` prints only that; the daemon now logs `warn: slow call <tool> took <n> ms`).
 - chore(names): a thread, an AI account, a checkpoint and a sign-in are four words: tool descriptions and log lines in sessions, space-sessions and the Switchboard no longer say "session" for a thread, an account or a checkpoint.
 - ci: the design-pictures harness retries a missed render once on a fresh page; `test/harness.test.js` waits for the About file before it asks for the brief; the Android build in `release.yml` is paused (runs only with the repository variable `VYRE_PHONE_BUILDS=go`; the release no longer needs it); the iOS workflows stay in the repo and are not part of a release.
+- feat(shell): the sidebar is Home, Chats, Projects, Records and Files, with Vault and Settings at the foot. Apps, Sites, Agents, Flows, Calendar, Memory and Build are not places (lib/sidebar/model.js, apps/app/ui/shell/ShellSample.tsx, apps/app/ui/shell/sidebar-stack.js).
+- feat(shell): one name for each place. /u opens Home, /u/templates opens Playbooks, /u/drive opens Files, and an agent's old addresses open /u/agents/:name. /u/now/needs, /u/now/doing and /u/planner are gone (apps/app/src/shell/route-aliases.js).
+- feat(shell): Home is Needs you, Doing, Today with a Week toggle, Tasks with the planner capture, and Recent (apps/app/screens/now/HomeToday.tsx, HomeTasks.tsx, HomeRecent.tsx).
+- feat(shell): the agent's computer is on. The who pane's Computer tab and dock rows open it full screen (apps/app/screens/shell/rc.ts).
+- feat(shell): Flows, Kits and Sites show the Space's own screens (apps/app/screens/flows/FlowScreen.tsx, KitsScreen.tsx, apps/app/screens/sites/SitesScreen.tsx).
+- feat(projects): a project page's tabs are Overview, Chats, Tasks, Files, Flows, Team, Memory, Site and Timeline (apps/app/screens/projects/panes.ts).
+- feat(records): tags show as saved views, and a record can draft a document, send it for signing, or send email (apps/app/screens/records/tag-views.js, DocumentsBar.tsx).
+- feat(windows): the window remembers its place and size, is titled Vyre, uses Segoe UI, and hides the web view scrollbar (local/capsule/native-win/app/src/window_frame.rs).
+- feat(web): a phone can save Vyre to the home screen, and the page links its manifest and icons (apps/app/ui/shell/HomeScreenHint.tsx, apps/app/public/index.html).
+- fix(shell): a sidebar search that only one place starts with finds that place, and one that several labels contain stays ambiguous (lib/sidebar/model.js, lib/sidebar/model.test.js).
+- chore(design): picture references for the five-place sidebar, the phone home-screen hint, Draft a document, and the Computer tab (design-refs).
 
 ## 0.6.6
 

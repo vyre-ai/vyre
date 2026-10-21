@@ -1,2 +1,3 @@
-import { Redirect } from "expo-router";
-export default function UiIndex() { return <Redirect href={"/u/appearance" as never} />; }
+import { AliasRoute } from "../../src/shell/AliasRoute";
+/** /u opens Home. */
+export default function Route() { return <AliasRoute from="/u" />; }

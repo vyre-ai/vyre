@@ -24,7 +24,7 @@ export function refRoute(urn) {
   if (!m) return "/u/now";
   const kind = kindOf(urn), rest = m[2] ?? "";
   const dec = (/** @type {string} */ s) => { try { return decodeURIComponent(s); } catch { return s; } };
-  if (kind === "agent") return `/u/assistants/${encodeURIComponent(dec(rest))}`;
+  if (kind === "agent") return `/u/agents/${encodeURIComponent(dec(rest))}`;
   if (kind === "project") return `/u/project/${encodeURIComponent(dec(rest))}`;
   if (kind === "tag") return `/u/tags/${encodeURIComponent(dec(rest))}`;
   if (kind === "person" || kind === "role" || kind === "team") return "/u/settings/roles";

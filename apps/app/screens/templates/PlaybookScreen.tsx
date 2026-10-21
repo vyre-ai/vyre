@@ -103,7 +103,7 @@ export default function PlaybookScreen() {
       {!err && !shown ? <LoadingState rows={3} /> : null}
       {shown && body ? (
         <>
-          {waiting ? <Chip tone="accent" onPress={() => router.push("/u/now/needs" as never)}>Waiting for a yes. Open Needs you</Chip> : null}
+          {waiting ? <Chip tone="accent" onPress={() => router.push("/u/now" as never)}>Waiting for a yes. Open Needs you</Chip> : null}
           {draftAhead && draftAhead.version !== shown.version ? <Chip tone="warn">{`Draft version ${draftAhead.version} is waiting to go live`}</Chip> : null}
           <Tabs items={PAGE_TABS as [Tab, string][]} value={tab} onChange={setTab} />
           {tab === "stages" ? (

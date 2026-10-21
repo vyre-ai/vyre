@@ -34,7 +34,7 @@ export default function AgentPage() {
   const load = useCallback(() => { setErr(""); agent.get(who).then(setA).catch((e) => setErr(say(e, "Your agents did not answer."))); }, [who]);
   useEffect(load, [load]);
   return (
-    <Page title={a ? displayName(a) : who} back="/u/assistants" marks={[markRef("agent", who)]}>
+    <Page title={a ? displayName(a) : who} back="/u/chats" marks={[markRef("agent", who)]}>
       {err ? <Card flush><ErrorState title="This page did not load" reason={err} retry={load} /></Card> : null}
       {a === undefined && !err ? <LoadingState rows={4} /> : null}
       {a === null ? <Card><EmptyState title={`There is no agent called ${who}`} body="It may have been removed." /></Card> : null}

@@ -36,8 +36,10 @@ test("every Build path is one the sidebar can drill into", () => {
 });
 
 import { panelFor, backTo } from "../../ui/shell/sidebar-stack.js";
-test("the sidebar drills into Build for every Build path, and Settings keeps its own", () => {
-  for (const p of ["/u/playbooks", "/u/templates/x", "/u/skills", "/u/documents", "/u/kits", "/u/kits/estate", "/u/settings/customize", "/u/settings/customize/matter"]) assert.equal(panelFor(p, ""), "build", p);
+test("Build paths are not a sidebar place; a Settings path keeps the Settings panel", () => {
+  for (const p of ["/u/playbooks", "/u/templates/x", "/u/skills", "/u/documents", "/u/kits", "/u/kits/estate"]) assert.equal(panelFor(p, ""), null, p);
+  assert.equal(panelFor("/u/settings/customize", ""), "settings");
+  assert.equal(panelFor("/u/settings/customize/matter", ""), "settings");
   assert.equal(panelFor("/u/settings/rules", ""), "settings");
-  assert.equal(backTo("/u/playbooks", ""), "/u/playbooks?side=main");
+  assert.equal(backTo("/u/playbooks", ""), null);
 });

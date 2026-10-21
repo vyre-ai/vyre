@@ -7,14 +7,13 @@ import { useMayMakeTemplates } from "../templates/role";
 import { playbookPath } from "../templates/board";
 import { TeamTab } from "../teammates/TeamTab";
 import { projectId } from "../teammates/model";
-import { PAGE_LABEL, RAIL_LABEL, WIDE, pageTabs, railFor, refOf, type PageTab, type RailId } from "./panes";
+import { RAIL_LABEL, WIDE, pageTabs, railFor, refOf, siteOf, type PageTab, type RailId } from "./panes";
 import { ChatsPane, FilesPane, MemoryPane, StagesPane, TimelinePane } from "./ProjectPanes";
-// @ts-ignore a plain .js module
-import { kindTabs } from "./kind-panes.js";
 import { useProjectChat } from "./useProjectChat";
 // @ts-ignore a plain .js module
 import { chatNote, chatPath } from "./chat.js";
-import { BoardPane, ClientPane, EmailsPane, FlowsPane } from "./KindPanes";
+import { BoardPane, FlowsPane } from "./KindPanes";
+import { ProjectSite } from "./ProjectSite";
 import { callT } from "../../src/real/call-tool";
 import { ContextEditor, DocsEditor } from "../folderdocs/FolderDocs";
 import { projectFolder } from "../folderdocs/project";
@@ -41,7 +40,7 @@ export default function ProjectScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const q = useProject(String(id));
-  const [tab, setTab] = useState<PageTab | "overview" | null>(null);
+  const [tab, setTab] = useState<PageTab | null>(null);
   const [makingTemplate, setMaking] = useState(false);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [archiving, setArchiving] = useState(false);
@@ -65,7 +64,7 @@ export default function ProjectScreen() {
   const wide = width >= WIDE;
   // agent-page's editors reload when the api's id changes, so it is made once per project.
   const folder = useMemo(() => (allowsMock() ? mockFolderApi(ref) : projectFolder(ref)), [ref]);
-  const at: PageTab | "overview" = tab ?? (wide ? "overview" : "chats");
+  const at: PageTab = tab ?? "overview";
   const stages = data?.template_snapshot ? <StagesPane snapshot={String(data.template_snapshot)} stage={data.template_stage ? String(data.template_stage) : undefined} template={data.template ? String(data.template) : undefined} /> : null;
   const chat = useProjectChat(slug);
   const rail = (r: RailId) => {
@@ -76,22 +75,15 @@ export default function ProjectScreen() {
     if (r === "files") return pid ? <FilesPane id={pid} /> : <EmptyState title="No files here" body="This project has no id Files can keep files under." />;
     return pid ? <MemoryPane id={pid} slug={slug} /> : <EmptyState title="No memory here" body="This project has no id memory can be kept under." />;
   };
-  const chats = ref ? <ChatsPane refId={ref} slug={slug} name={h?.title} /> : <EmptyState title="No chats here" body="This project has no id the box can file chats under." />;
+  const chats = ref ? <ChatsPane refId={ref} slug={slug} name={h?.title} /> : <EmptyState title="No chats here" body="This project has no id chats can be filed under." />;
   const section = (r: RailId) => { const body = rail(r); if (!body) return null; return r === "instructions" || r === "context" || r === "access" ? <Disclosure key={r} label={RAIL_LABEL[r]} defaultOpen={r === "instructions"}>{body}</Disclosure> : <View key={r} className="gap-s2"><Text size="caption" strong tone="label">{RAIL_LABEL[r]}</Text>{body}</View>; };
   const pageBody = (): React.ReactNode => {
-    if (at === "team") return pid ? <TeamTab project={pid} /> : <EmptyState title="No team here" body="This project has no id the box can keep a team under." />;
-    if (at === "client") return <ClientPane client={String((data?.client as { urn?: string } | undefined)?.urn ?? "")} />;
-    if (at === "emails") return <EmailsPane client={String((data?.client as { urn?: string } | undefined)?.urn ?? "")} />;
-    if (at === "board") return <BoardPane tasks={(q.data?.world.tasks ?? []).filter((t: { record?: string }) => t.record === f?.row.urn)} />;
+    if (at === "team") return pid ? <TeamTab project={pid} /> : <EmptyState title="No team here" body="This project has no id a team can be kept under." />;
+    if (at === "tasks" || at === "board") return <BoardPane tasks={(q.data?.world.tasks ?? []).filter((t: { record?: string }) => t.record === f?.row.urn)} />;
     if (at === "flows") return <FlowsPane slug={slug} snapshot={String(data?.template_snapshot ?? "")} />;
+    if (at === "site") { const site = siteOf(data); return site ? <ProjectSite id={site} /> : <EmptyState title="No site yet" body="When this project has a published site, it shows here." />; }
     if (at === "timeline") return ref ? <TimelinePane slug={ref} /> : <EmptyState title="No timeline here" body="This project has no id a timeline can be read under." />;
-    if (at === "overview") return (
-      <View className="flex-row items-start gap-s6">
-        <View className="min-w-0 gap-s3" style={{ flex: 2 }}><Text size="caption" strong tone="label">Chats</Text>{chats}</View>
-        <View className="min-w-0 gap-s5" style={{ flex: 1, maxWidth: 420 }}>{railFor(data).map(section)}</View>
-      </View>
-    );
-    if (at === "about") return <View className="gap-s5">{railFor(data).filter((r) => r === "stages" || r === "instructions" || r === "context" || r === "access").map(section)}</View>;
+    if (at === "overview" || at === "about") return <View className="gap-s5">{railFor(data).filter((r) => r === "stages" || r === "instructions" || r === "context" || r === "access").map(section)}</View>;
     if (at === "files") return rail("files");
     if (at === "memory") return rail("memory");
     return chats;
@@ -108,9 +100,7 @@ export default function ProjectScreen() {
               {chat.state !== "loading" && chatNote(chat as never) ? <Text size="caption" tone="label">{chatNote(chat as never)}</Text> : null}
               <ProjectHeaderStrip stage={strip?.stage ?? null} owners={strip?.people ?? []} slug={slug} onManage={() => setTab("team")} />
               <RecordTags rec={q.data.found.row as never} onChanged={q.reload} />
-              {wide
-                ? <Segmented label="Project" value={at === "timeline" || at === "team" || kindTabs(data).includes(at as never) ? at : "overview"} onChange={(v: string) => setTab(v as never)} options={[["overview", "Overview"], ...kindTabs(data).map((p: string): [string, string] => [p, PAGE_LABEL[p as PageTab]]), ["timeline", "Timeline"], ["team", "Team"]]} />
-                : <Segmented label="Project" value={at as PageTab} onChange={(v: PageTab) => setTab(v)} options={pageTabs(data)} />}
+              <Segmented label="Project" value={at} onChange={(v: PageTab) => setTab(v)} options={pageTabs(data)} />
               {pageBody()}
             </>
           )}

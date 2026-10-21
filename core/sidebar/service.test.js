@@ -44,9 +44,9 @@ test("the sidebar is a group of the Space kernel's remote calls, and the call th
 test("each member has their own list on the server, the same wherever they open it, and the box's own person has theirs", async t => {
   const { d, as, hidden } = await world(t);
   await as("per_ana", "edit", { op: "hide", what: "Vault" });
-  await as("per_ben", "edit", { op: "hide", what: "Flows" });
+  await as("per_ben", "edit", { op: "hide", what: "Files" });
   assert.deepEqual(hidden(await as("per_ana", "get")), ["vault"]);
-  assert.deepEqual(hidden(await as("per_ben", "get")), ["flows"]);
+  assert.deepEqual(hidden(await as("per_ben", "get")), ["drive"]);
   assert.deepEqual(hidden(await as("per_ana", "get")), ["vault"], "opened again, from another device: the same list");
   assert.deepEqual(hidden((await d.registry.call("sidebar.get", {}, "cli", {})).data), [], "the box's own person is not a member's list");
   await as("per_ana", "edit", { op: "set", entries: [{ kind: "place", id: "now" }, { kind: "place", id: "settings" }] });
@@ -58,7 +58,7 @@ test("only the Space's owner or admin role sets the default; a member, a manager
   const { as, hidden } = await world(t);
   for (const person of ["per_ana", "per_manager", "per_temp"]) {
     assert.equal((await as(person, "get")).can_set_default, false, person);
-    await assert.rejects(as(person, "team", { op: "hide", what: "Memory" }), e => /Only an owner or an admin/.test(String(/** @type {any} */ (e).message)) && /** @type {any} */ (e).code === "not_allowed", person);
+    await assert.rejects(as(person, "team", { op: "hide", what: "Files" }), e => /Only an owner or an admin/.test(String(/** @type {any} */ (e).message)) && /** @type {any} */ (e).code === "not_allowed", person);
   }
   for (const person of ["per_owner", "per_admin"]) assert.equal((await as(person, "get")).can_set_default, true, person);
   const done = await as("per_admin", "team", { op: "hide", what: "Vault" });
@@ -96,8 +96,8 @@ test("through the Space's remote server: a member's sidebar call arrives as a ke
   const refused = /** @type {any} */ (await ask("per_ana", "sidebar.team", { op: "hide", what: "Vault" }));
   assert.equal(refused.ok, false);
   assert.match(refused.error.message, /Only an owner or an admin/);
-  const admin = /** @type {any} */ (await ask("per_admin", "sidebar.team", { op: "hide", what: "Memory" }));
+  const admin = /** @type {any} */ (await ask("per_admin", "sidebar.team", { op: "hide", what: "Records" }));
   assert.equal(admin.ok, true, JSON.stringify(admin));
-  assert.equal(((/** @type {any} */ (await ask("per_ben", "sidebar.get", {}))).result.entries.find((/** @type {any} */ x) => x.id === "memory")).hidden, true);
+  assert.equal(((/** @type {any} */ (await ask("per_ben", "sidebar.get", {}))).result.entries.find((/** @type {any} */ x) => x.id === "records")).hidden, true);
   assert.equal((/** @type {any} */ (await ask("per_stranger", "sidebar.get", {}))).ok, false, "a person the Space does not know gets nothing");
 });

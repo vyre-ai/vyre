@@ -119,7 +119,7 @@ export function LaterPlannerBar({ s, onClear }: { s: LaterPlannerState; onClear:
   if (!s || s.kind !== "scheduled") return null;
   return (
     <View style={{ width: "100%", maxWidth: 760, alignSelf: "center", paddingHorizontal: 16 }}>
-      <LaterPlannerNote s={s} onOpenPlanner={() => router.push("/u/planner" as never)} onClear={onClear} />
+      <LaterPlannerNote s={s} onOpenPlanner={() => router.push("/u/now" as never)} onClear={onClear} />
     </View>
   );
 }
