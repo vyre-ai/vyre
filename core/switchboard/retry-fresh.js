@@ -3,6 +3,11 @@
 // words again. The chat sends the chat message id, which is not that uuid, and the first message
 // of a session cannot be rewound. Both come back as bad_input. This resends the last thing the
 // person typed, on a fresh kernel session for the same person and chat.
+import { ownSurface } from "./lease.js";
+
+// The chat's delivery holds the keyboard as the stream module. That is the person's own chat, so a
+// person's Try again takes it. A terminal or another person still refuses, and nothing is rewound.
+const CHAT_KEYBOARD = "via:module:stream";
 
 /**
  * @param {any} sb @param {string} id @param {string|null} message @param {any} o
@@ -22,13 +27,15 @@ export async function retryOrFresh(sb, id, message, o) {
  */
 async function fresh(sb, id, o) {
   const surface = o.surface || "deck";
-  sb.willAccept(id, surface);
   const line = sb.lastUserLine(id);
   const words = line ? sb.lineText(line) : "";
   if (!line || !String(words).trim()) throw Object.assign(new Error("there is no message here to retry"), { code: "bad_input" });
   // Only one's own words. A message that names no author (the chat's send records none) is left as it was.
   const wrote = sb.authorOf(id, String(line.uuid));
   if (wrote && o.author && wrote !== o.author && !o.admin) throw Object.assign(new Error("that message is someone else's: you can edit and retry only your own"), { code: "denied" });
+  const held = sb.leases && sb.leases.holder(id);
+  if (held && held.surface === CHAT_KEYBOARD && ownSurface(surface) && typeof sb.lease === "function") sb.lease(id, surface);
+  sb.willAccept(id, surface);
   const remembered = sb.turnTail ? sb.turnTail.last(id) : null;
   const rec = sb.record(id);
   const chat = (remembered && remembered.chat) || (rec && rec.chat) || null;
