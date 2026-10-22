@@ -26,6 +26,7 @@ import { relayLink } from "./link.js";
 import { createTunnelEnd } from "../../lib/publish/tunnel.js";
 import { bridge } from "./bridge.js";
 import { peersFor, inviteesFor, serversFor, homesFor } from "./peers.js";
+import { inviteeMayOpen } from "./invitee-cap.js";
 import { knownBuild, findRelease, newestRelease } from "./releases.js";
 import { agentClaim } from "../modules/index.js";
 import { keyHandle } from "./keys.js";
@@ -130,6 +131,7 @@ export default {
     /** A seam read when it is used, so a test can change it after the relay started (the invitee channel lifetimes). @param {string} k */
     const liveSeam = k => (/** @type {any} */ (seams.get(ctx.paths.root)) || {})[k] ?? /** @type {any} */ (seam)[k];
     /** @type {Set<any>} the invitee channels open now (IV-5) */ const inviteePool = new Set();
+    /** @type {Map<string, number>} channels open for one invitation */ const inviteeBy = new Map();
     /** @type {Set<any>} the channels of strange homes open now (a project move's pull) */ const homePool = new Set();
     ctx.store.migrate(MIGRATIONS);
     const db = ctx.store.db;
@@ -672,11 +674,19 @@ export default {
         const iid = String(reply.invitee);
         // IV-5: invitee channels have a small pool of their own and a life of their own, so a stranger who knows the route can never hold the slots the paired devices need: 8 at a time (the rest are refused at once),
         // closed when no stream opens within 30 s, when the stream they opened has ended (accept or refusal), and after 5 minutes whatever they do.
-        if (inviteePool.size >= (seam.inviteePool ?? 8)) { channel.close(4429, "too many invitations are open here; try again in a minute"); return; }
+        const perMax = typeof liveSeam("inviteePer") === "number" ? liveSeam("inviteePer") : undefined;
+        const openFor = inviteeBy.get(iid) || 0;
+        if (!inviteeMayOpen({ pool: inviteePool.size, forInvite: openFor, poolMax: seam.inviteePool, perMax })) { channel.close(4429, "too many invitations are open here; try again in a minute"); return; }
         inviteePool.add(channel);
+        inviteeBy.set(iid, openFor + 1);
         let streams = 0, opened = false;
         const timers = /** @type {any[]} */ ([]);
-        const stop = () => { for (const t of timers) clearTimeout(t); timers.length = 0; inviteePool.delete(channel); };
+        const release = () => {
+          if (!inviteePool.delete(channel)) return;
+          const left = (inviteeBy.get(iid) || 1) - 1;
+          if (left > 0) inviteeBy.set(iid, left); else inviteeBy.delete(iid);
+        };
+        const stop = () => { for (const t of timers) clearTimeout(t); timers.length = 0; release(); };
         const end = (/** @type {string} */ why) => { stop(); try { channel.close(1000, why); } catch { /* closed */ } };
         const idle = setTimeout(() => { if (!opened) end("no invite stream opened"); }, liveSeam("inviteeIdleMs") ?? 30_000);
         const total = setTimeout(() => end("invite channel time is up"), liveSeam("inviteeTotalMs") ?? 5 * 60_000);
