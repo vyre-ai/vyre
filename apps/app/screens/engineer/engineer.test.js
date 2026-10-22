@@ -47,6 +47,13 @@ test("the message names where it came from, what it is now, what was asked, and 
   assert.ok(json.shape.length > 3);
 });
 
+test("a new agent opened from a project names that project", () => {
+  const t = handoffText(contextCard({ source: "agent", intent: "create", project: "juniper" }));
+  assert.ok(t.includes("Make it in the project juniper."));
+  const json = JSON.parse(/```engineer-context\n([\s\S]*)\n```/.exec(t)?.[1] ?? "{}");
+  assert.equal(json.project, "juniper");
+});
+
 test("a new one has no shape and says so; with no words it still asks for something", () => {
   const t = handoffText(contextCard({ source: "flow" }));
   assert.ok(t.startsWith("From Flows (make a new one)"));

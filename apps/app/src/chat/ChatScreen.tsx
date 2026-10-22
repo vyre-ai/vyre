@@ -705,7 +705,7 @@ export function ChatScreen(p: ChatScreenProps) {
             if (name === "fresh") { void onSend("/roll"); return true; }
             if (name === "where") { setPanel("more"); return true; }
             if (name === "flow") { router.push("/u/flows" as never); return true; }
-            if (name === "agent") { openNewAgent(router); return true; }
+            if (name === "agent") { openNewAgent(router, chatProject.current?.slug); return true; }
             if (name === "move") { setPanel("project"); return true; }
             if (name === "rewind") { caps.api.openRewind(); return true; }
             if (name === "find") { setFindOpen(true); return true; }

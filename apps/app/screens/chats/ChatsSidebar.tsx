@@ -28,9 +28,10 @@ const useChatsFilter = create<{ q: string; type: string; project: string; tag: s
 }));
 
 /** New agent: the Engineer drafts it in a thread (the "From Agents" handoff), and the person says yes to create it. The sample preview (?newagent=1) keeps the form. */
-export const openNewAgent = (router: { push: (to: never) => void }) => {
-  if (allowsMock() && typeof location !== "undefined" && /[?&]newagent=1/.test(location.search)) { useChatsFilter.getState().set({ newAgent: true }); return; }
-  openEngineer(router, { source: "agent", intent: "create" });
+export const openNewAgent = (router: { push: (to: never) => void }, project?: string) => {
+  const inProject = project && project !== "all" ? project : "";
+  if (allowsMock() && typeof location !== "undefined" && /[?&]newagent=1/.test(location.search)) { useChatsFilter.getState().set({ newAgent: true, ...(inProject ? { project: inProject } : {}) }); return; }
+  openEngineer(router, { source: "agent", intent: "create", ...(inProject ? { project: inProject } : {}) });
 };
 
 /** The compose button: opens and closes the New menu (also Cmd N). */
@@ -101,7 +102,7 @@ export function ChatsSidebar() {
   const personRows = convos.filter((c) => c.lone === "person").map((c) => ({ id: c.id, name: c.title }));
   const pickNew = (r: { kind: string; id: string; label: string }) => {
     if (r.kind === "group") router.push("/u/chats/new?group=1" as never);
-    else if (r.kind === "new-agent") openNewAgent(router);
+    else if (r.kind === "new-agent") openNewAgent(router, f.project);
     else if (r.kind === "flow") router.push("/u/flows" as never);
     else if (r.kind === "person") { const c = byId.get(r.id); if (c) open(c); }
     else if (r.kind === "agent") {
@@ -122,7 +123,7 @@ export function ChatsSidebar() {
       <ConversationTypes type={f.type} onType={(type: string) => f.set({ type })} />
       {/* The New menu opens under the type chips, over the list, so the filters stay in sight. */}
       <View style={{ zIndex: 30 }}><NewPopover open={f.compose} onClose={() => f.set({ compose: false })} agents={agentRows} people={personRows} onPick={pickNew} anchor={plusAnchor} /></View>
-      <NewAgentFlow open={f.newAgent} onClose={() => f.set({ newAgent: false })} />
+      <NewAgentFlow open={f.newAgent} project={f.project !== "all" ? f.project : ""} onClose={() => f.set({ newAgent: false })} />
       {/* Quiet, never a skeleton: the last list with a line when the box did not refresh it, a line when nothing came, and nothing at all while the first read is inside its budget. */}
       {chats.note ? <Text size="caption" tone="label" style={{ paddingHorizontal: 16, paddingTop: 4 }}>This is the last list. It did not refresh.</Text> : null}
       {!settled ? null : !found.length && chats.from === "failed" ? <Text tone="label" style={{ paddingHorizontal: 16, paddingTop: 8 }} accessibilityRole="button" onPress={chats.retry}>Your chats did not load. Tap to try again.</Text>

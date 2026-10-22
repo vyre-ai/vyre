@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6.9
 
+- fix(agents): New agent from a project starts in that project. The + menu and /agent pass the project you are in (apps/app/screens/chats/ChatsSidebar.tsx, screens/engineer/model.js).
 - fix(sign-in): pairing a second server in the browser keeps its own sign-in. The first server's token stays put (apps/app/src/auth/paired-key.ts, token-origin.ts).
 - fix(settings): Fast mode and Keep file checkpoints are gone from Settings. Nothing read them, so a change did nothing. File rewind still keeps its own checkpoints.
 - fix(vault): Watchtower's known-breach check turns on and off. It was labelled coming in this release. Each check still asks you, and Off sends nothing (core/vault/module.json, apps/app/screens/vault/RealVaultMore.tsx).
