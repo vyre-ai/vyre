@@ -148,10 +148,12 @@ export default {
       const { viewer: who0, chain, chat: kchat } = await access.read(asked, meta, i);
       // A person who opens a chat after a restart gives the assistants answering them a session again; the group's list follows the kernel's.
       if (kchat && groups) await groups.mirror(asked, { people: [...kchat.people], assistants: [...(kchat.assistants || [])] }, meta, who0.id, chain);
-      // One Chat: a chat nobody has spoken in through the stream (a run the CLI, a terminal or a Flow started, which is the only run in it) is that run's own log, so the one chat id opens it. The person was
-      // already checked against the chat above; the run's log is then served as the chat's.
+      // One Chat: a chat nobody has spoken in through the stream (its log is empty, and no assistant in it has a run yet; a run the CLI, a terminal or a Flow started, which is the only run in it) is that run's
+      // own log, so the one chat id opens it. The person was already checked against the chat above. A chat whose log already holds frames is served as itself: the reply is written on the chat's log, and
+      // following the run's log instead leaves an open chat with no reply.
       let session = asked;
-      if (kchat && !(groups && groups.bound(asked))) {
+      const spoken = logs.known(asked) && logs.get(asked).head > 0;
+      if (kchat && !spoken && !(groups && groups.bound(asked))) {
         const runs = await ctx.call("threads.of-chat", { chat: asked }).then((/** @type {any} */ r) => (r && r.data && r.data.runs) || []).catch(() => []);
         if (runs.length === 1) session = String(runs[0].thread);
       }

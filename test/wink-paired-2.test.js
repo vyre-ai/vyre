@@ -1300,3 +1300,63 @@ shardTest("a member reads a team chat in the app's own code path: the real callT
   await until(() => textsOf(benFrames).includes("owner: after ben joined"), "ben reads what came after his join");
   assert.ok(!textsOf(benFrames).some(x => /first words|second words/.test(x)), "nothing from before his floor");
 });
+
+/** An open chat on the peer wire, through the same duplex the app opens, with the stream client listening. */
+async function openLiveChat(t) {
+  const f = await pairFreshServer(t);
+  const links = linksFor(t, f);
+  await links.startPaired("srv");
+  const k = f.w.d.kernel;
+  const oc = await k.chains.fromFacts({ kind: "socket", surface: "deck", uid: process.getuid(), pid: 1, inside_model_process: false, capsule_verified: true });
+  const chat = await k.gateway.grants.chats.create(oc, { people: [] });
+  const logs = f.w.d.registry.modules.get("stream").handle.logs;
+  const log = logs.get(chat.id);
+  log.append("user-message", { message: "m1", text: "already there" }, { author: "person:alex", message: "m1" });
+  const now = Date.now();
+  f.w.d.registry.deps.db.prepare("INSERT INTO threads_runs (id, name, cwd, status, auth, started_at, last_at, chat, provider) VALUES (?,?,?,?,?,?,?,?,?)").run("th_quiet_run", "quiet", "/tmp", "idle", "ambient", now, now, chat.id, "claude");
+  const listed = await f.w.d.registry.call("threads.of-chat", { chat: chat.id }, "module:stream");
+  assert.equal(listed.data.runs.length, 1, "the chat has one run and the group is not bound to it");
+  const { peerStreamDuplex } = await import("../apps/app/src/real/peer-stream.js");
+  const { connect: connectStream } = await import("../core/stream/client.js");
+  const mkPeer = async () => openServerPeer(connect({ relay: f.w.status.url, route: f.done.route, box: f.done.box, name: "Alex's iPhone", crypto: nodeCrypto(), keyStore: f.ks }));
+  let peer = await mkPeer();
+  const probe = await peer.openStream("stream.open-peer", { chat: chat.id, from: 0 }, { onframe() {}, onend() {} });
+  assert.equal(probe.result.session, chat.id, "a chat that already holds frames is served as itself");
+  probe.close();
+  const seen = /** @type {any[]} */ ([]);
+  const client = connectStream({
+    from: 0, idleMs: 0, backoff: { base: 20, cap: 200, jitter: 0 },
+    onFrame: (frame) => seen.push(frame),
+    open: async ({ from }) => {
+      if (peer.closed) peer = await mkPeer();
+      return peerStreamDuplex((tool, input, handlers) => peer.openStream(tool, input, handlers), { chat: chat.id, from });
+    },
+  });
+  t.after(() => { client.close(); try { peer.close(); } catch { /* closed */ } });
+  const waitFor = async (label, ms) => {
+    const t0 = Date.now();
+    for (;;) {
+      if (seen.some(d => JSON.stringify(d).includes(label))) return;
+      if (Date.now() - t0 > ms) throw new Error(`${label} did not arrive within ${ms} ms`);
+      await new Promise(r => setTimeout(r, 20));
+    }
+  };
+  await waitFor("already there", 8000);
+  return { log, peer, client, waitFor };
+}
+
+shardTest("an open chat over the peer wire receives a reply appended after it opens, within 2 s", async t => {
+  const { log, waitFor } = await openLiveChat(t);
+  log.append("text-delta", { message: "a1", index: 0, text: "reply from the assistant", provider: "claude", model: "juno" }, { author: "assistant:juno", message: "a1" });
+  await waitFor("reply from the assistant", 2000);
+});
+
+shardTest("a peer stream that closes and reopens still delivers the next frame to the open chat", async t => {
+  const { log, peer, client, waitFor } = await openLiveChat(t);
+  peer.close();
+  // The next frame is appended only after the stream has dropped and the chat is listening again.
+  await until(() => client.state !== "live", 8000);
+  await until(() => client.state === "live", 8000);
+  log.append("text-done", { message: "a1", index: 0, text: "the reply is in", provider: "claude", model: "juno" }, { author: "assistant:juno", message: "a1" });
+  await waitFor("the reply is in", 2000);
+});

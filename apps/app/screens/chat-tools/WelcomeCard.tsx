@@ -5,10 +5,18 @@ import { Card, Row, Text } from "@vyre/ui";
 import { moreTools } from "./instance";
 import type { WelcomeCard as Item } from "./more-model.ts";
 import { openExternal } from "../../src/shell/open-external";
+import { callQuiet } from "../../src/chat/call-quiet.js";
 
 export function WelcomeCard({ onOpen }: { onOpen?: (id: string) => void }) {
   const [w, setW] = useState<{ text: string; cards: Item[] } | null>(null);
-  useEffect(() => { moreTools.welcome().then(setW).catch(() => setW(null)); }, []);
+  // A denied welcome waits before the next try. Opening an empty chat again must not ask on every mount.
+  useEffect(() => {
+    let live = true;
+    void callQuiet("assistant.welcome", () => moreTools.welcome()).then((r) => {
+      if (live && r && r.ok) setW(r.value);
+    });
+    return () => { live = false; };
+  }, []);
   if (!w || (!w.text && !w.cards.length)) return null;
   return (
     <Card>

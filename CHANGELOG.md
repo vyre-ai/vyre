@@ -2,6 +2,12 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## 0.6.9
+
+- fix(chat): an open chat over the relay shows a reply while it stays open. Frames that arrived with the stream's answer were dropped before the chat was listening, and a chat that already held messages could be followed on a run's log instead of its own. After the peer stream drops and opens again, the next frame still arrives (apps/app/src/real/peer-stream.js, core/stream/index.js).
+- fix(chat): threads.tasks, threads.get, runner.placement and assistant.welcome wait after a failure, and a chat calls them with its run's thread id or not at all (apps/app/src/chat/call-quiet.js).
+- fix(chat): a Claude usage line names the window Claude named, with that window's own percentage, and says the reset in the person's own time zone, such as "resets Fri 24 Oct, 10:00". The Opus weekly window and the overall weekly window are never mixed (core/switchboard/limit-notice.js).
+
 ## 0.6.8
 
 - fix(computers): a computers test starts kit's thread only when that test needs the thread. The default-config endpoint does, because its thread field is a string. Starting a session in every boot held a process and a watcher, and the file was still inside its last boot when its time limit ended (core/computers/computers.test.js).

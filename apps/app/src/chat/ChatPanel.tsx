@@ -23,6 +23,7 @@ import type { Participant } from "./group.js";
 import type { AboutInfo } from "./AboutSheet";
 import type { ProjectRef } from "./useChatProject";
 import { chatTools } from "../../screens/chat-tools/instance";
+import { callQuiet } from "./call-quiet.js";
 import { ChatTags } from "../../screens/tags/RecordTags";
 import { ForkRows, TasksPage, ContextPage, TranscriptPage, BackPage } from "../../screens/chat-tools/ChatToolsSheet";
 import { ChatFiles } from "../../screens/chat-tools/ChatFiles";
@@ -80,11 +81,15 @@ export function ChatPanel(p: ChatPanelProps) {
   useEffect(() => { if (p.open) setProblem(""); }, [p.open, p.page]);
   // Live state at a glance: how many things are running in the background.
   useEffect(() => {
-    if (!p.open) return;
+    const thread = p.thread && p.thread !== p.chat ? p.thread : "";
+    if (!p.open || !thread) { setRunning(null); return; }
     let live = true;
-    chatTools.tasks(p.thread).then((t) => { if (live) setRunning(t.filter(taskLive).length); }).catch(() => { if (live) setRunning(null); });
+    void callQuiet("threads.tasks:" + thread, () => chatTools.tasks(thread)).then((r) => {
+      if (!live || !r || r.skipped) return;
+      setRunning(r.ok ? r.value.filter(taskLive).length : null);
+    });
     return () => { live = false; };
-  }, [p.open, p.thread]);
+  }, [p.open, p.thread, p.chat]);
 
   const run = async (fn: () => Promise<{ ok: boolean; reason?: string; note?: string }>, done?: () => void, ok?: string) => {
     setBusy(true); setProblem("");
@@ -137,11 +142,15 @@ export function ChatPanel(p: ChatPanelProps) {
   const agents = p.participants.filter((x) => x.family === "assistant" && x.id !== p.viewer);
   const [helpers, setHelpers] = useState<Task[] | null>(null);
   useEffect(() => {
-    if (!p.open || (tab !== "library" && tab !== "details" && tab !== "threads")) return;
+    const thread = p.thread && p.thread !== p.chat ? p.thread : "";
+    if (!p.open || !thread || (tab !== "library" && tab !== "details" && tab !== "threads")) return;
     let on = true;
-    chatTools.tasks(p.thread).then((t) => { if (on) setHelpers(subagentsOf(t)); }).catch(() => { if (on) setHelpers([]); });
+    void callQuiet("threads.tasks:" + thread, () => chatTools.tasks(thread)).then((r) => {
+      if (!on || !r || r.skipped) return;
+      setHelpers(r.ok ? subagentsOf(r.value) : []);
+    });
     return () => { on = false; };
-  }, [p.open, tab, p.thread]);
+  }, [p.open, tab, p.thread, p.chat]);
 
   const addBlock = (
     <>
@@ -333,7 +342,7 @@ export function ChatPanel(p: ChatPanelProps) {
       onPress={() => { const was = effort; setEffort(e.id); void run(async () => { const r = await chatTools.effort(p.thread, e.id); if (!r.ok) setEffort(was); return r; }, () => back()); }} /></View>)}</View>,
     mode: <View>{modesOf(p.state?.modes).map((m, i) => <View key={m}>{i ? <Divider /> : null}<Row dense title={modeLabel(m)} selected={(mode || "default") === m} state={(mode || "default") === m ? "Now" : undefined}
       onPress={() => { const was = mode; setMode(m); void run(async () => { const r = await chatTools.mode(p.thread, m); if (!r.ok) setMode(was); return r; }, () => back()); }} /></View>)}</View>,
-    tasks: <TasksPage thread={p.thread} />,
+    tasks: <TasksPage thread={p.thread && p.thread !== p.chat ? p.thread : ""} />,
     context: <ContextPage thread={p.thread} project={p.projectSlug} cwd={p.cwd} />,
     transcript: <TranscriptPage thread={p.thread} />,
     back: p.projectSlug && p.session ? <BackPage project={p.projectSlug} session={p.session} /> : null,
