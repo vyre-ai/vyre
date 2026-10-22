@@ -3,3 +3,13 @@
 export function tokenOrigin(box: string): string {
   try { return new URL(box).origin; } catch { return String(box) === "null" ? "null" : String(box); }
 }
+
+/**
+ * Slots to read a paired web token, route first. A second server keeps its own slot, so it does not overwrite the first.
+ * The page origin is read after, for a token saved before routes. A write uses only the first slot.
+ */
+export function tokenSlots(route: string | null | undefined, origin: string): string[] {
+  const primary = tokenOrigin(route || origin);
+  const page = tokenOrigin(origin);
+  return primary === page ? [page] : [primary, page];
+}

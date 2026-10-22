@@ -40,8 +40,10 @@ const b = makeBox(async () => {
   const origin = boxOrigin();
   const name = boxName();
   const pairing = await loadPairing();
-  // A browser paired over the relay holds a person token from presence.person.start-paired (src/auth/paired.ts): every request, over the relay too, carries it and its signed proof.
-  person = crossOrigin() || (pairing && (await hasToken(origin))) ? webPerson(origin, () => connection.signIn(true)) : null;
+  const route = pairing && pairing.route ? pairing.route : "";
+  // A browser paired over the relay holds a person token from presence.person.start-paired (src/auth/paired.ts), kept under that server's route: every request, over the relay too, carries it and its signed proof.
+  const held = Boolean(pairing) && ((route ? await hasToken(route) : false) || await hasToken(origin));
+  person = crossOrigin() || held ? webPerson(origin, () => connection.signIn(true), route || undefined) : null;
   const direct = (paths?.length ? paths : [origin]).map((p) => ({ kind: "direct" as const, base: p }));
   const p = createPaths({
     paths: pairing ? [...direct, { kind: "relay" as const, ...pairing, about, keyStore: relayKeyStore(), crypto: relayCrypto() }] : direct,

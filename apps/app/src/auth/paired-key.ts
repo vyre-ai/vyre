@@ -15,6 +15,6 @@ export async function pairedKey(): Promise<PairedKey> {
   const k = await personKey();
   return {
     sign: async (m) => new Uint8Array(await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, k.privateKey, m as BufferSource)),
-    keep: (_route, token) => keepToken(location.origin, token),
+    keep: (route, token) => keepToken(route || location.origin, token),
   };
 }
