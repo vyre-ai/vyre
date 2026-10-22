@@ -68,13 +68,17 @@ export function createAdapter() {
     const index = Number.isInteger(p.block) ? p.block : 0;
     const key = `${message}:${index}:${p.kind === "reasoning" ? "r" : "m"}`;
     const extra = p.kind === "reasoning" ? { reasoning: true } : {};
+    // The provider that spoke, so a group frame can draw its mark. A notice is Vyre's own line and carries none.
+    const mark = typeof p.provider === "string" && p.provider && message !== "vyre" && p.notice !== true
+      ? { provider: p.provider, ...(typeof p.model === "string" && p.model ? { model: p.model } : {}) }
+      : {};
     /** @type {Spec[]} */ const out = [];
     const note = p.notice === true ? { notice: true } : {};   // Vyre's own words (a switch of account, a dropped message): the stream shows them even when no turn is open
-    if (typeof p.delta === "string" && p.delta) { streamed.add(key); out.push(spec("text-delta", { message, index, text: p.delta, ...extra, ...note })); }
+    if (typeof p.delta === "string" && p.delta) { streamed.add(key); out.push(spec("text-delta", { message, index, text: p.delta, ...extra, ...note, ...mark })); }
     if (p.done || p.notice) {
-      if (!streamed.has(key) && typeof p.text === "string" && p.text) out.push(spec("text-delta", { message, index, text: p.text, ...extra, ...note }));
+      if (!streamed.has(key) && typeof p.text === "string" && p.text) out.push(spec("text-delta", { message, index, text: p.text, ...extra, ...note, ...mark }));
       streamed.delete(key);
-      out.push(spec("text-done", { message, index, ...note }));
+      out.push(spec("text-done", { message, index, ...note, ...mark }));
     }
     return out;
   };

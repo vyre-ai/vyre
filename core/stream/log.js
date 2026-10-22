@@ -284,6 +284,15 @@ export class Logs {
     if (!db) return false;
     try { return Boolean(db.prepare("SELECT 1 AS x FROM stream_frames WHERE session = ? LIMIT 1").get(session)); } catch { return false; }
   }
+  /** Session ids in memory, plus any the store still holds. Creates nothing. */
+  ids() {
+    const ids = new Set(this.logs.keys());
+    const db = this.opts.db;
+    if (db) {
+      try { for (const r of db.prepare("SELECT DISTINCT session FROM stream_frames").all()) if (r && r.session) ids.add(String(r.session)); } catch { /* the table is not there yet */ }
+    }
+    return [...ids];
+  }
   /** @param {string} session */
   drop(session) { const l = this.logs.get(session); if (l) { l.close(); this.logs.delete(session); } }
   close() { for (const l of this.logs.values()) l.close(); this.logs.clear(); }

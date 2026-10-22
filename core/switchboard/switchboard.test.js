@@ -1515,7 +1515,7 @@ shardTest("switchedLine: what carries over is said plainly, per kind of move", a
   const caps = { rewind: true, steering: true, questions: true, interrupt: true, transcripts: true };
   assert.equal(switchedLine({ from: "claude", to: "grok", had: true, fromCaps: caps, toCaps: caps }), "Switched to Grok. It has this session's memory and files.");
   assert.equal(switchedLine({ from: "claude", to: "codex", had: false }), "Switched to Codex. It has this session's memory and files. It starts from what was said so far, not from Claude's own working notes.");
-  assert.match(switchedLine({ from: "claude", to: "grok", had: true, reason: "limit" }), /^Claude's limit was reached\. Switched to Grok\./);
+  assert.equal(switchedLine({ from: "claude", to: "grok", had: false, reason: "limit", fromCaps: caps, toCaps: {} }), "Claude is at its limit, so Grok answered.");
   assert.match(switchedLine({ from: "claude", to: "grok", had: true, fromCaps: caps, toCaps: { streaming: true } }), /Grok cannot do these here: going back to an earlier turn, .*opening its transcript in a terminal\.$/);
   assert.equal(switchedLine({ from: "claude", to: "grok", had: false, reason: "once" }), "This turn runs on Grok. It has this session's memory and files. The session stays on Claude.");
   assert.equal(switchedLine({ from: "grok", to: "claude", had: true, reason: "back" }), "Back on Claude. It has this session's memory and files, and what Grok said this turn.");

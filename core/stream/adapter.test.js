@@ -31,6 +31,18 @@ test("adapter: streamed text becomes deltas then text-done; a done text with no 
   assert.deepEqual(out[2].data, { message: "msg_1", index: 0 });
 });
 
+test("adapter: a reply keeps the provider that spoke, and a notice does not", () => {
+  const a = createAdapter();
+  const d = a.event(ev("thread.text", { message: "msg_c", delta: "ok", provider: "codex", model: "gpt" }));
+  assert.equal(d[0].data.provider, "codex");
+  assert.equal(d[0].data.model, "gpt");
+  const done = a.event(ev("thread.text", { message: "msg_c", text: "ok", done: true, provider: "codex", model: "gpt" }));
+  assert.equal(done.at(-1).data.provider, "codex");
+  const n = a.event(ev("thread.text", { message: "vyre", text: "Claude is at its limit, so Codex answered.", done: true, notice: true, provider: "codex" }));
+  assert.equal(n[0].data.provider, undefined);
+  assert.equal(n[0].data.notice, true);
+});
+
 test("adapter: reasoning and notices", () => {
   const a = createAdapter();
   const r = a.event(ev("thread.text", { message: "msg_r", block: 0, kind: "reasoning", delta: "Thinking " }));

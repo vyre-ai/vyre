@@ -151,6 +151,7 @@ export const PERSON_ONLY = new Map([
   ["stream.typing", "says the person is typing in a chat they are in: the person's own surface"],
   ["stream.catchup", "what the person missed in a chat they are in: the person's own surface reads it"],
   ["stream.read", "the frames of a chat they are in, drawn for them: the person's own surface (a team member's app) reads it"],
+  ["stream.search", "words in the chats and threads the person can read, including ones this app has not opened: the person's own surface searches them"],
   ["threads.roll", "rolls the person's own session over to a fresh window: the person's own act"],
   ["threads.rolls", "lists the person's own session rollovers: the person's own view"],
   ["threads.roll-session", "rolls a Claude Code session in the person's own terminal: a person's surface only"],

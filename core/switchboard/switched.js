@@ -13,8 +13,9 @@ const CAP_WORDS = { rewind: "going back to an earlier turn", steering: "steering
  */
 export function switchedLine({ from, to, had, reason = "asked", fromCaps = {}, toCaps = {} }) {
   const f = providerName(from), t = providerName(to);
+  if (reason === "limit") return `${f} is at its limit, so ${t} answered.`;
   if (reason === "back") return `Back on ${t}. It has this session's memory and files, and what ${f} said this turn.`;
-  const parts = [reason === "limit" ? `${f}'s limit was reached.` : "", reason === "once" ? `This turn runs on ${t}. It has this session's memory and files. The session stays on ${f}.` : `Switched to ${t}. It has this session's memory and files.`];
+  const parts = [reason === "once" ? `This turn runs on ${t}. It has this session's memory and files. The session stays on ${f}.` : `Switched to ${t}. It has this session's memory and files.`];
   // A provider that never ran the thread starts from what was said so far, not from the other one's own notes and tool results.
   if (!had && reason !== "once") parts.push(`It starts from what was said so far, not from ${f}'s own working notes.`);
   const lost = Object.keys(CAP_WORDS).filter(k => fromCaps[k] && !toCaps[k]).map(k => CAP_WORDS[k]);

@@ -219,6 +219,10 @@
         "reach": "modules"
       },
       {
+        "name": "sessions.accounts.next",
+        "reach": "modules"
+      },
+      {
         "name": "sessions.mention.search",
         "reach": "person",
         "effect": "read"

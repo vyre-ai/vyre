@@ -648,16 +648,24 @@ for (const driver of ["cli", "sdk"]) {
     const added = (await w.tool("sessions.accounts.add", { provider: "grok", label: "Grok", kind: "login" })).data;
     db.prepare("UPDATE sessions_accounts SET signed_in_at = ? WHERE id = ?").run(Date.now(), added.id);
     const th = (await w.tool("threads.start", { cwd: w.work, prompt: "limit", surface: "deck" })).data;
-    await w.finished(th.id);
-    await new Promise(x => setTimeout(x, 300));
-    // Claude is at its limit here; the thread moves to Grok by choice, then asks Claude for one turn.
+    // The limit carries the turn onto the next signed-in account by itself. That turn ends before the switch asked on top, or the one-turn ask finds the thread still busy.
+    const view = async () => (await w.tool("threads.get", { thread: th.id, limit: 400 })).data;
+    await until(async () => {
+      const d = await view();
+      const moved = d.events.find(e => e.type === "thread.provider" && e.payload && e.payload.to === "grok" && e.payload.reason === "limit");
+      return Boolean(moved) && d.thread.provider === "grok" && d.thread.status === "idle" && d.events.some(e => e.type === "thread.finished" && Number(e.id) > Number(moved.id));
+    }, "the limit's move to Grok to finish", 40_000);
+    const before = (await view()).events.reduce((m, e) => Math.max(m, Number(e.id) || 0), 0);
     assert.equal((await w.tool("threads.switch", { thread: th.id, provider: "grok" })).error, undefined);
-    await w.finished(th.id, 2);
-    const n = (await w.tool("threads.get", { thread: th.id, limit: 300 })).data.events.length;
+    await until(async () => {
+      const d = await view();
+      return d.thread.provider === "grok" && d.thread.status === "idle" && d.events.some(e => e.type === "thread.finished" && Number(e.id) > before);
+    }, "the asked switch to finish", 40_000);
+    const n = (await view()).events.length;
     const r = await w.tool("threads.send", { thread: th.id, text: "try claude", surface: "deck", mentions: [{ kind: "account", id: "claude" }] });
     assert.equal(r.error.code, "out_of_usage", JSON.stringify(r));
     assert.match(r.error.message, /^Claude is out of usage right now\. Nothing was sent, and the turn did not move to another provider\.$/);
-    const now = (await w.tool("threads.get", { thread: th.id, limit: 300 })).data;
+    const now = await view();
     assert.equal(now.thread.provider, "grok");
     assert.equal(now.events.length, n);
   });
@@ -873,7 +881,7 @@ for (const driver of ["cli", "sdk"]) {
     await until(async () => (await w.tool("threads.get", { thread: th.id })).data.thread.provider === "grok", "the move to Grok");
     await w.finished(th.id, 2);
     const ev = (await w.tool("threads.get", { thread: th.id })).data.events;
-    assert.ok(ev.some(e => e.type === "thread.text" && e.payload.notice && /^Claude's limit was reached\. Switched to Grok\. It has this session's memory and files\./.test(e.payload.text)), JSON.stringify(ev.filter(e => e.payload && e.payload.notice)));
+    assert.ok(ev.some(e => e.type === "thread.text" && e.payload.notice && /^Claude is at its limit, so Grok answered\.$/.test(e.payload.text)), JSON.stringify(ev.filter(e => e.payload && e.payload.notice)));
   });
 
   shardTest(`${driver}: threads.busy says whether a turn streams in a folder, for github's Undo; a session's worktree branch is kept on its record`, { skip }, async t => {

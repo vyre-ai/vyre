@@ -72,7 +72,7 @@ export function recordRows(types: any[], byType: Record<string, any[]>): Base["r
 export type Row = { key: string; where?: string; from?: string; title: string; sub?: string; snippet?: string; right?: string; kind: string; href?: string; session?: string; file?: FileHit; fact?: boolean };
 export type FileHit = { name: string; path: string; kind: string; source: string };
 export type Section = { key: string; label: string; rows: Row[]; notes?: string[] };
-export type Fetched = { skills?: unknown; messages?: { chat: string; id: string; who: string; snippet: string }[]; recall?: unknown; files?: unknown; memory?: unknown; mentions?: unknown; drive?: unknown };
+export type Fetched = { skills?: unknown; messages?: { chat: string; id: string; who: string; snippet: string }[]; chatMessages?: { chat: string; id: string; who: string; snippet: string }[]; recall?: unknown; files?: unknown; memory?: unknown; mentions?: unknown; drive?: unknown };
 
 const where = (base: Base, slug: string | null, cwd?: string | null): string => (slug ? base.projects.find((p) => p.slug === slug)?.name ?? slug : String(cwd || "").split("/").filter(Boolean).pop() || "");
 

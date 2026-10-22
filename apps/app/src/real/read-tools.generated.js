@@ -494,6 +494,7 @@ export const READ_TOOLS = [
  "stream.catchup",
  "stream.export-chat",
  "stream.read",
+ "stream.search",
  "system.build",
  "system.info",
  "system.modules",

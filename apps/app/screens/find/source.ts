@@ -19,13 +19,19 @@ export function findSource(call: Call, surface: string) {
       return { agents, assistant: agents.find((a) => a.kind === "assistant")?.name ?? null, sessions: pickSessions(cat.data, th.data), projects: pickProjects(pl.data), settingKeys: settings };
     },
     /** The searches for a query; each answers on its own so the screen draws as they come. */
-    search(q: string, on: { recall: (r: Result<unknown>) => void; files: (r: Result<unknown>) => void; memory: (r: Result<unknown>) => void; mentions: (r: Result<unknown>) => void; drive: (r: Result<unknown>) => void; skills?: (r: Result<unknown>) => void }) {
+    search(q: string, on: { recall: (r: Result<unknown>) => void; files: (r: Result<unknown>) => void; memory: (r: Result<unknown>) => void; mentions: (r: Result<unknown>) => void; drive: (r: Result<unknown>) => void; skills?: (r: Result<unknown>) => void; chatMessages?: (r: Result<unknown>) => void }) {
       if (q.length < MIN) return;
       void call("recall.search", { q, limit: 20 }).then(on.recall);
       void call("files.search", { q, limit: 20 }).then(on.files);
       void call("memory.relevant", { text: q, limit: 5 }).then(on.memory);
       void call("mentions.search", { q, limit: 8 }).then(on.mentions);
       if (on.skills) void call("skills.find", { query: q, limit: 8 }).then(on.skills);
+      // Only when the screen asks: a caller that does not pass chatMessages keeps the four searches it always made.
+      if (on.chatMessages) void call<{ hits?: { chat: string; id: string; who: string; snippet: string }[] }>("stream.search", { q, limit: 20 }).then((r) => {
+        if (r.error) { on.chatMessages?.(r); return; }
+        const hits = r.data && Array.isArray(r.data.hits) ? r.data.hits : [];
+        on.chatMessages?.({ data: hits });
+      });
       // the server has no files.drive.space.search (only .list and .read): until it does, the Space's Drive names are not searched and the panel shows no Drive hits instead of an error
       on.drive({ data: { results: [] } });
     },

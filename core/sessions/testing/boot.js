@@ -41,8 +41,9 @@ export const until = async (fn, what, ms = 15_000) => {
 /**
  * A vyred in a temp home, on `driver`. `sessions` is config.json's sessions block; `vault` items
  * are put and granted to module threads (the box's own credential) unless `grant` is false.
+ * `recall` is config.json's recall block (tests that index transcripts pass `{ every: 0, vectors: false }`).
  */
-export async function boot(t, { driver = "cli", sessions = {}, vault = {}, role = "box", modules = [], kernel = false, log: say = () => {} } = {}) {
+export async function boot(t, { driver = "cli", sessions = {}, vault = {}, role = "box", modules = [], kernel = false, log: say = () => {}, recall = null } = {}) {
   // tempHome's own cleanup always runs first (after-hooks run in the order they were added), so
   // it needs a way to stop this in-process vyred before it removes the directory - otherwise the
   // directory comes out from under a daemon (and any live child) still writing to it. `daemon` is
@@ -61,7 +62,7 @@ export async function boot(t, { driver = "cli", sessions = {}, vault = {}, role 
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role, transcripts: [transcripts],
     // claude "installed": these suites run the fake claude (VYRE_CLAUDE_BIN), so the SDK needs
     // only its JS, never the bundled binary a box's default asks for (CI installs --omit=optional).
-    sessions: { install: false, ...(driver === "sdk" ? { claude: "installed" } : {}), ...sessions }, ...(Object.keys(vault).length ? { vault: { keystore: "file" } } : {}) }));
+    sessions: { install: false, ...(driver === "sdk" ? { claude: "installed" } : {}), ...sessions }, ...(Object.keys(vault).length ? { vault: { keystore: "file" } } : {}), ...(recall ? { recall } : {}) }));
   // Internal tools answer only modules, and a module in a temp home is an added one (contract v1
   // keeps those out of internal tools). `internal` calls as vyred's own module label, which the
   // loader treats as Vyre's, the way a first-party module would.
