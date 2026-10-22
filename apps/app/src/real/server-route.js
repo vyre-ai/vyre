@@ -109,18 +109,29 @@ export function spaceServersFrom(lists) {
 }
 
 /**
- * Every paired server's Spaces as one list (the switcher): each row keeps what its server said and gains `server`, the box id it is on. A Space listed by two servers appears once, under the first.
+ * Every paired server's Spaces as one list (the switcher): each row keeps what its server said and gains `server`, the box id it is on. A Space listed by two servers appears once; the row from the server that HOSTS it wins, because a joined row (member: true) is only this device's memory of a Space that lives elsewhere and carries none of that Space's settings, its first page among them.
  * @param {Record<string, Array<Record<string, any> | null> | undefined>} lists by box id
  * @returns {Array<Record<string, any>>}
  */
 export function mergeSpaceLists(lists) {
   /** @type {Array<Record<string, any>>} */ const out = [];
-  const seen = new Set();
+  /** @type {Map<string, number>} */ const where = new Map();
   for (const [box, rows] of Object.entries(lists)) {
     for (const r of rows ?? []) {
-      if (!r || typeof r.id !== "string" || seen.has(r.id)) continue;
-      seen.add(r.id);
-      out.push({ ...r, server: box });
+      if (!r || typeof r.id !== "string") continue;
+      const at = where.get(r.id);
+      if (at === undefined) {
+        where.set(r.id, out.length);
+        out.push({ ...r, server: box });
+        continue;
+      }
+      if (out[at].member === true && r.member !== true) {
+        // The row from the server that HOSTS the Space wins. The role comes with it; a hosting server that says
+        // nothing about the person here keeps the role the joined row remembered, so the person still knows who they are.
+        const role = r.role ?? out[at].role;
+        const key = r.role_key ?? out[at].role_key;
+        out[at] = { ...r, ...(role ? { role } : {}), ...(key ? { role_key: key } : {}), server: box };
+      }
     }
   }
   return out;

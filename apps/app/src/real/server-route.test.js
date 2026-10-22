@@ -77,6 +77,44 @@ test("mergeSpaceLists: a server that answered nothing adds nothing and never thr
   assert.deepEqual(mergeSpaceLists({ boxa: undefined, boxb: [] }), []);
 });
 
+test("mergeSpaceLists: a joined Space keeps the first page and the role the server that hosts it sent", () => {
+  const lists = {
+    boxa: [{ id: C, member: true, role: "member", role_key: "member" }],
+    boxb: [{ id: C, role: "member", role_key: "member", landing: { member: "/u/chats" } }],
+  };
+  const rows = mergeSpaceLists(lists);
+  assert.equal(rows.length, 1, "the Space appears once");
+  assert.equal(rows[0].server, "boxb", "the row says the server that hosts it");
+  assert.equal(rows[0].landing.member, "/u/chats", "the first page for the role comes with it");
+  assert.equal(rows[0].role_key, "member", "the person keeps their role");
+  assert.equal(rows[0].member, undefined, "the joined row's mark is gone: this is the hosting server's row");
+  assert.equal(spaceServersFrom(lists)[C], "boxb", "the map and the row name the same server");
+});
+
+test("mergeSpaceLists: the hosting row wins whichever server is asked first", () => {
+  const joined = { id: C, member: true, role: "member", role_key: "member" };
+  const hosting = { id: C, role: "member", role_key: "member", landing: { member: "/u/chats" } };
+  const first = mergeSpaceLists({ boxa: [joined], boxb: [hosting] });
+  const second = mergeSpaceLists({ boxa: [hosting], boxb: [joined] });
+  assert.equal(first.length, 1, "the Space appears once");
+  assert.equal(second.length, 1, "the Space appears once");
+  assert.equal(first[0].server, "boxb", "the row says the server that hosts it");
+  assert.equal(second[0].server, "boxa", "the row says the server that hosts it");
+  assert.equal(first[0].landing.member, "/u/chats", "the first page for the role comes with it");
+  assert.equal(second[0].landing.member, "/u/chats", "the first page for the role comes with it");
+});
+
+test("mergeSpaceLists: a hosting server that says nothing about the person keeps the role the joined row remembered", () => {
+  const rows = mergeSpaceLists({
+    boxa: [{ id: C, member: true, role: "member", role_key: "member" }],
+    boxb: [{ id: C, role: null, role_key: null, landing: { member: "/u/chats" } }],
+  });
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].role, "member", "the person keeps their role");
+  assert.equal(rows[0].role_key, "member", "and the key the first page is under");
+  assert.equal(rows[0].landing.member, "/u/chats", "the first page for the role comes with it");
+});
+
 // A chat always goes to the server that holds it, whatever is showing: a message for one server's chat must never land on another (its confidential material would).
 const chatServers = { chat_one: "boxb", chat_two: "boxa" };
 
