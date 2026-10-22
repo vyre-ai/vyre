@@ -182,17 +182,15 @@ finish() {
     say "  $BOLD${BONE}Vyre is running on this server.$RESET"
     # The custody notice the user approved (kernel/seal/process.js custodyNote, server profile): said where the install says what it set up.
     say "  About your keys: $CUSTODY_NOTE"
-    # "Running" means the server answers. Records takes several minutes more on a first start (its types are set up one module at a time), and the app says when it is ready.
+    # "Running" means the server answers. Records takes several minutes more on a first start, and the app says when it is ready. The note comes before the next step, which stays last.
     RECORDS_NOTE="  Records is still setting up and can take several minutes; the app shows when it is ready."
+    say "$RECORDS_NOTE"
     if [ "$LINK_ONLY" = 1 ]; then
       say "  Whether it is paired went to stdout for the program that asked."
-      say "$RECORDS_NOTE"
     elif [ -n "$CODE" ]; then
       say "  Go back to the Vyre app to finish."
-      say "$RECORDS_NOTE"
     else
-      # The space code is the last thing on the screen, so the Records note goes before it.
-      say "$RECORDS_NOTE"
+      # The space code is the last thing on the screen.
       show_space_code || say "  Open the Vyre app, choose \"Add a server\", and run the line it shows on this server."
     fi
   fi
@@ -822,7 +820,7 @@ intake_code() {
 # so the code is never an argument.
 # write_kernel_env: the kernel setting, put into vyre.env once on a fresh install. Never touches a vyre.env that already names it, and never the setup code lines. An older VYRE_STORE line already in the file is left as it is; a fresh install does not write one.
 write_kernel_env() {
-  [ "$DRY" = 1 ] && { say "would write the kernel setting to $DIR/vyre.env"; return 0; }
+  [ "$DRY" = 1 ] && { say "would write the server setting to $DIR/vyre.env"; return 0; }
   TMP=${TMP:-$(mktemp -d)}
   : >"$TMP/vyre.kernel"
   if [ -e "$DIR/vyre.env" ]; then

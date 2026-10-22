@@ -6,6 +6,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 - fix(records): switching Spaces shows the new Space's records. The shared records world was kept by its filters alone, so Records kept drawing the last Space's rows after a switch; it is now kept per Space (apps/app/ui/views/data.ts, world-space.js, screens/shell/state.ts).
 - fix(records): Twenty is removed. Records live only in the kernel's own SQLite store. `vyre status` says "records: Vyre store · N records". A server that still has `VYRE_STORE=auto` or `twenty` starts on SQLite and logs "records: Twenty is gone; this Space starts on the Vyre store, empty". `vyre update` removes that server's old Twenty containers and volumes. Nothing is copied across.
+- fix(install): the installer's last line is still the next step. The dry run does not name an internal part. The unused per-Space cap left by the old record stacks is gone.
 
 ## 0.6.8
 
