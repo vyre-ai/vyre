@@ -8,6 +8,7 @@ import { proofHeader } from "../../src/real/approvals.js";
 import { hashMatches } from "../../src/real/payload-hash.js";
 import { yesSigner } from "../../src/personal/signer";
 import { createSpace } from "../../src/real/install";
+import { teamServerIds } from "../../src/state/team-servers";
 import { AddServerCard } from "./AddServerCard";
 import { MOVE, SET_UP, approvalLine, blockersOf, canMove, cloudState, offerFor, rowsOnFailure, planLines, proofsAsked, refusalLine, reportLines, runInput, runInputWith, serversOf, setupInput } from "./my-cloud.js";
 
@@ -25,7 +26,7 @@ export function MyCloudCard() {
   const [problem, setProblem] = useState("");
   const load = () => {
     tool<any[]>("spaces.list").then((d) => setRows(Array.isArray(d) ? d : [])).catch(async () => setRows(rowsOnFailure(Boolean(await import("../../src/api/relay").then((m) => m.loadPairing()).catch(() => null)))));
-    tool("spaces.servers").then((d) => setServers(serversOf(d))).catch(() => setServers([]));
+    teamServerIds().then((team) => tool("spaces.servers").then((d) => setServers(serversOf(d, team)))).catch(() => setServers([]));
   };
   useEffect(load, []);
   const state = cloudState(rows ?? []);
@@ -34,7 +35,7 @@ export function MyCloudCard() {
   if (rows === null || offer === "none") return null;
   // The server just joined: make My Cloud on it and show what would move, so the person's next press is the one approval (the card carries the rest as it always has).
   const onPaired = () => guard(async () => {
-    const list = serversOf(await tool("spaces.servers"));
+    const list = serversOf(await tool("spaces.servers"), await teamServerIds());
     setServers(list);
     if (!list[0]) { load(); return; }
     const made = await createSpace(setupInput(list[0]));

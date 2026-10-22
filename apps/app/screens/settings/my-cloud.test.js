@@ -51,6 +51,8 @@ test("my cloud: only the paired servers spaces.servers lists can host it", () =>
   assert.deepEqual(serversOf({ servers: [] }), []);
   assert.deepEqual(serversOf(null), []);
   assert.deepEqual(serversOf({ devices: [{ id: "a", name: "iPhone", kind: "server" }] }), [], "relay.devices.list rows are not paired servers");
+  assert.deepEqual(serversOf({ servers: [{ id: "srv_team", name: "Northwind" }, { id: "srv_other", name: "Studio mini" }] }, ["srv_team"]), [{ id: "srv_other", name: "Studio mini" }], "a server whose own Space is the team's is not offered for My Cloud");
+  assert.equal(offerFor(cloudState([{ id: "spc_p", tier: "basic" }]), serversOf({ servers: [{ id: "srv_team", name: "Northwind" }] }, ["srv_team"]).length > 0), "add");
 });
 
 test("my cloud: a move with private fields asks for two signatures, and the second call carries both", () => {
