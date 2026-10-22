@@ -101,7 +101,7 @@ const withSources = (store, rows) => {
   const sources = sourcesFor(store);
   const list = Array.isArray(rows) ? rows : [];
   return list.map((/** @type {any} */ row) => {
-    const hit = sources.get(String(row && (row.id ?? row.kit_id) ?? ""));
+    const hit = sources.get(String((row && (row.id ?? row.kit_id)) ?? ""));
     return { ...row, source: hit ? hit.source : null };
   });
 };
