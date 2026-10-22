@@ -87,7 +87,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`rules`](#rules) | `core/rules-tools` | `box`, `local` | 10 | 0 | cli |
 | [`runner`](#runner) | `core/runner` | `local`, `box` | 25 | 10 | capsule, cli, deck |
 | [`screen`](#screen) | `local/screen-mac` | `local` | 2 | 0 | none |
-| [`sessions`](#sessions) | `core/sessions` | `box`, `local` | 44 | 9 | cli |
+| [`sessions`](#sessions) | `core/sessions` | `box`, `local` | 45 | 9 | cli |
 | [`settings`](#settings) | `core/settings` | `box`, `local` | 12 | 2 | cli, deck |
 | [`sidebar`](#sidebar) | `core/sidebar` | `box`, `local` | 7 | 1 | cli |
 | [`sideview`](#sideview) | `local/sideview` | `local` | 3 | 0 | none |
@@ -97,7 +97,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`spaces`](#spaces) | `core/spaces` | `box`, `local` | 128 | 35 | capsule, cli, deck |
 | [`spend`](#spend) | `core/spend` | `box`, `local` | 4 | 2 | cli |
 | [`statusline`](#statusline) | `core/statusline` | `box`, `local` | 1 | 0 | cli |
-| [`stream`](#stream) | `core/stream` | `box`, `local` | 15 | 0 | none |
+| [`stream`](#stream) | `core/stream` | `box`, `local` | 16 | 0 | none |
 | [`suggest`](#suggest) | `core/suggest` | `box`, `local` | 3 | 1 | cli |
 | [`sync`](#sync) | `core/sync` | `box`, `local` | 10 | 5 | capsule, cli, deck |
 | [`system`](#system) | `core/system` | `box`, `local` | 5 | 2 | cli |
@@ -937,7 +937,7 @@ How the threads Vyre starts run (ADR 0030), and the AI accounts they run on: the
 - Folder: `core/sessions`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [44](tools.md#sessions), 14 of them only for other modules
+- Tools: [45](tools.md#sessions), 15 of them only for other modules
 - Emits: [9 events](events.md#sessions)
 - Shows on: cli
 - Needs daemon: `modelDoor`, `doorChain`
@@ -1057,7 +1057,7 @@ One short line for Claude Code's status line: what needs the user, the box, the 
 - Folder: `core/stream`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: `threads`
-- Tools: [15](tools.md#stream), 3 of them only for other modules
+- Tools: [16](tools.md#stream), 3 of them only for other modules
 - Emits: no events
 - Shows on: no surface
 - Streams: `session`
