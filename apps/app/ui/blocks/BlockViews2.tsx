@@ -8,7 +8,7 @@ import { Field } from "../components/Field";
 import { FilterPills } from "../components/FilterPills";
 import { Row } from "../components/Row";
 import { SectionLabel } from "../components/SectionLabel";
-import { StageMini } from "../components/StageSteps";
+import { StageMini, StageSteps } from "../components/StageSteps";
 import { EmptyState } from "../components/States";
 import { Text } from "../components/Text";
 import { markRef } from "../marks/useMark";
@@ -41,25 +41,16 @@ export function CalendarBlock({ b }: P) {
   );
 }
 
-/** The steps of a process: done, current, to come. A bar and a word each, so colour is never the only signal. (Drawn here with plain heights: the shared StageSteps strip collapses to no height in a block column.) */
+/** The steps of a process: done, current, to come. A bar and a word each, so colour is never the only signal. The shared strip does not shrink, so a block column keeps its height. */
 export function StagesBlock({ b }: P) {
   const steps = rows(c(b).steps), idx = Math.max(0, steps.findIndex((s) => s.id === c(b).current));
-  const { phone, color } = useUiTheme();
+  const { phone } = useUiTheme();
   if (!steps.length) return null;
   const names = steps.map((s) => String(s.title));
   return (
-    <View className="gap-s2">
+    <View className="shrink-0 gap-s2">
       {b.props?.title ? <SectionLabel>{b.props.title}</SectionLabel> : null}
-      {phone ? <StageMini stages={names} current={idx} /> : (
-        <View accessibilityRole="list" className="flex-row gap-s2">
-          {names.map((n, i) => (
-            <View key={n} accessibilityLabel={n} accessibilityState={{ selected: i === idx }} className="min-w-0 flex-1 gap-s1">
-              <View style={{ height: 4, borderRadius: 2, backgroundColor: i < idx ? color.ok : i === idx ? color.primary : color["edge-strong"] }} />
-              <Text size="caption" strong={i === idx} tone={i > idx ? "label" : i < idx ? "muted" : "default"} numberOfLines={1}>{n}</Text>
-            </View>
-          ))}
-        </View>
-      )}
+      {phone ? <StageMini stages={names} current={idx} /> : <StageSteps stages={names} current={idx} />}
     </View>
   );
 }

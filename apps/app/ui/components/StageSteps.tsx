@@ -55,7 +55,7 @@ function Bar({ state }: { state: BarState }) {
  */
 export function StageSteps({ stages, current, onSelect, strip, quiet }: { stages: string[]; current: number; onSelect?: (stage: string, i: number) => void; strip?: boolean; /** With `strip`: no stage name above the bars (the caller already says it). */ quiet?: boolean }) {
   const list = (
-    <View accessibilityRole="list" className={strip ? "flex-row gap-s2" : "flex-row gap-s1"} style={strip ? { gap: 6 } : undefined}>
+    <View accessibilityRole="list" className={strip ? "shrink-0 flex-row gap-s2" : "shrink-0 flex-row gap-s1"} style={strip ? { gap: 6 } : undefined}>
       {stages.map((s, i) => {
         const state = i < current ? "done" : i === current ? "current" : "next";
         const bar = <Bar state={state} />;
@@ -75,7 +75,7 @@ export function StageSteps({ stages, current, onSelect, strip, quiet }: { stages
   );
   if (!strip) return list;
   return (
-    <View className="gap-s1">
+    <View className="shrink-0 gap-s1">
       {stages[current] && !quiet ? <Text size="caption" strong tone="muted">{stages[current]}</Text> : null}
       {list}
     </View>

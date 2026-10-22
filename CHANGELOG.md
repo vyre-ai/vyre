@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6.9
 
+- fix(blocks): a stage strip on a page keeps its height.
 - fix(flows): a playbook's stage-set chip finds a kit whose stage names are close, and an exact match still wins.
 - fix(records): a field group with nothing you can read is left out of the record, so its name is not shown. An editor still sees an empty group.
 - fix(artifacts): the check that a half-written artifact stays out of the list stores that row's text and time.
