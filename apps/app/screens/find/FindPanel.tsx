@@ -62,14 +62,19 @@ export default function FindPanel({ onDone, initial = "", initialScope = "all" }
         if (n !== seq.current) return;
         if (r.error) { setErrs((e) => ({ ...e, [key]: label })); if (!label) setFetched((f) => ({ ...f, [key]: [] })); } else setFetched((f) => ({ ...f, [key]: r.data ?? [] }));
       };
-      find.search(sq, { recall: got("recall", "Chats were not searched."), files: got("files", "Files were not searched."), memory: got("memory", "Memory was not searched."), mentions: got("mentions", ""), skills: got("skills", ""), drive: got("drive", "") });
+      find.search(sq, { recall: got("recall", "Chats were not searched."), files: got("files", "Files were not searched."), memory: got("memory", "Memory was not searched."), mentions: got("mentions", ""), skills: got("skills", ""), drive: got("drive", ""), chatMessages: got("chatMessages", "") });
     }, 150);
     return () => clearTimeout(t);
   }, [q]);
 
   const line = q.trim();
-  // Messages in the chats this app has opened, searched on this device (memory only, nothing sent).
-  const messages = useMemo(() => { const f = queryOf(line, scope); return f.q.length >= MIN ? messageIndex.search(f.q, { limit: 20, ...(f.from ? { from: f.from } : {}) }) : []; }, [line, scope, loaded]);
+  // Messages this app has opened, plus words found in chats it has not. An opened chat's own row wins on chat and message id.
+  const opened = useMemo(() => { const f = queryOf(line, scope); return f.q.length >= MIN ? messageIndex.search(f.q, { limit: 20, ...(f.from ? { from: f.from } : {}) }) : []; }, [line, scope, loaded]);
+  const messages = useMemo(() => {
+    const seen = new Set(opened.map((m) => `${m.chat}:${m.id}`));
+    const more = (fetched.chatMessages ?? []).filter((m) => m && m.chat && m.id && !seen.has(`${m.chat}:${m.id}`));
+    return [...opened, ...more];
+  }, [opened, fetched.chatMessages]);
   const secs = useMemo(() => sections(all, line, scope, { ...fetched, messages }), [all, line, scope, fetched, messages]);
   const { cmd, chosen: target } = useMemo(() => readCommand(line, all, chosen), [line, all, chosen]);
   const cands: any[] = "candidates" in cmd ? cmd.candidates : [];

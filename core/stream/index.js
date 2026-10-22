@@ -19,6 +19,7 @@ import { createGroups, slowStep } from "./group.js";
 import { withinOrThrow } from "../../lib/within.js";
 import { createActivity } from "./activity.js";
 import { createAccess } from "./access.js";
+import { searchChats } from "./chat-search.js";
 import { forViewerAsync, hiddenFrame } from "./viewer.js";
 import { kindOf, startOf } from "./frame.js";
 import { newPrefixedId } from "../../lib/id.js";
@@ -347,6 +348,11 @@ export default {
     ctx.tool("stream.read", {
       description: "A chat's frames after cursor from (0 for everything the log holds), drawn for the person asking: their join floor, the kernel's say on each frame, their own authority on cited fields. At most 200 a call; next is the cursor to ask from; reset says the log no longer holds that cursor.",
       input: obj({ chat: str, from: int, limit: int, as: str }, ["chat"]), callers: PEOPLE, run: readRun,
+    });
+    ctx.tool("stream.search", {
+      description: "Words in the chats and threads this person can read, including ones this device has not opened. A private message is left out.",
+      input: obj({ q: str, limit: int }, ["q"]), callers: PEOPLE,
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => searchChats({ logs, access, q: i && i.q, limit: i && i.limit, meta, input: i }),
     });
 
     ctx.tool("stream.serve", {

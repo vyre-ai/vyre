@@ -32,6 +32,7 @@ import { fileURLToPath } from "node:url";
 import { isPerson } from "../../lib/caller.js";
 import { callerKind } from "../modules/index.js";
 import { Routes, ROUTES_MIGRATION } from "./routes.js";
+import { nextSignedAccount } from "./next-signed.js";
 import { usesSpawner } from "./spawn.js";
 import { grokProvider } from "./drivers/grok.js";
 import { codexProvider } from "./drivers/codex.js";
@@ -412,6 +413,17 @@ export default {
       description: "The next (provider, account) a limited thread moves to, for the Switchboard. Not a public name.", internal: true,
       input: { type: "object", required: ["provider"], properties: { provider: str, account: str, agent: str, project: str, tried: { type: "array", items: str } } },
       run: async i => routes.next(i, usable),
+    });
+    ctx.tool("sessions.accounts.nextSigned", {
+      description: "The asker's next signed-in account on another provider, after a limit. Not a public name.", internal: true,
+      input: { type: "object", required: ["provider"], properties: { provider: str, account: str, person: str, tried: { type: "array", items: str } } },
+      run: async i => {
+        const person = i.person == null || i.person === "" ? null : String(i.person);
+        const signed = [];
+        for (const a of accounts.list(undefined, person)) if (await signedIn(a)) signed.push(a);
+        const entry = nextSignedAccount(signed, { provider: String(i.provider || "claude"), account: i.account || null, tried: i.tried || [] });
+        return entry ? { entry } : null;
+      },
     });
 
     /** @type {Map<string, { email?: string, org?: string } | null>} */ const identities = new Map();

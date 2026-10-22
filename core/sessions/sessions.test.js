@@ -873,7 +873,7 @@ for (const driver of ["cli", "sdk"]) {
     await until(async () => (await w.tool("threads.get", { thread: th.id })).data.thread.provider === "grok", "the move to Grok");
     await w.finished(th.id, 2);
     const ev = (await w.tool("threads.get", { thread: th.id })).data.events;
-    assert.ok(ev.some(e => e.type === "thread.text" && e.payload.notice && /^Claude's limit was reached\. Switched to Grok\. It has this session's memory and files\./.test(e.payload.text)), JSON.stringify(ev.filter(e => e.payload && e.payload.notice)));
+    assert.ok(ev.some(e => e.type === "thread.text" && e.payload.notice && /^Claude is at its limit, so Grok answered\.$/.test(e.payload.text)), JSON.stringify(ev.filter(e => e.payload && e.payload.notice)));
   });
 
   shardTest(`${driver}: threads.busy says whether a turn streams in a folder, for github's Undo; a session's worktree branch is kept on its record`, { skip }, async t => {

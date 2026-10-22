@@ -186,7 +186,7 @@ export const MIGRATIONS = [
 /** A model id as a person reads it: without the effort suffix some agents add ("gpt-6.1-sol[low]" is "gpt-6.1-sol"). @param {any} m */
 export const modelName = m => (typeof m === "string" && m.trim() ? m.slice(0, 200).trim().replace(/\[[^\]]*\]$/, "").slice(0, 80) : null);
 
-import { providerName, switchedLine } from "./switched.js"; import { startFreshOnExit } from "./no-session.js";
+import { providerName, switchedLine } from "./switched.js"; import { startFreshOnExit } from "./no-session.js"; import { routeFallback as limitFallback } from "./limit-fallback.js";
 export { providerName, switchedLine };
 
 /** Words a model wrote, quoted into a Vyre line: every line indented, so a line of its own that looks like the end of the block or a new Vyre line stays inside the quote. @param {string} text */
@@ -1852,7 +1852,7 @@ export class Switchboard {
     if (acct) kept.account = acct.id; else delete kept.account; if (reason === "once" && person) kept.switchPerson = person; else delete kept.switchPerson; if (reason !== "once") delete kept.hopBack;
     this.db.prepare("UPDATE threads_runs SET provider = ?, account = ?, model = ?, driver = NULL, opts = ? WHERE id = ?").run(provider, acct ? acct.id : null, model || null, JSON.stringify(kept), id);
     const capsOf = p => (p === "claude" ? { streaming: true, resume: true, interrupt: true, modes: true, questions: true, transcripts: true, steering: true, rewind: true } : { ...((this.deps.providers && this.deps.providers.get(p) && this.deps.providers.get(p).capabilities) || {}) });
-    const why = switchedLine({ from, to: provider, had, reason, fromCaps: capsOf(from), toCaps: capsOf(provider) }) + (summarised ? ` ${summarised}` : "");
+    const why = switchedLine({ from, to: provider, had, reason, fromCaps: capsOf(from), toCaps: capsOf(provider) }) + (summarised && reason !== "limit" ? ` ${summarised}` : "");
     const said = (/** @type {boolean} */ inChat = true) => { if (inChat) this.emit("thread.text", { message: "vyre", text: why, done: true, notice: true }, id, rec.project); this.emit("thread.provider", { from, to: provider, account: acct ? acct.id : null, model: modelName(model), reason, text: why, ...(reason === "once" ? { once: true } : {}) }, id, rec.project); }; if (!kernelTurn) said(reason !== "back");   // the hop back says nothing in the chat: it is nobody's turn, and a reply the stream opened for it would take the next person's turn (SEQ)
     // A one-turn ask carries the history in front of its own turn (sendOnce), and a return has its own session back. A chat turn (kernelTurn: asker and chat) opens the asker's kernel session at launch; the notice is a message of that turn, said once the session is there.
     const words = reason === "once" || reason === "back" ? "" : [seed, text || ""].filter(Boolean).join("\n\n");
@@ -2212,34 +2212,8 @@ export class Switchboard {
     this.db.prepare("UPDATE threads_runs SET opts = ? WHERE id = ?").run(JSON.stringify(kept), id);
   }
 
-  /**
-   * A limit was hit: the next entry of this thread's routing list (agent, project, then the
-   * machine's), one not already tried in this run of fallbacks. False when there is none, and the
-   * thread simply stays limited as it always did.
-   * @param {string} id @param {any} st
-   */
-  async routeFallback(id, st) {
-    // One at a time: a second limit line for the same turn arrives before the first has set `switching`.
-    if (st.routing) return false;
-    st.routing = true;
-    let switched = false;
-    try {
-      const rec = this.must(id);
-      st.tried = st.tried || new Set();
-      const r = await this.deps.call("sessions.routes.next", { provider: rec.provider || "claude", ...(rec.account ? { account: rec.account } : {}), ...(rec.agent ? { agent: rec.agent } : {}), ...(rec.project ? { project: rec.project } : {}), tried: [...st.tried] }).catch(() => ({}));
-      const hit = r.data && r.data.entry;
-      if (!hit) return false;
-      const last = st.lastPrompt || null;
-      const tried = new Set([...st.tried, `${rec.provider || "claude"}:${rec.account || ""}`]);
-      st.switching = true;
-      try { await this.switchProvider(id, { provider: hit.provider, account: hit.account || null, model: hit.model || null, reason: "limit", text: last }); switched = true; }
-      finally { const now = this.live.get(id); if (now) now.tried = tried; }
-      return true;
-    } finally {
-      // Only a switch that happened retires this state; any other way out lets the next limit try again.
-      if (!switched) { st.routing = false; if (this.live.get(id) === st) st.switching = false; }
-    }
-  }
+  /** A limit moves the turn: the routing list first, else the asker's next signed-in account (limit-fallback.js). @param {string} id @param {any} st */
+  async routeFallback(id, st) { return limitFallback(this, id, st); }
 
   /**
    * The subscription's limit was reached: carry on under the API key if the agent allows one,
