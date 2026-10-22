@@ -35,7 +35,7 @@ const HAND = /** @type {[RegExp, string][]} */ ([
   [/^(flows|flows\/\[id\]|flows\/\[id\]\/runs\/\[run\]|engineer)\.tsx$/, "the Flows canvas and the Engineer: a canvas and a live thread"],
   [/^(access|settings\/(audit|rules|groups|servers|mcp|all))\.tsx$/, "archived Settings pages (apps/app/screens/settings/archived.js, one line of why each; owner, 20 Oct: half-built pages must not be visible): the route files are kept, but each opens only with Labs on (ArchivedGate) and none is on the Settings list, the Settings panel or the search"],
   [/^(index|about|appearance|assistants|calendar|connections|drive|kits|kits\/\[id\]|memory|planner|search|sidebar|spaces|vault)\.tsx$/, "a hand-written page of Vyre's own; moves to a screen in a later wave of the key-screens work"],
-  [/^profile\.tsx$/, "your profile in the showing Space (screens/profile): your look with the look picker, your name and About me, saved as your own member-profile record; a form of its own, owned by the identity work"],
+  [/^profile\.tsx$/, "your profile in the showing Space (screens/settings/ProfileScreen): one identity, a photo or a look, the name edited in place, the role, and the assistant; saved as your own member-profile record; a form of its own, owned by the identity work"],
 ]);
 
 const walk = (/** @type {string} */ dir, /** @type {string} */ rel = "") => fs.readdirSync(dir, { withFileTypes: true }).flatMap(e => e.isDirectory() ? walk(path.join(dir, e.name), path.join(rel, e.name)) : e.name.endsWith(".tsx") ? [path.join(rel, e.name)] : []);

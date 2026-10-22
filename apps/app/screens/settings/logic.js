@@ -77,7 +77,7 @@ function all(/** @type {string} */ space) {
   // Only the sign-in (username, password, GitHub) and the devices are the same in every Space; everything else is this Space's (owner, 21 Oct 2026).
   return [
     { title: "Your account here", rows: [
-      ["Your profile", "The name, look and avatar you show in this Space", "/u/settings/profile", "person"],
+      ["Your profile", "Your photo, name and role in this Space", "/u/settings/profile", "person"],
       ["AI accounts", "Every AI account your agents use here, from any provider", "/u/settings/ai", "spark"],
       ["Notifications", "Choose what can reach you from this Space, and when", "/u/settings/notifications", "bell"],
       ["Appearance", "Theme, accent colour, density and font", "/u/appearance", "sun"],

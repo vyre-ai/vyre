@@ -63,6 +63,7 @@ import { MODEL_COPY, welcomeGroups } from "../screens/first-run/welcome-model.js
 import { RoutinesView } from "../screens/assistants/AgentRoutines";
 import { SAMPLE_ROWS } from "../screens/assistants/routines-model.js";
 import { WatcherCardView } from "../screens/chat-tools/WatcherCard";
+import { ProfileScreen } from "../screens/settings/ProfileScreen";
 import { watcherCardOf } from "../screens/chat-tools/more-model.ts";
 
 const MD_SAMPLE = [
@@ -341,6 +342,7 @@ function Sample({ name }: { name: string }) {
       </View>
     );
   }
+  if (name === "your-profile") return <ProfileScreen />;
   if (name === "runner-chip") {
     return (
       <View style={{ gap: 12, alignItems: "flex-start" }}>

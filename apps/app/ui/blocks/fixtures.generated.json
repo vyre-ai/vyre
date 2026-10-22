@@ -4852,6 +4852,17 @@
      "component": "who-group"
     }
    }
+  },
+  "your-profile": {
+   "title": "Your profile",
+   "screens": {
+    "full": {
+     "component": "your-profile"
+    },
+    "compact": {
+     "component": "your-profile"
+    }
+   }
   }
  }
 }
