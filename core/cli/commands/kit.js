@@ -13,7 +13,8 @@ import { call } from "../../daemon/client.js";
 import { ensureUp } from "../daemonctl.js";
 import { out, dim, beacon, signal } from "../style.js";
 import { json, emit, failTool, UsageError, parse, fail, usage, exitFor, nextFor, EXIT } from "../kit.js";
-import { readKit, looksLikeSource, tokenRef, vaultToken } from "../kit-source.js";
+import { checkSource, looksLikeSource } from "../../lib/kit-source.js";
+import { readKit, tokenRef, vaultToken } from "../kit-source.js";
 
 export default {
   name: "kit", order: 70, usage: "vyre kit [deploy <kit|file|https-address>] [--token vault://item/field] [--json]", summary: "the Kits Vyre ships, and putting one on this Space",
@@ -106,6 +107,9 @@ async function deployFrom(what, token) {
     if (!parsed.ok) return usage(parsed.why, "vyre kit deploy <https-address> --token vault://item/field");
     ref = parsed.ref;
   }
+  // A token is for an address. A file needs none, and saying so is better than silence.
+  const checked = checkSource(what);
+  const note = ref && checked.ok && checked.kind === "file" ? "a token is only used for an address: this Kit is in a file" : "";
   // The token is asked for only when the source is an address: a file needs no key.
   const got = await readKit(what, { token: ref ? async () => vaultToken(ref) : undefined });
   if (!got.ok) return notRead(got);
@@ -116,8 +120,9 @@ async function deployFrom(what, token) {
   const step = d && d.ok === false
     ? { kit: id, ok: false, said: `not proposed: ${(d.errors || []).map((/** @type {any} */ e) => e.message).join("; ")}` }
     : { kit: id, ok: true, said: "its card is waiting for your yes", task: d && d.task };
-  if (json()) { emit({ kit: id, source: got.source, steps: [step] }); return step.ok ? 0 : 1; }
+  if (json()) { emit({ kit: id, source: got.source, steps: [step], ...(note ? { note } : {}) }); return step.ok ? 0 : 1; }
   out(`  ${step.ok ? signal("waiting") : beacon("failed")} ${id}: ${dim(step.said)}`);
+  if (note) out(dim(`  ${note}`));
   if (step.ok) out(dim("  next: vyre needs"));
   return step.ok ? 0 : 1;
 }
@@ -130,6 +135,7 @@ async function deployFrom(what, token) {
  */
 function notRead(got) {
   if (got.code === "bad_input") return usage(got.why, "vyre kit deploy <file-or-https-address>");
+  if (got.code === "too_large") return fail(got.why, { code: "too_large", exit: EXIT.FAILED, next: "give a Kit that is smaller" });
   if (got.code === "unreachable") return fail(got.why, { code: "unreachable", exit: EXIT.UNREACHABLE, next: "check the address and try again" });
   if (got.code === "locked") return fail(got.why, { code: "locked", exit: exitFor({ code: "locked" }), next: nextFor({ code: "locked" }) });
   return fail(got.why, { code: got.code || "failed", exit: EXIT.FAILED });

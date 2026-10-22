@@ -9,7 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { testHooks } from "../../lib/http.js";
-import { readKit, looksLikeSource, tokenRef, vaultToken } from "./kit-source.js";
+import { readKit, tokenRef, vaultToken } from "./kit-source.js";
 
 const KIT = { format: 1, id: "demo-kit", version: 1, name: "Demo Kit", includes: {} };
 
@@ -105,13 +105,12 @@ test("an address that does not answer is out of reach", async () => {
   assert.equal(got.code, "unreachable");
 });
 
-test("a word with no path in it is a Kit of the library; a path or an address is a source", () => {
-  assert.equal(looksLikeSource("base"), false);
-  assert.equal(looksLikeSource("law-firm"), false);
-  assert.equal(looksLikeSource("kit.json"), true);
-  assert.equal(looksLikeSource("./kit.json"), true);
-  assert.equal(looksLikeSource("/tmp/kit.json"), true);
-  assert.equal(looksLikeSource("https://example.com/kit.json"), true);
+test("an answer that is too large is said as it is, not as an address out of reach", async () => {
+  const got = await readKit("https://example.com/kit.json", { fetch: async () => { throw Object.assign(new Error("the answer is over the 1048576-byte limit"), { code: "too_large" }); } });
+  assert.equal(got.ok, false);
+  assert.equal(got.code, "too_large");
+  assert.match(got.why, /too large/);
+  assert.doesNotMatch(got.why, /cannot reach/);
 });
 
 test("a token comes from the Vault, and a reference that is not one is refused", async () => {

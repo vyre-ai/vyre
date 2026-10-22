@@ -61,7 +61,7 @@ test("vyre kit lists the library, and vyre kit deploy law-firm proposes the base
   assert.match(steps[0].said, /waiting for your yes/);
 });
 
-test("vyre kit deploy <file> proposes a card, the Space keeps where it came from, the same version is refused and a higher one is proposed again", { timeout: 180_000 }, async t => {
+test("vyre kit deploy <file> proposes a card, the Space keeps where it came from, the same version is refused and a higher one updates the Space", { timeout: 180_000 }, async t => {
   process.env.VYRE_SEAL_DEV = "1";
   process.env.VYRE_KERNEL_PATH_RULE = "1";
   t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
@@ -113,6 +113,19 @@ test("vyre kit deploy <file> proposes a card, the Space keeps where it came from
   assert.equal(higher.code, 0, higher.out + " :: " + daemonSaid(lines));
   assert.match(higher.out, /waiting for your yes/);
   assert.equal(JSON.parse(higher.out).source, file);
+
+  // the owner's yes for the update: the Space is at version 2
+  const task2 = JSON.parse(higher.out).steps[0].task;
+  assert.ok(task2, "the update waits as a task: " + higher.out);
+  const row2 = await d.kernel.gateway.ask.get(chain, task2);
+  await d.kernel.gateway.ask.decide(chain, task2, { outcome: "approved", proof: { op: "task.decide", fields: { task: task2, payload_hash: row2.payload.payload_hash, decision: row2.payload.decision }, n: Math.random() } });
+  const updated = await until(async () => {
+    const l = /** @type {any} */ (await run(root, ["kit", "--json"]));
+    const r = (JSON.parse(l.out).space_kits || []).find((/** @type {any} */ x) => x.id === "demo-kit");
+    return r && Number(r.version) === 2 ? r : null;
+  }, "the Kit to update to version 2 :: " + daemonSaid(lines));
+  assert.equal(Number(updated.version), 2, "the Space is at version 2");
+  assert.equal(updated.source, file, "and it still says where it came from");
 });
 
 test("a source that carries a name or a password is refused, in the terminal and on the server", { timeout: 120_000 }, async t => {
@@ -157,4 +170,20 @@ test("a file that is not there, or a token that is not a reference, is said in p
   const bad = /** @type {any} */ (await run(root, ["kit", "deploy", path.join(root, "no-such-kit.json"), "--token", "not-a-reference"]));
   assert.equal(bad.code, 2, bad.out);
   assert.match(bad.out, /vault:\/\/item\/field/);
+});
+
+test("a token given with a file says that a token is for an address, and asks for nothing", { timeout: 120_000 }, async t => {
+  process.env.VYRE_SEAL_DEV = "1";
+  process.env.VYRE_KERNEL_PATH_RULE = "1";
+  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [], vault: { keystore: "file" }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
+  const d = await start({ root, log: () => {}, kernel: true, kernelPresence: presence() });
+  t.after(() => d.stop());
+
+  const file = path.join(root, "demo-kit.json");
+  fs.writeFileSync(file, JSON.stringify(kit(1)));
+  const r = /** @type {any} */ (await run(root, ["kit", "deploy", file, "--token", "vault://kit-download/token"]));
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /a token is only used for an address/);
 });

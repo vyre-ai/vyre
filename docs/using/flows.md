@@ -123,6 +123,36 @@ Every task in these stages has a due time. If a task is still open when its due 
 
 Vyre uses the planner's clock for this, the same one that rings your alarms, so there is nothing to set up.
 
+## Put a Kit on your space from a file or an address
+
+A Kit does not have to come from the library. If someone sent you one, or you wrote one yourself, you can put it on your space from a file on this computer or from an address on the internet.
+
+From a terminal on the computer where you use Vyre:
+
+```
+vyre kit deploy ~/kits/starter-kit.json
+```
+
+Vyre reads the file, shows what the Kit would add to your space, and makes a card waiting for your yes in Now (`vyre needs` lists them). Say yes and the Kit is installed. Nothing installs before that. The same version is refused when it is already installed, and a higher version is proposed again, so you can update a Kit you already have.
+
+An address works the same way:
+
+```
+vyre kit deploy https://example.com/kits/starter-kit.json
+```
+
+Only https addresses are read. Your own computer fetches the file, not your server, so the Kit does not travel through the space.
+
+A private address wants a token. Keep the token in your Vault and name it:
+
+```
+vyre kit deploy https://example.com/kits/private-kit.json --token vault://kit-download/token
+```
+
+Vyre asks your Vault for the token with your yes, sends it in that one request, and forgets it. The token is never printed, never stored and never written into the Kit. A Kit never holds a key of its own: put it in the Vault and name a Connection instead.
+
+`vyre kit` shows the Kits on your space, the version each one is at, and where it came from. A token is for an address only; a file needs none.
+
 ## What to check when something does not run
 
 - **It never started.** Open the Flow and look at **Runs on its own**. A Flow made by a Kit needs your approval once.

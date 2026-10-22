@@ -67,7 +67,8 @@ export function forgetSource(store, kitId) {
 }
 
 /**
- * The source of each Kit, by its id.
+ * The source of each Kit, by its id. A read reads: if the table is not there yet, no Kit has a
+ * source, and nothing is made here.
  * @param {SourceStore} store
  * @returns {Map<string, { source: string, version: number }>}
  */
@@ -75,7 +76,6 @@ export function sourcesFor(store) {
   /** @type {Map<string, { source: string, version: number }>} */
   const out = new Map();
   try {
-    ensureTable(store);
     for (const r of /** @type {any[]} */ (store.db.prepare(`SELECT kit_id, version, source FROM ${TABLE}`).all())) {
       out.set(String(r.kit_id), { source: String(r.source), version: Number(r.version) || 0 });
     }

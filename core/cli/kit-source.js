@@ -19,16 +19,6 @@ import { callAsPerson } from "./presence.js";
 export const MAX_KIT_BYTES = 1024 * 1024;
 
 /**
- * Whether a word names a Kit to install from a file or an address, rather than one of the Kits
- * this build ships. A word with no path in it and no .json at the end is a Kit of the library.
- * @param {string} text
- */
-export function looksLikeSource(text) {
-  const s = String(text || "");
-  return s.startsWith("https://") || s.includes("/") || s.includes("\\") || s.startsWith(".") || s.startsWith("~") || s.endsWith(".json");
-}
-
-/**
  * Read the Kit a source names.
  * @param {string} text the file path or the https address
  * @param {{ fetch?: (url: string, init?: any) => Promise<any>, token?: () => Promise<any> }} [opts]
@@ -80,7 +70,12 @@ async function readFromUrl(url, { fetch, token }) {
   }
   let res;
   try { res = await fetch(url, { headers, timeoutMs: 30_000, maxBytes: MAX_KIT_BYTES }); }
-  catch (e) { return { ok: false, why: `cannot reach ${url}: ${/** @type {Error} */ (e).message}`, code: "unreachable" }; }
+  catch (e) {
+    // The answer being too large is not the address being out of reach: it is said as it is.
+    const code = String((/** @type {any} */ (e) || {}).code || "");
+    if (code === "too_large") return { ok: false, why: `the Kit at ${url} is too large to read: give an address that serves a smaller Kit`, code: "too_large" };
+    return { ok: false, why: `cannot reach ${url}: ${/** @type {Error} */ (e).message}`, code: "unreachable" };
+  }
   const good = Boolean(res) && (res.ok !== undefined ? Boolean(res.ok) : Number(res.status) >= 200 && Number(res.status) < 300);
   if (!good) {
     const status = res && res.status ? Number(res.status) : 0;
