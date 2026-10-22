@@ -3,8 +3,10 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import { createHost } from "./host-core.js";
 import { afterSpace, phaseOf } from "../../../../lib/first-run-shape.js";
+import { photoOffer, photoSkipped, saveChosenPhoto, spaceForPhoto } from "../../screens/first-run/after-space-photo.js";
 import { world, BASE } from "../../../../names/worker/testing.js";
 import worker from "../../../../names/worker/index.js";
 
@@ -44,12 +46,10 @@ test("after the space is online: name, photo, assistant, then the first chat", a
   await host.call("onboard.person.create", { username: "juniper", password: PASSWORD, confirm: PASSWORD });
   await host.call("identity.heal");
   assert.deepEqual(await host.call("identity.display.set", { display: "Pia Walker" }), { display: "Pia Walker" });
-  assert.deepEqual(await host.call("identity.photo.set", { photo: "https://photos.example/pia.png" }), { photo: "https://photos.example/pia.png" });
-  await assert.rejects(() => host.call("identity.photo.set", { photo: "http://photos.example/a.png" }), (e) => e.code === "bad_photo");
-  await assert.rejects(() => host.call("identity.photo.set", { photo: "notaurl" }), (e) => e.code === "bad_photo");
+  await assert.rejects(() => host.call("identity.photo.set", { photo: "notaurl" }), (e) => e.code === "host_unsupported");
   const status = await host.call("identity.status");
   assert.equal(status.display, "Pia Walker");
-  assert.equal(status.photo, "https://photos.example/pia.png");
+  assert.equal(status.photo, undefined);
 
   const local = await host.call("onboard.first.chat");
   assert.match(local.text, /Pia Walker/);
@@ -70,4 +70,44 @@ test("after the space is online: name, photo, assistant, then the first chat", a
   assert.equal(sent[0].input.name, "Pia Walker");
   assert.equal(sent[0].input.assistant, "Juno");
   assert.ok(sent.every((c) => c.box === "boxA"));
+});
+
+test("choosing a photo saves it through profiles, skipping continues, and GitHub's photo is offered", async () => {
+  /** @type {{ space: string, pic: { side: number, mime: string }, name: string }[]} */
+  const seen = [];
+  const pic = await saveChosenPhoto(
+    { uri: "file://noah.jpg", width: 900, height: 400 },
+    "spc_cccccccccccc",
+    "Noah Hale",
+    async (_pick, crop) => {
+      assert.deepEqual(crop, { originX: 250, originY: 0, width: 400, height: 400 });
+      return { base64: "QQ==", mime: "image/jpeg", bytes: 2, side: 400 };
+    },
+    async (space, saved, name) => { seen.push({ space, pic: saved, name }); },
+  );
+  assert.deepEqual(seen, [{ space: "spc_cccccccccccc", pic, name: "Noah Hale" }]);
+  assert.equal(photoSkipped(), "setup.assistant");
+  assert.equal(spaceForPhoto("spc_bbbbbbbbbbbb", { current: "spc_cccccccccccc" }), "spc_bbbbbbbbbbbb");
+  assert.equal(spaceForPhoto("", { current: "spc_cccccccccccc", spaces: [] }), "spc_cccccccccccc");
+
+  const avatar = "https://avatars.githubusercontent.com/u/7?v=4";
+  const offered = photoOffer({ github: "noahbuilds", photo: avatar });
+  assert.equal(offered.choose, "Choose a photo");
+  assert.equal(offered.skip, "Skip for now");
+  assert.deepEqual(offered.github, { label: "Use my GitHub photo", photo: avatar });
+  assert.equal(photoOffer({ github: null, photo: avatar }).github, undefined);
+  assert.equal(photoOffer({ github: "noahbuilds" }).github, undefined);
+
+  const screen = fs.readFileSync(new URL("../../screens/first-run/AfterSpace.tsx", import.meta.url), "utf8");
+  assert.match(screen, /saveChosenPhoto\(/);
+  assert.match(screen, /useProfiles\.getState\(\)\.setPhoto\(s, pic, n\)/);
+  assert.match(screen, /photoSkipped\(/);
+  assert.match(screen, /photoOffer\(/);
+  assert.match(screen, /offer\.github\.label/);
+  assert.doesNotMatch(screen, /Photo address/);
+  assert.doesNotMatch(screen, /identity\.photo\.set/);
+  assert.doesNotMatch(screen, /A photo is an https address/);
+  const host = fs.readFileSync(new URL("./host-core.js", import.meta.url), "utf8");
+  assert.doesNotMatch(host, /A photo is an https address/);
+  assert.match(fs.readFileSync(new URL("./github-person.js", import.meta.url), "utf8"), /export function photoOk/);
 });

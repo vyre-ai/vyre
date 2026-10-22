@@ -746,7 +746,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
 
   if (screen === "setup.name" || screen === "setup.photo" || screen === "setup.chat") {
     return (
-      <AfterSpace screen={screen} steps={steps} back={back} backLabel={backLabel} failure={failure} busy={busy} first={first} last={last} go={go} run={run} setFailure={setFailure} />
+      <AfterSpace screen={screen} steps={steps} back={back} backLabel={backLabel} failure={failure} busy={busy} first={first} last={last} space={paired?.id || current} go={go} run={run} setFailure={setFailure} />
     );
   }
 

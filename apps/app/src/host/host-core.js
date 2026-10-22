@@ -25,7 +25,7 @@ import { BROWSER_TOO_OLD, ed25519Works, ed25519Mode } from "../identity/webcrypt
 import { githubSay } from "../identity/github-core.js";
 import { actMessage } from "../../../../names/worker/id-messages.js";
 import { acceptKdf, bundleHash, deriveLogin, githubLinkMessage, loginMessage, registerMessage } from "./login-web.js";
-import { personFromGithub, photoOk } from "./github-person.js";
+import { personFromGithub } from "./github-person.js";
 import { welcomeOf } from "../../../../core/assistant/welcome.js";
 
 /**
@@ -765,15 +765,6 @@ export function createHost(o) {
       if (!given) throw bad("A name is one line of up to 60 characters, with at least one letter.", "bad_name");
       await o.store.save({ ...k, display: given });
       return { display: given };
-    },
-    // A photo is an https address the person pasted. A file upload is a later step. Kept beside the username and returned by identity.status when one is set.
-    "identity.photo.set": async ({ photo }) => {
-      const k = await o.store.load();
-      if (!k) throw bad("There is no identity on this page yet.", "no_identity");
-      const url = photoOk(photo);
-      if (!url) throw bad("A photo is an https address.", "bad_photo");
-      await o.store.save({ ...k, photo: url });
-      return { photo: url };
     },
     // An identity made before the name was kept: read what the person's server already got at the Assistant step (its onboard.status says `person`) and keep it, so the name shows without typing. Quiet: nothing changes if the server has none or cannot be reached.
     "identity.display.sync": async () => {

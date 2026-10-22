@@ -236,10 +236,10 @@ export async function setDisplayName(display) {
   catch (e) { return fail(e); }
 }
 
-/** A photo as an https address. A file upload is a later step. @param {string} photo */
-export async function setPhoto(photo) {
-  if (MOCK) return { ok: true, photo };
-  try { return done(await tool("identity.photo.set", { photo })); }
+/** This device's identity, including a GitHub login and the photo GitHub kept. The photo step offers that photo. */
+export async function identityHere() {
+  if (MOCK) return { ok: true };
+  try { return done(await tool("identity.status", {})); }
   catch (e) { return fail(e); }
 }
 
