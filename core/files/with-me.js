@@ -84,7 +84,7 @@ export function registerWithMe(ctx) {
       if (!d.gateway.drive) throw refuse("this Space has no Drive yet; ask the owner or an admin of the Space", "unavailable");
       const me = personOf(d.chain);
       const row = open().prepare("SELECT path FROM files_with WHERE space = ? AND path = ? AND with_person = ?").get(d.space, p, me);
-      if (!row) throw refuse("that file is not shared with you. Ask the person who has it to share it with files.with.share.", "not_found");
+      if (!row) throw refuse("that file is not shared with you. Ask the person who has it to share it with you.", "not_found");
       const bytes = await d.gateway.drive.get(d.chain, p, { maxBytes: MAX_UPLOAD });
       if (bytes.length > MAX_UPLOAD) throw refuse(`a file here is at most ${MAX_UPLOAD / 1048576} MB to download in one call`, "too_large");
       return { path: p, size: bytes.length, base64: Buffer.from(bytes).toString("base64") };

@@ -4185,7 +4185,7 @@ Files other people shared with you: { shares: [{ path, by, at }] }. Only your ow
 
 - Input:
   - `space` string
-- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`
 
 ### `files.with.read`
 
@@ -4194,7 +4194,7 @@ Read one file someone shared with you, under your own grants: { space?, path }. 
 - Input:
   - `path` string, required
   - `space` string
-- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`
 
 ### `files.with.share`
 
@@ -4204,7 +4204,7 @@ Share one file in the Space's Drive with one other person: { space?, path, perso
   - `path` string, required
   - `person` string, required
   - `space` string
-- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`
 
 ## flows
 
