@@ -27,6 +27,7 @@ import fs from "node:fs";
 import { makeAgentEndpoint } from "./agent-endpoint.js";
 import { makeAgentRun } from "./agent-run.js";
 import { makeAgentFiles } from "./agent-files.js";
+import { registerDeskAsk } from "./desk-ask.js";
 import { createCdpAdapter } from "./cdp-adapter.js";
 import { Keyboard, isSurface, idleMsOf, IDLE_CHOICES, IDLE_WARN_MS } from "./keyboard.js";
 import { FakeDriver } from "./driver/fake.js";
@@ -534,25 +535,37 @@ export default {
         const waitMs = Number(liveCfg().agentdWaitMs ?? 90_000), t0 = Date.now();
         let last = NOT_SET, said = false;
         for (;;) {
-          if (agentdReady()) {
-            try { await agentTools.place(agent); await agentUsers.wake(agent); return await cdpAdapter.endpoint(agent); } catch (e) { last = /** @type {Error} */ (e).message; }
-          }
+          // place and wake are what bring the Space's computer up (createUser and startScreen). Waiting for agentdReady first never starts it.
+          try {
+            await agentTools.place(agent);
+            await agentUsers.wake(agent);
+            if (agentdReady()) return await cdpAdapter.endpoint(agent);
+            last = NOT_SET;
+          } catch (e) { last = /** @type {Error} */ (e).message; }
           if (Date.now() - t0 > waitMs) {
             ctx.log(`AGENT COMPUTER NOT READY: ${agent} waited ${Math.round(waitMs / 1000)} s for the Space's computer and agentd (${last}); the shared browser is not used because computers.browse is not "browser"`);
             throw new Error(`the Space's computer is not ready yet (${last}); try again in a moment. The shared browser is used only when computers.browse is "browser".`);
           }
           if (!said) { said = true; ctx.log(`agent computer: starting the Space's computer for ${agent}; waiting up to ${Math.round(waitMs / 1000)} s for agentd`); }
-          await new Promise(r => setTimeout(r, 1000));
+          await new Promise(r => setTimeout(r, 250));
         }
       } };
     }
     const agentEndpoint = makeAgentEndpoint({ resolve, claimOf: agentClaim, mayUse: agentTools.mayUse, place: agentTools.place, wake: a => agentUsers.wake(a), endpoint: a => cdpAdapter.endpoint(a) });
 
     tool("computers.endpoint", "Where the agent's Chrome and computerd answer, and computerd's token. Thaws the shared browser or checks out a desktop.",
-      obj({ agent: str, thread: str }), async (i, { caller }) => {
-        // The space's computer, when it is there: the agent's own Chrome, whose address and token come from here and from nowhere else. (The shared headless browser below is the fallback until it is deleted.)
-        if (agentdReady()) return agentEndpoint(i, caller);
-        const agent = await resolve(i, caller);
+      obj({ agent: str, thread: str }), async (i, meta) => {
+        // A hands call arrives as the module. The person or agent who asked is the origin, and that is who the computer belongs to.
+        const caller = String(meta && meta.caller || "");
+        const who = String((meta && meta.origin) || caller);
+        // The agent's own Chrome on the Space's computer, including the first ask, which is what starts that computer. The shared browser is used only when computers.browse is "browser" on purpose.
+        if (liveCfg().agentUsers === true && agentBrowser.space && !agentBrowser.explicitShared()) {
+          const agent = await resolve(i, who);
+          if (agentClaim(who) !== agent) await agentTools.mayUse("use", agent);
+          return { helper: await agentBrowser.space.endpoint(agent) };
+        }
+        if (agentdReady()) return agentEndpoint(i, who);
+        const agent = await resolve(i, who);
         const ep = await agentBrowser.endpoint(agent, { thread: i.thread, why: "hands" });
         return { helper: ep.helper };
       }, { internal: true });
@@ -613,6 +626,8 @@ export default {
           default: throw Object.assign(new Error("name the op: open, list, stat, read, write, mkdir, move or trash"), { code: "bad_input" });
         }
       }, { internal: true });
+
+    registerDeskAsk({ tool, users: agentUsers, files: agentFiles, place: a => agentTools.place(a), mayUse: agentTools.mayUse, callers: OWN });
 
     tool("computers.may-act", "May the agent's hands act now? Refused while paused or taken over, with who has the keyboard; while shielded, refused for reads too.",
       obj({ agent: str, tool: str, read: { type: "boolean" } }), async (i, { caller }) => {

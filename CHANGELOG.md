@@ -4,6 +4,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6.9
 
+- fix(computers): asking an agent to open a site uses that agent's own Chrome on its computer, and starts the computer when it is not up yet. The live screen is that Chrome.
+- fix(computers): asking an agent to run a command types it into the desk Terminal. Asking it to make a file writes the file in the agent's folder, and Vyre Files shows it there. A harness session still runs on the server.
+- fix(update): `vyre update` pulls the computer image the computers module will start. When that image is a digest and the pull does not land, the update stops and the previous files are put back.
 - fix(records): switching Spaces shows the new Space's records. The shared records world was kept by its filters alone, so Records kept drawing the last Space's rows after a switch; it is now kept per Space (apps/app/ui/views/data.ts, world-space.js, screens/shell/state.ts).
 - fix(chat): the Computer tab is the screen, one line under it, and Reset. Pressing an asleep screen wakes it. Pressing a live screen opens the computer full screen. Open, Sleep, the Chrome / Files / Terminal rows, and the files row are gone (apps/app/ui/chat/AgentComputerPane.tsx, apps/app/src/chat/ComputerTab.tsx).
 - fix(glass): a live computer opens over the whole window: the screen, Take over (Hand back while you hold the keyboard), Sign in privately, and close. Escape hands the keyboard back, then closes. The old page chrome (title, Screen/Files, Activity, and the paused card while the window is visible) is gone (apps/app/screens/glass/ComputerOverlay.tsx).

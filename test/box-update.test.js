@@ -93,6 +93,12 @@ if (args[0] === "image") {
   }
   if (op === "rm") { fs.rmSync(img(a), { force: true }); process.exit(0); }
 }
+if (args[0] === "pull") {
+  const ref = args.filter(a => !a.startsWith("-")).pop();
+  if (fs.existsSync(F + "/pull-fail")) { console.error("Error: pull failed"); process.exit(1); }
+  fs.writeFileSync(img(ref), "pulled-" + count("imgpulls"));
+  process.exit(0);
+}
 if (args[0] === "compose") {
   const sub = args[1];
   if (sub === "build") { if (fs.existsSync(F + "/build-fail")) process.exit(1); fs.writeFileSync(img("vyre:local"), "built-" + count("builds")); process.exit(0); }
@@ -123,7 +129,7 @@ process.exit(0);
 `;
 
 /** Release assets as files in a folder, with SHA256SUMS over them. */
-function release(dir, version, { android = false, corrupt = "", images = false, tagCompose = false, noReleaseJson = false, list = 0, sign = /** @type {any} */ (RELEASE.privateKey) } = {}) {
+function release(dir, version, { android = false, corrupt = "", images = false, tagCompose = false, noReleaseJson = false, omitComputerRef = false, list = 0, sign = /** @type {any} */ (RELEASE.privateKey) } = {}) {
   fs.mkdirSync(dir, { recursive: true });
   const pkg = path.join(dir, ".pkg", "package");
   fs.mkdirSync(path.join(pkg, "box"), { recursive: true });
@@ -141,7 +147,8 @@ function release(dir, version, { android = false, corrupt = "", images = false, 
   fs.writeFileSync(path.join(dir, "dockerignore"), "test\n");
   fs.writeFileSync(path.join(dir, "vyre"), WRAPPER_SRC + `# release ${version}\n`);
   fs.writeFileSync(path.join(dir, "VERSION"), version + "\n");
-  fs.writeFileSync(path.join(dir, "release.json"), JSON.stringify({ version, channel: "stable", commit: "abc1234", date: "2026-09-27T00:00:00Z", min_from: "0.1.0", notes: "Northwind Bakery's \"fix\"", ...(images ? { images: { box: { ref: IMAGE_REF }, computer: { ref: COMPUTER_REF } } } : {}) }, null, 2));
+  const computerImage = omitComputerRef ? {} : { computer: { ref: COMPUTER_REF } };
+  fs.writeFileSync(path.join(dir, "release.json"), JSON.stringify({ version, channel: "stable", commit: "abc1234", date: "2026-09-27T00:00:00Z", min_from: "0.1.0", notes: "Northwind Bakery's \"fix\"", ...(images ? { images: { box: { ref: IMAGE_REF }, ...computerImage } } : {}) }, null, 2));
   if (noReleaseJson) fs.rmSync(path.join(dir, "release.json"));
   // A release with a signed module list at this counter, in the exact shape scripts/modules-manifest.mjs writes (one-space indent), listed in SHA256SUMS below.
   if (list) fs.writeFileSync(path.join(dir, "modules.json"), JSON.stringify({ v: 1, counter: list, release: version, modules: { about: { version: "0.1.0", tree: "a".repeat(64) }, work: { version: "0.1.0", tree: "b".repeat(64) } } }, null, 1) + "\n");
@@ -407,10 +414,50 @@ test("box update: a pulled image (no compose.build.yml) is tagged vyre:prev and 
   const calls = b.calls();
   assert.ok(calls.includes(`pull -q ${COMPUTER_REF}`), calls.join("\n"));
   assert.ok(calls.indexOf("compose pull") < calls.indexOf(`pull -q ${COMPUTER_REF}`), "after the stack's own pull");
+  assert.ok(b.image(COMPUTER_REF).startsWith("pulled-"), "the digest the computers module names is present, not only logged");
   assert.ok(b.read(path.join(b.FAKE, "cosign")).includes(` ${COMPUTER_REF}`), "the computer image was checked by cosign before the pull");
   assert.equal(b.image("vyre:prev"), "orig");
   assert.equal(b.read(path.join(b.DIR, "src", "marker")).trim(), "old");
   assert.ok(!b.hits.includes("/dl/v0.2.0/vyre.tgz"));
+});
+
+const OTHER_COMPUTER = `ghcr.io/vyre-ai/vyre-computer@sha256:${"c".repeat(64)}`;
+
+test("box update: a release that omits computer.ref still pulls the digest the computers module names", async t => {
+  const b = await box(t, { releases: [{ tag: "v0.2.0", images: true, omitComputerRef: true }], build: false });
+  const r = /** @type {any} */ (await b.run(["update"]));
+  assert.equal(r.code, 0, r.out);
+  assert.ok(b.calls().includes(`pull -q ${COMPUTER_REF}`), b.calls().join("\n"));
+  assert.ok(b.image(COMPUTER_REF).startsWith("pulled-"), "docker image inspect of the compose default succeeds after the update");
+});
+
+test("box update: config computers.image, else .env, is the digest that is pulled", async t => {
+  const b = await box(t, { releases: [{ tag: "v0.2.0", images: true }], build: false });
+  fs.writeFileSync(path.join(b.DIR, "config.json"), JSON.stringify({ computers: { image: OTHER_COMPUTER } }));
+  let r = /** @type {any} */ (await b.run(["update"]));
+  assert.equal(r.code, 0, r.out);
+  assert.ok(b.calls().includes(`pull -q ${OTHER_COMPUTER}`), b.calls().join("\n"));
+  assert.equal(b.image(COMPUTER_REF), "", "the release digest is not what the module will create with");
+  assert.ok(b.image(OTHER_COMPUTER).startsWith("pulled-"));
+  const envBox = await box(t, { releases: [{ tag: "v0.2.0", images: true }], build: false });
+  fs.appendFileSync(path.join(envBox.DIR, ".env"), `VYRE_COMPUTERS_IMAGE=${OTHER_COMPUTER}\n`);
+  r = /** @type {any} */ (await envBox.run(["update"]));
+  assert.equal(r.code, 0, r.out);
+  assert.ok(envBox.image(OTHER_COMPUTER).startsWith("pulled-"), envBox.calls().join("\n"));
+});
+
+test("box update: a computer image digest that does not pull fails the update and puts the files back", async t => {
+  const b = await box(t, { releases: [{ tag: "v0.2.0", images: true }], build: false });
+  const before = b.read(path.join(b.DIR, "compose.yml"));
+  fs.writeFileSync(path.join(b.FAKE, "pull-fail"), "1");
+  const r = /** @type {any} */ (await b.run(["update"]));
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /the agents' computer image was not pulled; the files are back as they were and Vyre was not restarted/);
+  assert.equal(b.read(path.join(b.DIR, "compose.yml")), before, "the previous compose is back");
+  assert.equal(b.image(COMPUTER_REF), "", "the digest is not present");
+  assert.equal(b.db(), "v1", "nothing new ran");
+  assert.ok(!b.calls().some(c => c.startsWith("compose up")), b.calls().join("\n"));
+  assert.ok(!fs.existsSync(path.join(b.DIR, "VERSION")), "the new version file did not stay");
 });
 
 test("box update: a box that already has the computer image does not pull it again", async t => {
