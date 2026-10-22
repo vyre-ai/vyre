@@ -4,7 +4,7 @@ import { View } from "react-native";
 import { useRouter } from "expo-router";
 import { BackgroundTasksCard, LaterPlannerNote, RewindSheet, SecondOpinionSheet, showToast, type LaterPlannerState } from "@vyre/ui";
 import { chatTools } from "../../screens/chat-tools/instance";
-import { taskLive } from "../../screens/chat-tools/model.ts";
+import { taskLive, type Task } from "../../screens/chat-tools/model.ts";
 import { callQuiet } from "./call-quiet.js";
 import { tool } from "../real/box";
 import { providers } from "../../screens/settings/real";
@@ -53,7 +53,7 @@ export function useChatCapabilityChrome({
   }, [real, opinionOpen]);
   const opinionTargets = useMemo(() => (opinionMsg ? secondOpinionTargets(faces, opinionAuthor, provRows) : []), [faces, opinionMsg, opinionAuthor, provRows]);
 
-  const showTasks = (t: { id: string; title: string; status: string }[]) => t.map((x) => ({ id: x.id, title: x.title, status: x.status, live: taskLive(x) }));
+  const showTasks = (t: Task[]) => t.map((x) => ({ id: x.id, title: x.title, status: x.status, live: taskLive(x) }));
   // A failure waits (call-quiet). The stream's rev is not a reason to ask again: a gap reconnect used to call this several times a second, with the chat id.
   useEffect(() => {
     if (!real || !thread) { setTasks([]); return; }
