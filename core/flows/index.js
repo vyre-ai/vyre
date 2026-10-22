@@ -9,9 +9,13 @@ import { secretsIn } from "../../kernel/flows/no-secrets.js";
 import { serveMember, mayInspectFlow, hideFor, notYours, CALLS as MEMBER_CALLS } from "./member.js";
 import { kitLibrary, kitFromLibrary } from "../../records/kits/library.js";
 import { kernelKit, moduleKitProblems } from "../../records/kit-adapter.js";
+import { checkSource } from "../../lib/kit-source.js";
+import { MIGRATIONS as SOURCE_MIGRATIONS, rememberSource, forgetSource, sourcesFor } from "./sources.js";
 
 const str = { type: "string" };
 const open = { type: "object", additionalProperties: true, properties: { space: str } };
+/** A Kit proposal takes the Kit itself and, optionally, where it came from (a file path or an https address). */
+const proposeInput = { type: "object", additionalProperties: true, properties: { space: str, kit: { type: "object" }, source: { type: "string" } } };
 const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
 
 /** @type {Record<string, string>} */
@@ -77,9 +81,36 @@ const PERSONAL = new Set(["flows.approve", "flows.rollback", "flows.pause", "flo
 /** The kit tools keep their names inside the assembly (kernel/flows), so a tool of this module maps to it. */
 const INNER = (/** @type {string} */ n) => n.replace(/^flows\.kit\./, "kits.");
 
+/**
+ * Where a Kit came from, or a refusal: a file path or an https address, never a secret. The same
+ * rules the terminal keeps (lib/kit-source.js), so a source the terminal refuses is refused here too.
+ * @param {any} value
+ */
+const sourceOf = (value) => {
+  const checked = checkSource(value);
+  if (!checked.ok) throw refuse(checked.why, "bad_input");
+  return checked.source;
+};
+
+/**
+ * The Kits of a Space, each with where it came from (and none when it came from nowhere the Space knows).
+ * @param {any} store the module's store
+ * @param {any} rows the kernel's rows
+ */
+const withSources = (store, rows) => {
+  const sources = sourcesFor(store);
+  const list = Array.isArray(rows) ? rows : [];
+  return list.map((/** @type {any} */ row) => {
+    const hit = sources.get(String(row && (row.id ?? row.kit_id) ?? ""));
+    return { ...row, source: hit ? hit.source : null };
+  });
+};
+
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
   async start(ctx) {
+    // Where each Kit on this Space came from (core/flows/sources.js): the module's own table, its rows a pointer beside the kernel's own install record.
+    ctx.store.migrate([...SOURCE_MIGRATIONS]);
     const hostOf = (/** @type {any} */ input) => {
       const h = ctx.flowsHost;
       if (!h) throw refuse("Flows run only where the kernel is on", "unavailable");
@@ -113,7 +144,7 @@ export default {
     }
     for (const [name, description] of Object.entries(WHAT)) {
       ctx.tool(name, {
-        description, input: open, callers: name === "flows.kit.propose" || name === "flows.attention" || name === "flows.runs" || name === "flows.list" ? [...CALLERS, "module"] : name === "flows.kit.credentials" || name === "flows.credential-uses" || name === "flows.definitions.scan" ? ["module"] : ["cli", "local", "deck", "capsule", "tailnet", "device", "space", "agent", "mcp", "harness"],
+        description, input: name === "flows.kit.propose" ? proposeInput : open, callers: name === "flows.kit.propose" || name === "flows.attention" || name === "flows.runs" || name === "flows.list" ? [...CALLERS, "module"] : name === "flows.kit.credentials" || name === "flows.credential-uses" || name === "flows.definitions.scan" ? ["module"] : ["cli", "local", "deck", "capsule", "tailnet", "device", "space", "agent", "mcp", "harness"],
         ...(name === "flows.approve" ? { presence: { summary: async (/** @type {any} */ i) => `Approve Flow ${String(i && i.id || "")} version ${String(i && i.version || "")}` } } : {}),
         ...(name === "flows.rollback" ? { presence: { summary: async (/** @type {any} */ i) => `Go back to version ${String(i && i.to || "")} of Flow ${String(i && i.id || "")}` } } : {}),
         run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
@@ -127,6 +158,9 @@ export default {
           const chain = (name === "flows.attention" && meta && meta.caller === "module:approvals") || name === "flows.kit.credentials" || name === "flows.credential-uses" || name === "flows.definitions.scan" ? null : await chainOf(f, meta);
           if (PERSONAL.has(name) && !(chain.hops.length === 1 && chain.hops[0].actor.kind === "person")) throw refuse(`${name} is a person's own`, "denied");
           const { space: _space, module: fromModule, ...rest } = input || {};
+          // A Kit proposed from a file or an address keeps where it came from (core/flows/sources.js). The source is a pointer, never a secret: a path or an https address with nothing in it.
+          const source = name === "flows.kit.propose" && rest.source !== undefined ? sourceOf(rest.source) : null;
+          if (name === "flows.kit.propose") delete rest.source;
           // A Kit may be given in the language's stored form as well as the kernel's. One that ships with an added module (`module` names it) is held to what a module may add.
           if (rest.kit && typeof rest.kit === "object" && /^flows\.kit\.(propose|card|diff)$/.test(name)) {
             rest.kit = kernelKit(rest.kit);
@@ -157,6 +191,14 @@ export default {
             return f.flows.tools[INNER(name)](chain, { ...own, ...(hf ? { hide_for: hf } : {}) });
           }
           const out = await f.flows.tools[INNER(name)](chain, rest);
+          // A proposal made: where the Kit came from is kept with it, so the Space can show it. A proposal with no source (one of the Kits this build ships) says nowhere, and the pointer it had stays.
+          if (name === "flows.kit.propose" && out && out.ok && out.card && out.card.kit && out.card.kit.id && source) {
+            rememberSource(ctx.store, String(out.card.kit.id), Number(out.card.kit.version) || 0, source, ctx.log);
+          }
+          // A Kit that is gone takes its source with it.
+          if (name === "flows.kit.remove" && out && out.removed) forgetSource(ctx.store, String(out.removed));
+          // The Kits of a Space, each with where it came from.
+          if (name === "flows.kit.list") return withSources(ctx.store, out);
           // a draft made from a chat remembers the chat (work keeps it, and only for a person in that chat): "How it was made" is a thread of the Flow
           if (name === "flows.from-chat" && out && out.ok && out.id && typeof rest.chat === "string" && rest.chat) await ctx.call("work.flow.origin", { flow: String(out.id), chat: rest.chat }, { relay: true }).catch(() => null);
           return out;

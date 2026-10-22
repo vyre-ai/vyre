@@ -2,6 +2,10 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## 0.6.4
+
+- feat(kits): a Kit can be installed from a file or from an address. `vyre kit deploy <file>` and `vyre kit deploy <https-url>` read the Kit on the computer, in the terminal, and propose it the same way a Kit of the library is proposed: the card waits for the owner's yes and nothing installs until they say it. The same version is refused and a higher one is proposed again, as the kernel has always ruled. A private address takes `--token vault://item/field`: the token comes from the Vault with the person's yes, is used for that one request, and is never printed, never stored and never written into the Kit. A source is a file path or an https address with nothing in it: no name, no password, no other scheme, and no query or fragment, which can carry a key (lib/kit-source.js). The Space keeps where each Kit came from and which version it is at (core/flows/sources.js), and `vyre kit` shows it. Tests: lib/kit-source.test.js, core/cli/kit-source.test.js, core/cli/commands/kit.test.js, core/flows/sources.test.js.
+
 ## 0.6.3
 
 - feat(vault): an item's page has Used with, the hosts its secrets may go to (read with vault.use.find, changed with vault.use.set; the hosts written on the item stay, the ones you allow can be removed), next to its plain fields and Allowed in scripts. No second store. Merged the train's placeholder review fixes with the simple Vault; the four reds of run 39350707365 fixed in place: vault.templates and vault.template.suggest in the presence list, hooks.flow tools in the door's owner list, the web-address bind in kernel/flows/runner.js back to its size, the web-address approver check reads roleAtLeast, and read-tools.generated.js named as a tool-name list.
