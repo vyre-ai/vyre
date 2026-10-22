@@ -18,7 +18,7 @@ const kindOf = (a) => (String(a).includes("@") ? "email" : "phone");
 
 /**
  * The contact a handle belongs to, by the unique main email or phone, then by a contact point (one record per further address), or null. The legacy
- * `other_emails` and `other_phones` lists are not searched (a list cannot be indexed, and Twenty cannot filter one): new writers use `addContactPoint`.
+ * `other_emails` and `other_phones` lists are not searched (a list cannot be indexed, and the record store cannot filter one): new writers use `addContactPoint`.
  * @param {{ records: any }} kernel @param {any} chain @param {string} address @returns {Promise<{ urn: string, id: string } | null>}
  */
 export async function findContact(kernel, chain, address) {

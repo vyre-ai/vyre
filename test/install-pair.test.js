@@ -64,7 +64,7 @@ test("the app and the server mint the same code, and the person id is the chain 
   assert.notEqual(server.person, personIdOfKey(Buffer.from(me.pub, "base64url")));
   const v = verifyPairCode(server.code, NOW);
   assert.equal(v.ok && v.person, PERSON);
-  const line = `curl -fsSL vyre.run/i | VYRE_CODE=${server.code} VYRE_STORE=auto sh`;
+  const line = `curl -fsSL vyre.run/i | VYRE_CODE=${server.code} sh`;
   assert.equal(installCommand("linux", server.code), line);
   assert.equal(installCommand("mac", server.code), line);
   assert.ok(!line.includes("--code"));
@@ -372,7 +372,7 @@ test("the person's own issue runs, and an agent's issue and complete wait at the
   assert.notEqual(person.error && person.error.code, "no_such_tool");
   assert.notEqual(person.error && person.error.code, "held_for_approval");
   assert.ok(!(person.error && /Nothing ran/.test(person.error.message || "")));
-  if (!person.error) assert.match(person.data.command, /^curl -fsSL vyre\.run\/i \| VYRE_CODE=\S+ VYRE_STORE=auto sh$/);
+  if (!person.error) assert.match(person.data.command, /^curl -fsSL vyre\.run\/i \| VYRE_CODE=\S+ sh$/);
   await t.test("each proven agent label is held for install issue (same Gate for every provider)", async (st) => {
     const root2 = tempHome(st);
     fs.writeFileSync(path.join(root2, "config.json"), JSON.stringify({ name: "test-box-2", role: "box", modules: { disable: ["agents", "computers"] } }));

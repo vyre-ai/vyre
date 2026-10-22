@@ -33,11 +33,11 @@ test("the two choices: Records first and the default, then the small server; the
   assert.deepEqual(CHOICES.map(c => [c.id, c.label, c.store]), [["records", "With Records (recommended)", "auto"]]);
   assert.equal(DEFAULT_CHOICE, "records");
   assert.match(CHOICES[0].note, /8 GB.*4 GB/);
-  assert.equal(installLine("0.3.0", { code: CODE, store: "auto" }), `curl -fsSL vyre.run/i | VYRE_CODE=${CODE} VYRE_STORE=auto sh`);
-  assert.equal(installLine("0.3.0", { code: CODE, store: "sqlite" }), `curl -fsSL vyre.run/i | VYRE_CODE=${CODE} VYRE_STORE=auto sh`, "the app never asks for the small built-in store");
-  assert.equal(installLine("0.3.0", { code: CODE, store: "anything-else" }), `curl -fsSL vyre.run/i | VYRE_CODE=${CODE} VYRE_STORE=auto sh`, "only auto ever reaches the line");
-  assert.equal(installLine("0.3.0-rc.1", { code: CODE, store: "auto" }), `curl -fsSL https://github.com/vyre-ai/vyre/releases/download/v0.3.0-rc.1/install-box.sh | VYRE_BOX_URL=https://github.com/vyre-ai/vyre/releases/download/v0.3.0-rc.1/ VYRE_CODE=${CODE} VYRE_STORE=auto sh`, "a release candidate's own script");
-  assert.equal(installLine("1.0.0; rm -rf /", { code: CODE, store: "auto" }), `curl -fsSL vyre.run/i | VYRE_CODE=${CODE} VYRE_STORE=auto sh`, "a version that is not one is ignored");
+  assert.equal(installLine("0.3.0", { code: CODE, store: "auto" }), `curl -fsSL vyre.run/i | VYRE_CODE=${CODE} sh`);
+  assert.equal(installLine("0.3.0", { code: CODE, store: "sqlite" }), `curl -fsSL vyre.run/i | VYRE_CODE=${CODE} sh`, "the line does not carry a store choice");
+  assert.equal(installLine("0.3.0", { code: CODE, store: "anything-else" }), `curl -fsSL vyre.run/i | VYRE_CODE=${CODE} sh`, "a store value never reaches the line");
+  assert.equal(installLine("0.3.0-rc.1", { code: CODE, store: "auto" }), `curl -fsSL https://github.com/vyre-ai/vyre/releases/download/v0.3.0-rc.1/install-box.sh | VYRE_BOX_URL=https://github.com/vyre-ai/vyre/releases/download/v0.3.0-rc.1/ VYRE_CODE=${CODE} sh`, "a release candidate's own script");
+  assert.equal(installLine("1.0.0; rm -rf /", { code: CODE, store: "auto" }), `curl -fsSL vyre.run/i | VYRE_CODE=${CODE} sh`, "a version that is not one is ignored");
   assert.equal(choiceOf("nope").id, "records");
   assert.equal(GAINS.length, 4);
   assert.match(GAINS.join(" "), /sleeps.*phone.*Watchers.*team/);
@@ -154,7 +154,7 @@ test("begin(choice, \"mac\") shows the Mac installer's line and keeps the Record
   const a = make(f);
   await a.begin("records", "mac");
   assert.equal(a.state.installLine, installLine(undefined, { code: CODE, store: "auto", os: "mac" }));
-  assert.match(a.state.installLine, /^curl -fsSL vyre\.run\/i \| VYRE_CODE=\S+ VYRE_STORE=auto sh$/);
+  assert.match(a.state.installLine, /^curl -fsSL vyre\.run\/i \| VYRE_CODE=\S+ sh$/);
   a.stop();
 });
 

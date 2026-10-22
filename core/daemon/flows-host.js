@@ -32,7 +32,7 @@ export function storeIsAway(store) {
 }
 
 /**
- * Run `f` now when the Space's store is attached, or when it joins. A Space on its own records store (Twenty) attaches a moment after the server is up (stores/twenty/deferred-store.js): whatever reads the Flow
+ * Run `f` now when the Space's store is attached, or when it joins. A Space on its own record store attaches a moment after the server is up: whatever reads the Flow
  * record types has to wait for that, and for the types to be defined, or it reads "no type flow-state".
  * @param {any} store @param {() => any} f
  */
@@ -42,7 +42,7 @@ export function whenStoreReady(store, f) {
 }
 
 /**
- * Define the Flow record types, and again if the store was not answering yet: a store that has just attached (stores/twenty/deferred-store.js runs this from attach) can still refuse for a while, and a define
+ * Define the Flow record types, and again if the store was not answering yet: a store that has just attached can still refuse for a while, and a define
  * that failed once was never tried again, so Flows stayed without their types until a restart. `run` does the work and must throw when it could not finish; tries are spaced by a doubling wait (`baseMs` to
  * `maxMs`), each said in the log, and the last failure says what to do. The first try is awaited; the later ones run in the background (the server is never held for them). `stopped()` ends the tries (the host
  * stopped); `onExhausted()` is told when the fast tries are spent (the slow ones, every `slowMs`, go on); `onDone(ok)` is told when it worked, and once when the fast tries ran out.
@@ -75,7 +75,7 @@ export async function defineWithRetry(o) {
 
 /** The words a Flow call gets while the Flow record types are not defined yet (instead of a raw "no type flow-state"). */
 export const FLOWS_WAITING = "Flows are waiting for the team's records. Try again in a minute.";
-/** What a Flow call gets while the Space's Records add the record types an update brought (stores/twenty/space-store.js openCore): how far, and that it ends by itself. @param {{ done: number, total: number }} u */
+/** What a Flow call gets while the Space's Records add the record types an update brought: how far, and that it ends by itself. @param {{ done: number, total: number }} u */
 export const flowsUpgrading = (u) => `Records are being upgraded (${u.done} of ${u.total} new types). This finishes on its own.`;
 /** How far the store's new record types are ({ done, total }), or null when nothing is being added. @param {any} store */
 export function upgradeOf(store) {
@@ -263,7 +263,7 @@ export function createFlowsHost(o) {
       // definition change of its own for them: only the Kit's own types are defined at install, under the approved-Kit waiver.
       const { CORE_TYPES } = await import("../../records/core-types.js");
       // Every Space has the core types (contact, organization, communication, event ...): the objects layer the calendar sync and "Log communications" write to. `template` is also the Kit's storage.
-      // The ones the Space's Records are adding in the background (an update brought them: stores/twenty/space-store.js openCore) are left to it, so they are not made twice in one long define.
+      // The ones the Space's Records are adding in the background (an update brought them) are left to it, so they are not made twice in one long define.
       const { KIT_STORAGE_TYPES } = await import("../../lib/kit-storage-types.js");
       const u = k.store && typeof k.store.upgrade === "function" ? (() => { try { return k.store.upgrade(); } catch { return null; } })() : null;
       const adding = new Set(u && Array.isArray(u.pending) ? u.pending : []);
@@ -325,7 +325,7 @@ export function createFlowsHost(o) {
       rest = setupRest().then(() => log(`flows: the other record types for ${space} are up to date (${((clock() - t0) / 1000).toFixed(1)}s)`), (/** @type {any} */ e) => log(`flows: the other record types for ${space} were not brought up to date: ${e && e.message}`));
       return rest;
     };
-    // A store still starting (a first start makes the Space's database) gets the types when it joins, so the server is never held for it (stores/twenty/deferred-store.js whenReady).
+    // A store still starting (a first start makes the Space's database) gets the types when it joins, so the server is never held for it.
     // The types are defined again if the first try met a store that was not answering yet; Flow calls made before they exist answer in words (see typesReady below).
     let typesReady = false, stopping = false, tries = 0, exhausted = false;
     /** @type {Set<any>} */ const retryTimers = new Set();

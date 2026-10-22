@@ -5,7 +5,7 @@
 //
 //   const c = await recordContext(kernel, chain, rec, { space });   // { sections: [{ key, head, items }], quoted: [], urns, inputs }
 //
-// It reads relations by their link fields (`records.linked` is the reverse of a link field), so the named relations Windows builds on Twenty are reached the same way as any link.
+// It reads relations by their link fields (`records.linked` is the reverse of a link field), so the named relations Windows builds on the record store are reached the same way as any link.
 
 import { modelView, isSealedValue, sealedText } from "../../../lib/sealed.js";
 import { clean } from "./text.js";

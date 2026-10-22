@@ -1,7 +1,7 @@
 // @ts-check
 // kernel/gateway/links.js: links between records and their named inverses (plan item 9). A `link` field with a target type (`to`) is one end of a relation: the other end is its inverse,
 // a named, read-only field on the target type ("Leads" on a Contact, shown on every Contact). `many: true` makes the link a list of records (many-to-many; the inverse is a list too).
-// The gateway owns the rules and the ids (the target must be a live record of that type); a store only holds the links the best way it can (Twenty as real RELATION fields, the built-in
+// The gateway owns the rules and the ids (the target must be a live record of that type); a store only holds the links the best way it can (the record store as real RELATION fields, the built-in
 // store as JSON). A link with no `to` points at any record and has no inverse. Pure: no store, no clock.
 import { KernelError } from "../core/errors.js";
 
@@ -29,7 +29,7 @@ export function deriveInverse(source, field, taken) {
   return null;
 }
 
-/** The names a type's own fields and inverses use, compared in the lower snake form Twenty and the store both end up with. @param {any} t @param {InverseView[]} inv */
+/** The names a type's own fields and inverses use, compared in the lower snake form the record store and the built-in store both end up with. @param {any} t @param {InverseView[]} inv */
 const usedOn = (t, inv) => {
   const names = new Set(), labels = new Set();
   for (const f of t.fields || []) { names.add(snake(f.name)); if (f.label) labels.add(snake(f.label)); }

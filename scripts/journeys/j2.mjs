@@ -5,7 +5,7 @@
 // the real Gotenberg): a FAIL names the owner. They need Docker and run only where VYRE_APPMODS_LIVE=1 is allowed (a test box or a CI runner). The Estate Kit's own matter is one of the cases (Engagement is the stage that sends the engagement letter), and the signed copy rides the same yes (`with`): one yes for both emails.
 import { walkTestFile } from "./lib/testfile.mjs";
 
-// the live tests start a real daemon of their own; the journey says "plain", so they keep the small built-in store. On a runner with Docker the default would start a Twenty for each, whose types are not readable until it is up ("the type definitions could not be read, so the links were not checked").
+// the live tests start a real daemon of their own; the journey says "plain", so they keep the small built-in store. On a runner with Docker the default would start a record store for each, whose types are not readable until it is up ("the type definitions could not be read, so the links were not checked").
 const LIVE = { VYRE_APPMODS_LIVE: "1", VYRE_STORE: "sqlite" };
 
 export default {

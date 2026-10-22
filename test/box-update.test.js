@@ -1177,7 +1177,8 @@ test("a root-run update passes on every VYRE_ setting the installer writes into 
   const installer = fs.readFileSync(path.join(REPO, "scripts/install-box.sh"), "utf8");
   // The settings write_kernel_env puts there: `printf 'VYRE_NAME=value\n'`.
   const written = [...installer.matchAll(/printf '(VYRE_[A-Z0-9_]+)=([^'\\]*)\\n'/g)].map(m => [m[1], m[2]]).filter(([n]) => !/^VYRE_SETUP_CODE/.test(n));
-  assert.ok(written.some(([n]) => n === "VYRE_KERNEL") && written.some(([n]) => n === "VYRE_STORE"), "the installer writes the kernel and store settings: " + JSON.stringify(written));
+  assert.ok(written.some(([n]) => n === "VYRE_KERNEL"), "the installer writes the kernel setting: " + JSON.stringify(written));
+  assert.ok(!written.some(([n]) => n === "VYRE_STORE"), "the installer does not write a store setting: " + JSON.stringify(written));
   const m = /grep -E '(\^\([^']*\)=\[\^\$`\]\*\$)' "\$DIR\/vyre\.env" >"\$ve"/.exec(WRAPPER_SRC);
   assert.ok(m, "the root run's allow-list is where the test expects it");
   const keep = new RegExp(m[1]);

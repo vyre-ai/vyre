@@ -870,7 +870,7 @@ const ARCH = `
       <h2 id="data-h" class="h2">On your server and <b>on your devices.</b></h2>
     </div>
     <div class="ar-data rv">
-      <div><p class="lbl">Records</p><p>The built-in SQLite store, or one Twenty CRM database for each Space behind the same interface.</p></div>
+      <div><p class="lbl">Records</p><p>The kernel's own SQLite store.</p></div>
       <div><p class="lbl">Files</p><p>The Space’s Drive: encrypted chunks over local disk, S3 or a device. Linked Google Drive and Dropbox folders stay at the source and are read through each person’s own account.</p></div>
       <div><p class="lbl">Vault items</p><p>Sealed at rest. A member’s own vault opens with their own master password and Secret Key.</p></div>
       <div><p class="lbl">Sealed fields</p><p>Only inside the sealing process, a separate child process.</p></div>
@@ -922,7 +922,7 @@ const START = `
 ${part('00', 'need', 'What you need', `<ul>
 <li>A Mac or a Windows PC for the app.</li>
 <li>An account with at least one of Claude, Codex, Grok or OpenRouter.</li>
-<li>To add a server: a Linux machine (a cloud machine is fine) or a Mac that stays on. With Records, which is recommended, it needs 8 GB of memory (4 GB at the least); without Records, 2 GB.</li>
+<li>To add a server: a Linux machine (a cloud machine is fine) or a computer that stays on. It needs 8 GB of memory (4 GB at the least).</li>
 <li>To join a team: the invite your team sent you.</li></ul>`)}
 ${part('01', 'name', 'Reserve your name', `<p>Open <a href="/setup/">vyre.run/setup</a>, type the name you want and press <strong>Reserve this name</strong>. The page shows a code that starts with VYRE. Copy it. It is held for you for 24 hours and works once.</p>`)}
 ${part('02', 'app', 'Install the app', `<p><strong>Mac:</strong> download <a href="https://github.com/vyre-ai/vyre/releases/latest">Vyre-aarch64.dmg</a> (Apple silicon) or Vyre-x86_64.dmg (Intel), open it and drag Vyre to Applications. Open it once; if macOS says it cannot check the app, choose Open Anyway in System Settings, Privacy and Security. More on the <a href="/mac/">Mac page</a>.</p>
@@ -930,10 +930,10 @@ ${part('02', 'app', 'Install the app', `<p><strong>Mac:</strong> download <a hre
 ${part('03', 'code', 'Paste the code', `<p>Open the app, choose <strong>Start</strong> and paste the code. The app makes your key on this computer and shows a recovery code once. Keep it somewhere only you can reach.</p>`)}
 ${part('04', 'choose', 'Choose how you will use Vyre', `<ul>
 <li><strong>Join a team.</strong> Paste your team’s invite. You run on their server and need none of your own.</li>
-<li><strong>Add a server.</strong> A machine of your own that stays on: a Linux server, or a Mac. Choose <em>With Records</em> (recommended) or <em>Without Records</em> (a small server).</li>
+<li><strong>Add a server.</strong> A machine of your own that stays on: a Linux server, or a computer that stays on. Records live in Vyre's own store on that server.</li>
 <li><strong>Use My Home</strong> (Mac only). Vyre runs on this Mac while it is awake. Add a server later and everything moves across.</li></ul>`)}
 ${part('05', 'server', 'Add a server', `<p>The app shows one line. Open a terminal on the server as yourself, not as root, and paste it. It looks like this:</p>
-${term('curl -fsSL vyre.run/i | VYRE_CODE=… VYRE_STORE=auto sh', 'curl -fsSL vyre.run/i | VYRE_CODE=… VYRE_STORE=auto sh')}
+${term('curl -fsSL vyre.run/i | VYRE_CODE=… sh', 'curl -fsSL vyre.run/i | VYRE_CODE=… sh')}
 <p>On a Mac that stays on, the app shows the Mac line instead, and the Mac asks for its password once so Vyre can start when the Mac starts. The line works once and expires in 30 minutes.</p>
 <p>The installer checks the release’s signature and sets Vyre up. The server pairs itself. The app finds your server and finishes pairing. You can also open the server's setup page and paste the code the app shows. The page locks after pairing.</p>`)}
 ${part('06', 'phone', 'Sign in on your phone', `<p>On Android, download <a href="https://github.com/vyre-ai/vyre/releases/latest">Vyre-android.apk</a> on the phone and open it; allow installs from your browser or Files app when Android asks. On iPhone there is no App Store app yet: you build the app and install it with Xcode. Then open Vyre on the phone and sign in with your Vyre's address, your username and your master password. More on the <a href="/phone/">phone page</a>.</p>`)}

@@ -1,5 +1,5 @@
 // A type's `protected` flag is read from the definitions once and cached (records.js isProtectedType). The cache is emptied when a define STARTS; a read that builds it while the define is still running (on
-// Twenty a define takes minutes) caches the OLD definitions for good. A kernel whose store's define is slow: a member's read in the middle of a define that makes a type protected must not leave the type open afterwards.
+// the record store a define takes minutes) caches the OLD definitions for good. A kernel whose store's define is slow: a member's read in the middle of a define that makes a type protected must not leave the type open afterwards.
 import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";

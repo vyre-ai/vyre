@@ -81,7 +81,7 @@ export default [
       out(`  ${d.modules.running} modules running${d.modules.waiting ? dim(` · ${d.modules.waiting} waiting for Records, they start by themselves`) : ""}${d.modules.failed ? beacon(` · ${d.modules.failed} failed (vyre modules)`) : ""}`);
       if (d.kernel_note) out(dim(`  ${d.kernel_note}`));
       if (readSpace()) out(`  acting in ${readSpace()} ${dim("· vyre space use --clear to go back to the home's own space")}`);
-      if (d.records_store) { const rs = d.records_store; out(`  records: ${rs.store === "twenty" ? "Records" : rs.store === "builtin" ? "built-in store" : rs.store === "none" ? "none" : rs.store} ${dim(`· ${rs.from === "VYRE_STORE" ? "VYRE_STORE" : "default"}${rs.records === null || rs.records === undefined ? "" : ` · ${rs.records} records`}`)}${rs.note ? beacon(`  ${rs.note}`) : ""}`); }
+      if (d.records_store) { const rs = d.records_store; const n = rs.records === null || rs.records === undefined ? "" : ` · ${rs.records} records`; out(`  records: Vyre store${n}${rs.note ? beacon(`  ${rs.note}`) : ""}`); }
       if (mem) out(`  ${mem}`);
       if (recall) out(dim(`  ${recall}`));
       return 0;

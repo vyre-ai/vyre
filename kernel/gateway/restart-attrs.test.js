@@ -1,4 +1,4 @@
-// After a restart a store that keeps the kernel attributes only in memory (Twenty's AttrMap) starts with an empty map; the log's create events are the authority (kernel/gateway/records.js attrsOf).
+// After a restart a store that keeps the kernel attributes only in memory (the record store's AttrMap) starts with an empty map; the log's create events are the authority (kernel/gateway/records.js attrsOf).
 // A kept (protected) row made before the restart must still be read by an owner, not by a member; a privileged row must not be listed to a member. A kernel on a record store whose `meta` is an empty
 // Map but whose log holds the create events.
 import "../../scripts/mac-test-guard.mjs";
@@ -22,7 +22,7 @@ const NOTE = { name: "note", label: "Note", fields: [{ name: "body", kind: "text
 test("after a restart on a store that keeps kernel attributes in memory: the owner still reads a kept row, a member still does not, and a privileged row is not listed to a member", async () => {
   const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-restart-attrs-"));
   const kernelFile = path.join(dir, "kernel.db"), recordsFile = path.join(dir, "records.db");
-  // the records live in their own database; the attributes are an empty Map at every start (what the Twenty store's meta is after a restart)
+  // the records live in their own database; the attributes are an empty Map at every start (what the record store's meta is after a restart)
   const boot = () => { const store = createSqliteStore({ db: new DatabaseSync(recordsFile), clock: () => Date.now() }); return bootKernel({ db: new DatabaseSync(kernelFile), store: Object.create(store, { meta: { value: new Map() } }), space: SPACE, owner: OWNER, owner_uid: 501, key, sealer }); };
   const ownerOf = (/** @type {any} */ k) => k.chains.fromFacts({ kind: "device", device_key_id: "d-owner", person: OWNER, path: "direct", session: "s1" });
   const bobOf = (/** @type {any} */ k) => k.chains.fromFacts({ kind: "invitee", person: BOB, vouched: true });

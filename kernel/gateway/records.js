@@ -1119,7 +1119,7 @@ export function createRecords(cfg) {
         } while (cursor);
       }
       for (const x of relink) if (!(await allowed(chain, "records.update", urn(x.type, x.id)))) throw new KernelError("not_allowed", "this merge would change records you may not change");
-      // Read each link value now, while the dropped record is live: Twenty reads a link to a removed record as empty, so a list read after the removal would have lost the very entry to swap.
+      // Read each link value now, while the dropped record is live: the record store reads a link to a removed record as empty, so a list read after the removal would have lost the very entry to swap.
       /** @type {Map<string, any>} */ const linkBefore = new Map();
       try { for (const x of relink) linkBefore.set(`${x.type}/${x.id}/${x.field}`, (await store.get(x.type, x.id)).data[x.field]); } catch (e) { throw mapError(e); }
       /** @type {(() => Promise<any>)[]} */ const undo = [];

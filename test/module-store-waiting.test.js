@@ -54,18 +54,18 @@ test("a module whose start finds the record store away is waiting, not failed; i
   assert.equal(row("after").waiting, undefined);
 });
 
-test("a real daemon whose record store cannot start: no module is failed, and the planner waits for the records", { timeout: 60_000 }, async t => {
-  process.env.VYRE_STORE = "twenty";   // no room for a Twenty here, so the Space's store stays away
+test("a real daemon with VYRE_STORE=twenty starts on the Vyre store: the planner runs and is not waiting, and the old value is said once", { timeout: 60_000 }, async t => {
+  process.env.VYRE_STORE = "twenty";
   t.after(() => { delete process.env.VYRE_STORE; });
-  // the machine's own preflight would provision a real Twenty on a box that can run one (minutes, and it is another test's server); this test says the store cannot start, on any machine
-  const recordsStore = { preflight: async () => ({ ok: false, reasons: ["Docker is not installed (the test says so)"], facts: {} }) };
-  const d = await start({ root: tempHome(t), presence: present, log: () => {}, kernel: true, recordsStore });
+  /** @type {string[]} */ const lines = [];
+  const d = await start({ root: tempHome(t), presence: present, log: (/** @type {any} */ m) => lines.push(String(m)), kernel: true });
   t.after(() => d.stop());
   const st = d.registry.status();
-  assert.deepEqual(st.filter((/** @type {any} */ m) => m.state === "failed" || m.state === "invalid").map((/** @type {any} */ m) => m.name), [], "nothing fails the start while the store is away");
+  assert.deepEqual(st.filter((/** @type {any} */ m) => m.state === "failed" || m.state === "invalid").map((/** @type {any} */ m) => m.name), [], "nothing fails the start");
   const planner = st.find((/** @type {any} */ m) => m.name === "planner");
   assert.equal(planner.state, "running");
-  assert.equal(planner.waiting, "records");
+  assert.equal(planner.waiting, undefined);
+  assert.equal(lines.filter(l => l === "records: Twenty is gone; this Space starts on the Vyre store, empty").length, 1);
 });
 
 test("a module whose start meets the store's 'still starting' as the kernel passes it on (a KernelError with the store's words) is waiting, not failed; and it is tried again by itself, with no join event", { timeout: 30_000 }, async t => {
@@ -95,61 +95,43 @@ test("a module whose start meets the store's 'still starting' as the kernel pass
   assert.deepEqual((await reg.call("slowtypes.list", {}, "cli", {})).data, { rows: [] });
 });
 
-test("a real daemon whose record store is STARTING (not absent) when the planner starts: the planner is waiting, not failed, answers in the store's words, and runs by itself once the store attaches late, started once", { timeout: 60_000 }, async t => {
-  const { DatabaseSync } = await import("node:sqlite");
-  const { createSqliteStore } = await import("../kernel/store/sqlite.js");
+test("a real daemon with VYRE_STORE=twenty answers planner.list at once on the Vyre store, and says the old value once", { timeout: 60_000 }, async t => {
   process.env.VYRE_STORE = "twenty";
   t.after(() => { delete process.env.VYRE_STORE; });
   /** @type {string[]} */ const lines = [];
-  // the store is provisioning (never finishes here) and a caller that needs it waits 200 ms before it is refused in the store's words (a real first install: about a minute, and records types take minutes more)
-  const recordsStore = { preflight: async () => ({ ok: true, reasons: [], facts: {} }), provision: () => new Promise(() => {}), runner: {}, startWaitMs: 100, storeWaitMs: 200 };
-  const d = await start({ root: tempHome(t), presence: present, log: m => lines.push(String(m)), kernel: true, recordsStore });
+  const d = await start({ root: tempHome(t), presence: present, log: (/** @type {any} */ m) => lines.push(String(m)), kernel: true });
   t.after(() => d.stop());
   const planner = () => d.registry.status().find((/** @type {any} */ m) => m.name === "planner");
-  assert.deepEqual(d.registry.status().filter((/** @type {any} */ m) => m.state === "failed" || m.state === "invalid").map((/** @type {any} */ m) => m.name), [], "no module is failed while the store is starting");
+  assert.deepEqual(d.registry.status().filter((/** @type {any} */ m) => m.state === "failed" || m.state === "invalid").map((/** @type {any} */ m) => m.name), []);
   assert.equal(planner().state, "running");
-  assert.equal(planner().waiting, "records", "the planner is waiting for the records");
-  const early = await d.registry.call("planner.list", {}, "cli", {});
-  assert.match(early.error?.message || "", /waiting for the records.*record store/, "its tools answer in words meanwhile");
-  // the store comes up late: the daemon's own join starts the waiting module, once
-  const ks = /** @type {any} */ (d.kernel).store;
-  await ks.attach(createSqliteStore({ db: new DatabaseSync(":memory:") }));
-  for (let i = 0; i < 100 && planner().waiting; i++) await new Promise(r => setTimeout(r, 100));
-  assert.equal(planner().waiting, undefined, "the planner started by itself, no restart");
-  assert.equal(planner().state, "running");
-  assert.equal(lines.filter(l => /^module planner [\d.]+ running/.test(l)).length, 1, "and it ran once: " + lines.filter(l => /module planner/.test(l)).join(" | "));
+  assert.equal(planner().waiting, undefined);
+  assert.equal(lines.filter(l => l === "records: Twenty is gone; this Space starts on the Vyre store, empty").length, 1);
   const late = await d.registry.call("planner.list", {}, "cli", {});
-  assert.ok(!late.error, "its tools answer for real now: " + JSON.stringify(late.error));
+  assert.ok(!late.error, "its tools answer: " + JSON.stringify(late.error));
 });
 
-test("a server restarted while Records is slow, with a reminder already stored: the planner waits, then runs by itself when the store attaches late, and the reminder that fell due meanwhile rings once", { timeout: 90_000 }, async t => {
-  const { DatabaseSync } = await import("node:sqlite");
-  const { createSqliteStore } = await import("../kernel/store/sqlite.js");
+test("a server restarted with VYRE_STORE=twenty still rings a stored reminder once, and the planner is not waiting", { timeout: 90_000 }, async t => {
   const root = tempHome(t);
-  // before: a normal run stores a reminder due in a few seconds, and stops
   const a = await start({ root, presence: present, log: () => {}, kernel: true });
   const at = new Date(Date.now() + 4000).toISOString();
   const added = await a.registry.call("planner.add", { text: "call Dana", kind: "reminder", at }, "cli", {});
   assert.ok(!added.error, JSON.stringify(added.error));
   const id = added.data.id;
   await a.stop();
-  // the restart: Records is slow (starting, then attaching late); the reminder falls due while the planner waits
   process.env.VYRE_STORE = "twenty";
   t.after(() => { delete process.env.VYRE_STORE; });
-  const recordsStore = { preflight: async () => ({ ok: true, reasons: [], facts: {} }), provision: () => new Promise(() => {}), runner: {}, startWaitMs: 100, storeWaitMs: 200 };
-  const d = await start({ root, presence: present, log: () => {}, kernel: true, recordsStore });
+  /** @type {string[]} */ const lines = [];
+  const d = await start({ root, presence: present, log: (/** @type {any} */ m) => lines.push(String(m)), kernel: true });
   t.after(() => d.stop());
   const planner = () => d.registry.status().find((/** @type {any} */ m) => m.name === "planner");
-  assert.equal(planner().waiting, "records");
-  await new Promise(r => setTimeout(r, Math.max(0, Date.parse(at) - Date.now()) + 1500));   // the reminder is now due
-  await /** @type {any} */ (d.kernel).store.attach(createSqliteStore({ db: new DatabaseSync(path.join(root, "vyre.db")) }));
-  for (let i = 0; i < 100 && planner().waiting; i++) await new Promise(r => setTimeout(r, 100));
-  assert.equal(planner().waiting, undefined, "the planner started by itself");
+  assert.equal(planner().state, "running");
+  assert.equal(planner().waiting, undefined);
+  assert.ok(lines.includes("records: Twenty is gone; this Space starts on the Vyre store, empty"));
   let rings = 0;
-  for (let i = 0; i < 60 && rings < 1; i++) { await new Promise(r => setTimeout(r, 250)); const g = await d.registry.call("planner.get", { item: id }, "cli", {}); rings = (g.data && g.data.firings ? g.data.firings.length : 0); }
+  for (let i = 0; i < 40 && rings < 1; i++) { await new Promise(r => setTimeout(r, 250)); const g = await d.registry.call("planner.get", { item: id }, "cli", {}); rings = (g.data && g.data.firings ? g.data.firings.length : 0); }
   await new Promise(r => setTimeout(r, 1500));
   const g = await d.registry.call("planner.get", { item: id }, "cli", {});
-  assert.equal(g.data.firings.length, 1, "the reminder due while it waited rang once, and not again: " + JSON.stringify(g.data.firings));
+  assert.equal(g.data.firings.length, 1, "the stored reminder rang once, and not again: " + JSON.stringify(g.data && g.data.firings));
 });
 
 test("the retry of a waiting module does not start it while the store has not joined (it would only sit in the store's hold); it starts it the moment the store is there", { timeout: 30_000 }, async t => {

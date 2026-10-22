@@ -7,7 +7,7 @@
 //
 // Design choices, and why:
 // - Nothing starts at boot and mcp.tools never spawns. A start lists the server's tools and caches
-//   them in the row, so a new session lists tools from the store. Twenty servers cost twenty rows.
+//   them in the row, so a new session lists tools from the store. Record-store servers cost twenty rows.
 // - One unref'd setTimeout per running server stops it after `idle` ms without a call. No polls.
 // - A crash marks the server failed; the next call restarts it, three times in five minutes at
 //   most, then it stays failed until mcp.restart. A server that dies in a loop cannot spin.

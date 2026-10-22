@@ -36,7 +36,7 @@ async function fakeVyred(t, root, tools) {
   t.after(() => new Promise(r => { server.closeAllConnections(); server.close(() => r(undefined)); }));
   return calls;
 }
-const HEALTH = { data: { version: "0.3.1", commit: "abc1234", role: "server", pid: 1, uptime: 5000, modules: { running: 30, failed: 0 }, records_store: { store: "twenty", from: "default", records: 12 } } };
+const HEALTH = { data: { version: "0.3.1", commit: "abc1234", role: "server", pid: 1, uptime: 5000, modules: { running: 30, failed: 0 }, records_store: { store: "vyre", records: 12 } } };
 
 test("vyre space up on a server that is not set up says where it is set up from, and asks the daemon for no code", async t => {
   const root = tempHome(t);
@@ -83,7 +83,7 @@ test("vyre space shows the name and address, owner, members, Records, vault, ver
   assert.match(r.out, /Space +Harlow · harlow\.vyre\.run/);
   assert.match(r.out, /Owner +Harlow \(paired by Alex's laptop\)/);
   assert.match(r.out, /Members +4 · 2 owners/);
-  assert.match(r.out, /Records +Records · 12 records/);
+  assert.match(r.out, /Records +Vyre store · 12 records/);
   assert.match(r.out, /Vault +2 items/);
   assert.match(r.out, /Version +0\.3\.1/);
   assert.ok(!/Next/.test(r.out));
@@ -94,7 +94,7 @@ test("vyre space shows the name and address, owner, members, Records, vault, ver
 test("vyre space on a server nobody owns says the next step is vyre space up, and when Records is still setting up says to check again", async t => {
   const root = tempHome(t);
   await fakeVyred(t, root, {
-    "/v1/health": async () => ({ data: { ...HEALTH.data, records_store: { store: "twenty", from: "default", records: null, note: "setting up" } } }),
+    "/v1/health": async () => ({ data: { ...HEALTH.data, records_store: { store: "vyre", records: null, note: "setting up" } } }),
     "wink.server.status": async () => ({ data: { owned: false } }), "spaces.list": async () => ({ data: [] }), "vault.list": async () => ({ error: { code: "no_such_tool", message: "no tool vault.list" } }),
   });
   const r = await run(root, ["space"]);

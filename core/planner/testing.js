@@ -63,7 +63,7 @@ export async function prepareKernel(/** @type {any} */ k) {
   }
 }
 
-/** A kernel for a test: the memory store, or any store handed in (the live suite passes a real Twenty's). */
+/** A kernel for a test: the memory store, or any store handed in (the live suite passes a real record store). */
 export const newKernel = async (/** @type {any} */ store, /** @type {any} */ more = {}) => createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 4), presence, ...(store ? { store } : {}), ...more });
 
 export async function world(t, { tz = "Asia/Karachi", start = T0, google = fakeGoogle(), kernel = null, store = null } = {}) {

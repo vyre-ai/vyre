@@ -1,5 +1,5 @@
 // @ts-check
-// The Flow runner (contract 9). Vyre's own, not Twenty's: every step goes through the gateway as the approver's narrowed chain.
+// The Flow runner (contract 9). Vyre's own: every step goes through the gateway as the approver's narrowed chain.
 //
 //   Authority      a run has the chain [automation:<flow>, approver]. Every effect step is first checked against the Flow's declared caps, then
 //                  `authorize` is asked as that chain. `ask` raises a card and waits; `deny` for a lost grant pauses the Flow and says why.

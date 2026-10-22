@@ -113,7 +113,7 @@ flowchart LR
 | --- | --- |
 | Settings, the daemon's database, logs, the socket | The Vyre home on each machine: `~/.vyre`, or `VYRE_HOME`. On a Linux server it is inside a Docker volume. |
 | A Space's kernel (identity, grants, event log) | `kernel.db` for that Space in the home. The personal Space's tables are in `vyre.db`. |
-| Records | The built-in SQLite store, or one Twenty CRM database per Space behind the same interface. |
+| Records | The kernel's own SQLite store. |
 | Files | The Space's Drive: encrypted chunks over local disk, S3 or a device. Linked Google Drive and Dropbox folders stay at the source and are read through each person's own account. |
 | Vault items | `vault/` in the home, sealed at rest. A member's own vault is opened with their own master password and Secret Key. |
 | Sealed fields | Only inside the sealing process, a separate child process. |
@@ -159,7 +159,7 @@ Deeper: [the map, sections 5 and 13](map.md) and [Presence](../concepts/presence
 | `names/` | The name directory (a Cloudflare Worker). |
 | `escrow/` | The Worker that keeps each identity's sealed Secret Key for GitHub sign-in. |
 | `wink/` | The Go forwarder for Vyre's own network, built into the server image. |
-| `stores/` | Record stores behind the kernel's store interface; today the Twenty store. |
+| `stores/` | The kernel's record store, SQLite, behind the store interface. |
 | `box/` | The server's Docker image, compose files and host command. |
 | `packages/` | The module SDK: the manifest schema and its checker. |
 | `examples/` | Example modules to copy from. |

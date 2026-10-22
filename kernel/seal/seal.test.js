@@ -427,22 +427,22 @@ test("teardown: closing the client ends the sealing process, and a parent that d
 test("service credentials: a kernel module's key is sealed in the process, read back at the point of use, rotated in place, listed by name, and on no disk in the clear", async t => {
   const dir = tmp("svc"), opts = { dir, timeoutMs: 8000, dev: true };
   let s = startSealer(opts); t.after(async () => { await s.close(); fs.rmSync(dir, { recursive: true, force: true }); });
-  const key = "twenty-key-" + "A1b2C3".repeat(8), next = "twenty-key-" + "Z9y8X7".repeat(8);
-  assert.equal((await s.service.put({ name: "twenty.spc_harlow.key", value: key })).stored, true);
-  assert.equal(await s.service.get({ name: "twenty.spc_harlow.key" }), key);
-  await s.service.put({ name: "twenty.spc_harlow.key", value: next }); assert.equal(await s.service.get({ name: "twenty.spc_harlow.key" }), next, "a rotation lands in place");
-  await s.service.put({ name: "twenty.spc_other.key", value: key });
-  assert.deepEqual(await s.service.list(), ["twenty.spc_harlow.key", "twenty.spc_other.key"]);
+  const key = "store-key-" + "A1b2C3".repeat(8), next = "store-key-" + "Z9y8X7".repeat(8);
+  assert.equal((await s.service.put({ name: "store.spc_harlow.key", value: key })).stored, true);
+  assert.equal(await s.service.get({ name: "store.spc_harlow.key" }), key);
+  await s.service.put({ name: "store.spc_harlow.key", value: next }); assert.equal(await s.service.get({ name: "store.spc_harlow.key" }), next, "a rotation lands in place");
+  await s.service.put({ name: "store.spc_other.key", value: key });
+  assert.deepEqual(await s.service.list(), ["store.spc_harlow.key", "store.spc_other.key"]);
   for (const f of fs.readdirSync(dir, { recursive: true })) { const p = path.join(dir, String(f)); if (fs.statSync(p).isFile() && !p.endsWith("master.key")) for (const v of [key, next]) assert.equal(fs.readFileSync(p).includes(Buffer.from(v)), false, `no plaintext in ${f}`); }
-  await s.close(); s = startSealer(opts); assert.equal(await s.service.get({ name: "twenty.spc_harlow.key" }), next, "it survives a restart");
-  assert.equal(await code(s.service.get({ name: "twenty.spc_nobody.key" })), "not_found");
+  await s.close(); s = startSealer(opts); assert.equal(await s.service.get({ name: "store.spc_harlow.key" }), next, "it survives a restart");
+  assert.equal(await code(s.service.get({ name: "store.spc_nobody.key" })), "not_found");
   for (const bad of ["x", "Has Space", "../etc", "A.B"]) assert.equal(await code(s.service.put({ name: bad, value: "v" })), "bad_input", bad);
-  assert.equal(await code(s.service.put({ name: "twenty.spc_harlow.key", value: "" })), "bad_input");
-  assert.equal((await s.service.delete({ name: "twenty.spc_harlow.key" })).deleted, true); assert.equal(await code(s.service.get({ name: "twenty.spc_harlow.key" })), "not_found");
-  const other = startSealer({ dir: tmp("svc2"), timeoutMs: 8000, dev: true }); t.after(() => other.close()); assert.equal(await code(other.service.get({ name: "twenty.spc_other.key" })), "not_found", "another home does not have it");
+  assert.equal(await code(s.service.put({ name: "store.spc_harlow.key", value: "" })), "bad_input");
+  assert.equal((await s.service.delete({ name: "store.spc_harlow.key" })).deleted, true); assert.equal(await code(s.service.get({ name: "store.spc_harlow.key" })), "not_found");
+  const other = startSealer({ dir: tmp("svc2"), timeoutMs: 8000, dev: true }); t.after(() => other.close()); assert.equal(await code(other.service.get({ name: "store.spc_other.key" })), "not_found", "another home does not have it");
   // An existing 0600 file is moved in once and shredded.
   const file = path.join(dir, "..", `adopt-${Date.now()}.key`); fs.writeFileSync(file, key + "\n", { mode: 0o600 });
-  assert.equal((await s.service.adopt({ name: "twenty.spc_adopted.key", file })).adopted, true); assert.equal(fs.existsSync(file), false); assert.equal(await s.service.get({ name: "twenty.spc_adopted.key" }), key);
+  assert.equal((await s.service.adopt({ name: "store.spc_adopted.key", file })).adopted, true); assert.equal(fs.existsSync(file), false); assert.equal(await s.service.get({ name: "store.spc_adopted.key" }), key);
 });
 
 test("found against the real chains: a member on a paired device reveals with a hardware proof, a daemon speaking for them in a session does not", async t => {

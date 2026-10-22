@@ -1,4 +1,4 @@
-// kernel/store/sqlite.js: the durable store on the home (hot data, the kernel's own records: grants, tasks, anything the Space keeps before a Twenty
+// kernel/store/sqlite.js: the durable store on the home (hot data, the kernel's own records: grants, tasks, anything the Space keeps before its record
 // store is added). It is the reference store made durable: the same behaviour, so the same conformance suite is the definition of it, with every
 // change written through to the home's SQLite database (core/store) in the same turn. Rows live in the kernel's own `kernel_*` tables, never a module's.
 // A change is one transaction (the record and its change-feed entry), so a crash leaves either both or neither.

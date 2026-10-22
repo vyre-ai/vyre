@@ -128,7 +128,7 @@ export async function walkLive(w) {
       await flow.begin();
       const line = flow.state.installLine;
       assert.ok(line.includes(`VYRE_CODE=${flow.state.code}`), "the line carries the one-time code");
-      assert.ok(line.includes("VYRE_STORE=auto"), "the app's line always carries Records");
+      assert.ok(!line.includes("VYRE_STORE="), "the app's line carries no store choice");
       assert.match(line, /^curl -fsSL vyre\.run\/i \| /, "the line is the published installer");
       return line.replace(flow.state.code, "<code>");
     }, { needs });

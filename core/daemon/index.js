@@ -300,21 +300,15 @@ async function startLocked(opts, root, p, release) {
   /** @type {(() => void) | null} */ let closeFlowsHost = null;
   {   // the kernel is always on: there is no other mode
     const { bootHomeKernel } = await import("../../kernel/home.js");
-    // The record store: VYRE_STORE=sqlite (the default), auto or twenty (stores/twenty/space-store.js). With auto or twenty each Space's records live in its own Twenty, provisioned
-    // on first use, when the box can run it; auto falls back to SQLite on a box that cannot (and a new hosted Space asks first), twenty refuses to start instead. The reach, memory
-    // profile and gateway container are options of that factory with defaults, not settings.
-    /** @type {((space: string, meta?: any) => Promise<any>) | undefined} */ let storeFor;
-    const { storeMode } = await import("../../stores/twenty/space-store.js");
+    // Records live in the kernel's own SQLite store. An older server may still have VYRE_STORE=auto or twenty in its environment: that value is ignored, and the Space starts empty on SQLite. Said once.
+    const askedStore = process.env.VYRE_STORE;
+    if (askedStore === "auto" || askedStore === "twenty") log("records: Twenty is gone; this Space starts on the Vyre store, empty");
     const isServerInstall = config.isServer(cfg.machine);
     // A device install (a laptop or desktop that is not a server) is Basic: its own SQLite store and only the fixed personal types (records/basic-types.js). A development build allows every type.
     /** @type {{ allow: Set<string>, refusal: string } | undefined} */ let basic;
     if (opts.basic === true || (!isServerInstall && isPackaged())) { const { basicAllow, BASIC_REFUSAL } = await import("../../records/basic-types.js"); basic = { allow: basicAllow(), refusal: BASIC_REFUSAL }; basicDevice = true; }
-    if (storeMode(process.env, { server: isServerInstall }) !== "sqlite") {
-      const { createStoreFor } = await import("../../stores/twenty/space-store.js");
-      storeFor = createStoreFor({ home: root, log, server: isServerInstall, degrade: true, ...(opts.recordsStore && typeof opts.recordsStore === "object" ? opts.recordsStore : {}) });   // `recordsStore`: a test's own preflight/runner, so no test depends on whether this machine can run Twenty
-    }
     // Stages made of tasks (kernel/flows/stages.js): entering a stage makes its tasks in the kernel's own task store, and finished tasks move the record on. The gateway calls the two
-    // hooks, which are bound late because the module needs the booted kernel. Tasks live only in the kernel store (no task record in Twenty).
+    // hooks, which are bound late because the module needs the booted kernel. Tasks live only in the kernel store.
     /** @type {any} */ let stages = null;
     // Flows and stages made of tasks run in ONE assembly per Space (core/daemon/flows-host.js): the home's own Space here, and every hosted Space through the Spaces registry's
     // `stageFactory`. The `flows` module only registers the tools over it. A Flow's "Call a service" step reaches the vault's forward after the kernel has allowed it.
@@ -475,7 +469,7 @@ async function startLocked(opts, root, p, release) {
     const lists = modelListDrivers({ keyOf: async (/** @type {any} */ a) => { const f = /** @type {any} */ (registry.deps).accountKey; return typeof f === "function" ? f(a) : null; }, fetch: httpFetch, hostSafe });
     // the sign-in providers (Claude, Codex, Grok): one turn of the provider's own CLI on the person's own account (core/sessions/drivers/signin-door.js), beside their model lists
     const { signinDoorDrivers, SIGNIN_DOOR_PROVIDERS } = await import("../sessions/drivers/signin-door.js"), signin = /** @type {any} */ (signinDoorDrivers()), modelDrivers = { ...lists, openrouter: openrouterDoorDriver(), "openai-compatible": { ...openrouterDoorDriver(), models: lists["openai-compatible"].models }, opencode: { ...lists.opencode, call: opencodeDoorDriver().call }, ...Object.fromEntries(SIGNIN_DOOR_PROVIDERS.map(p => [p, { ...lists[p], call: signin[p].call }])) };
-    kernel = await bootHomeKernel({ db, root, log, deviceEnrolled, modelDrivers, presenceNotNeeded: (/** @type {any} */ q) => noPresenceForChain({ presence, owner: () => (kernel && kernel.id ? kernel.id.owner : null) }, q), requireStore: Boolean(storeFor), emitModel: (/** @type {string} */ type, /** @type {any} */ payload) => { try { events.emit("kernel", type, payload); } catch { /* a notice, never a stop */ } }, onOwnerAdopted: (/** @type {string} */ owner, /** @type {string} */ previous) => events.emit("kernel", "owner.adopted", { owner, previous }), runnerHost, remote: remoteFor, standIn: devStandIn, ...(opts.kernelPresence ? { presence: opts.kernelPresence } : {}), ...(opts.kernelSealer ? { sealer: opts.kernelSealer } : {}), ...(opts.kernelDoor ? { door: opts.kernelDoor } : {}), isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}), ...(basic ? { basic } : {}),
+    kernel = await bootHomeKernel({ db, root, log, deviceEnrolled, modelDrivers, presenceNotNeeded: (/** @type {any} */ q) => noPresenceForChain({ presence, owner: () => (kernel && kernel.id ? kernel.id.owner : null) }, q), emitModel: (/** @type {string} */ type, /** @type {any} */ payload) => { try { events.emit("kernel", type, payload); } catch { /* a notice, never a stop */ } }, onOwnerAdopted: (/** @type {string} */ owner, /** @type {string} */ previous) => events.emit("kernel", "owner.adopted", { owner, previous }), runnerHost, remote: remoteFor, standIn: devStandIn, ...(opts.kernelPresence ? { presence: opts.kernelPresence } : {}), ...(opts.kernelSealer ? { sealer: opts.kernelSealer } : {}), ...(opts.kernelDoor ? { door: opts.kernelDoor } : {}), isFirstParty: dir => registry.isFirstParty(dir), ...(basic ? { basic } : {}),
       // A credentialed request run at the home: the vault's own forward (an internal tool only the lease module may call), under the Space's credential; the kernel has already authorized it.
       // A lent computer's request for a credential at the point of use (kernel leases.use): the member's provider key, by the vault item the Space's definition names, for one request. The vault's credentials port is the
       // one way to it, and it answers only the key of an API-key account (what `sessions.accounts.key` stores): any other item is not resolved here and the caller gets not_found.
@@ -513,9 +507,7 @@ async function startLocked(opts, root, p, release) {
       watchSentMail({ events, kernel: /** @type {any} */ (kernel).gateway, log, call: (tool, input) => registry.call(tool, input, "module:leases"),
         chain: () => /** @type {any} */ (kernel).chains.fromFacts({ kind: "device", device_key_id: "sent-mail-log", person: kernel.id.owner, path: "direct", session: "sent-mail-log" }) });
     }
-    // The home's kernel is up. If its record store could not be set up, it holds a store that answers `unavailable` and the setup is tried again in the background (stores/twenty/space-store.js):
-    // from here a definition is a person's act and is refused while the store is away. `registry.deps.storeRetry` tries again now.
-    if (storeFor && typeof /** @type {any} */ (storeFor).bootDone === "function") { /** @type {any} */ (storeFor).bootDone(); registry.deps.storeRetry = /** @type {any} */ (storeFor).retry; }
+    // The home's kernel is up on its own SQLite store. A module that failed at start only because a store was still starting starts again when that store joins.
     // A module that failed at start only because the store was still starting (a first install makes the Space's database) starts again when the store joins.
     { const ks = /** @type {any} */ (kernel).store; if (ks && typeof ks.attached === "function") registry.deps.storeAttached = () => ks.attached(); if (ks && typeof ks.attached === "function" && !ks.attached() && typeof ks.whenReady === "function") ks.whenReady(() => registry.startStoreWaiting()); }
     if (typeof kernel.bindCalls === "function") kernel.bindCalls(currentCall);

@@ -1088,20 +1088,20 @@ test("the transport's ports: a paired device is an entry, the entry port answers
 });
 
 
-test("space creation asks the kernel which store it would use: a machine that cannot run Twenty makes nothing and offers the person's server in the kernel's words", async t => {
+test("space creation asks the kernel which store it would use: a machine whose plan asks first makes nothing and offers the person's server in the kernel's words", async t => {
   const w = world(t);
-  const TEXT = "This machine cannot run the record store for a new space (Twenty), so the space was not made here. Put it on your server instead.";
+  const TEXT = "This machine cannot host a new space here, so the space was not made. Put it on your server instead.";
   const hosts = [];
   let small = true;
   const kernel = { space: "spc_bbbbbbbbbbbb", for: () => ({ space: "spc_bbbbbbbbbbbb", hosted: true, gateway: {} }), chain: async () => ({}), proofFrom: () => ({}), serviceChain: () => ({}),
     spaces: {
-      storePlan: async () => (small ? { store: "none", confirm: { text: TEXT, choices: ["server", "cancel"] } } : { store: "twenty" }),
+      storePlan: async () => (small ? { store: "none", confirm: { text: TEXT, choices: ["server", "cancel"] } } : { store: "sqlite" }),
       host: async o => { hosts.push(o); return { space: `spc_${"b".repeat(12)}`.replace(/b/g, hosts.length === 1 ? "b" : "c") }; },
     } };
   const d = await device(t, { kernelFor: () => kernel, records: true });
   await d.ok("spaces.identity.create", { name: "alex" });
   const args = { name: "harlow", displayName: "Harlow Legal", home: { kind: "this-computer", confirmed: true } };
-  // cannot run Twenty: nothing is made, and the person is shown exactly the kernel's words and the two choices
+  // the plan asks first: nothing is made, and the person is shown exactly the kernel's words and the two choices
   const ask = await d.ok("spaces.create", args);
   assert.equal(ask.status, "needs_confirmation");
   assert.deepEqual(ask.confirm, { text: TEXT, choices: ["server", "cancel"] });
@@ -1113,7 +1113,7 @@ test("space creation asks the kernel which store it would use: a machine that ca
   // server: pointed at the person's server, still nothing here
   assert.equal((await d.ok("spaces.create", { ...args, storeChoice: "server" })).status, "use_server");
   assert.equal(hosts.length, 0);
-  // a machine that can run Twenty: no question
+  // a machine whose plan is the Vyre store: no question
   small = false;
   const big = await d.ok("spaces.create", { name: "northwind", home: { kind: "this-computer", confirmed: true } });
   assert.equal(big.status, "done", JSON.stringify(big));
@@ -1950,25 +1950,17 @@ test("spaces.identity.devices.read on a SERVER (no identity of its own): the pai
 test("spaces.upgrade.*: the plan, one approval, what moved and what did not, and the Personal row then points to My Cloud", async t => {
   const { createKernel } = await import("../../kernel/index.js");
   const { createSqliteStore } = await import("../../kernel/store/sqlite.js");
-  const { createTwentyStore } = await import("../../stores/twenty/store.js");
-  const { TwentyClient } = await import("../../stores/twenty/client.js");
-  const { FakeTwenty } = await import("../../stores/twenty/testing/fake-twenty.js");
   const { DatabaseSync } = await import("node:sqlite");
   const { CONTACT } = await import("../../kernel/conformance/suite.js");
   const { payloadHash } = await import("../../kernel/seal/wire.js");
   const { proofRequest } = await import("../../kernel/remote/proof.js");
   const w = world(t);
-  const fake = await new FakeTwenty().start();
-  t.after(() => fake.stop());
   const PERSONAL = "spc_" + "c".repeat(12), CLOUD = "spc_" + "d".repeat(12), ME = "per_" + "m".repeat(26);
   const presence = () => { const used = new Set(); return { check: async ({ chain, op, fields, proof }) => (chain && proof && proof.payload_hash === payloadHash(op, chain.space, fields) && !used.has(proof.nonce) && (used.add(proof.nonce), true) ? null : "wrong_payload") }; };
   let clock = 1_800_000_000_000; const tick = () => ++clock;
   const pk = await createKernel({ space: PERSONAL, owner: ME, owner_uid: 501, key: Buffer.alloc(32, 1), clock: tick, presence: presence(), store: createSqliteStore({ db: new DatabaseSync(":memory:") }) });
-  const client = new TwentyClient({ url: fake.url, key: () => fake.key, sleep: async () => {} });
-  const dir = fs.mkdtempSync(path.join((await import("node:os")).tmpdir(), "upt-"));
-  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
-  const cloudStore = createTwentyStore({ client, space: CLOUD, dir, webhookSecret: "ab".repeat(8), graceMs: 0 });
-  await cloudStore.define({ add_types: [...(await import("../../records/core-types.js")).CORE_TYPES] }); // the core types are in My Cloud's Twenty before its kernel starts
+  const cloudStore = createSqliteStore({ db: new DatabaseSync(":memory:") });
+  await cloudStore.define({ add_types: [...(await import("../../records/core-types.js")).CORE_TYPES] }); // the core types are in My Cloud before its kernel starts
   const ck = await createKernel({ space: CLOUD, owner: ME, owner_uid: 501, key: Buffer.alloc(32, 2), clock: tick, presence: presence(), store: cloudStore });
   const chainOf = (k) => k.chains.fromFacts({ kind: "device", device_key_id: "d1", person: ME, path: "direct" });
   const kernelFor = () => ({
@@ -1993,7 +1985,7 @@ test("spaces.upgrade.*: the plan, one approval, what moved and what did not, and
   assert.deepEqual([done.upgraded, done.to, done.moved.records, done.notMoved, done.frozen], [true, CLOUD, { contact: 3 }, [], false]);
   assert.match(done.not_frozen_because, /My Cloud has not confirmed/, "without My Cloud's signed receipt this space is not frozen");
   assert.ok(done.notes.some(n => n.what === "My Cloud's receipt"), "and the answer says why no receipt was asked for");
-  assert.equal((await ck.gateway.records.query(chainOf(ck), "contact", { page: { limit: 10 } })).rows.length, 3, "the records are in My Cloud's Twenty");
+  assert.equal((await ck.gateway.records.query(chainOf(ck), "contact", { page: { limit: 10 } })).rows.length, 3, "the records are in My Cloud");
   await d.ok("spaces.identity.create", { name: "upgrader" });
   const row = (await d.ok("spaces.list")).find(x => x.id === PERSONAL);
   assert.equal(row.upgraded_to, undefined, "the Personal row does not point to My Cloud until My Cloud has confirmed");

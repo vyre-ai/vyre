@@ -52,7 +52,7 @@ test("app helper: app-stop keeps the walls; app-down removes both chains' rules 
   assert.match(never.status(n).message, /never started/);
 });
 
-test("app helper: another app's, and a Space's, rules are never touched by app-down", opts, async t => {
+test("app helper: another app's rules are never touched by app-down", opts, async t => {
   const r = await ready(t);
   // a second app: the real DocuSeal line and compose under another name and hook port
   const { composeFile } = await import("../core/appmods/host-plan.js");
@@ -61,10 +61,6 @@ test("app helper: another app's, and a Space's, rules are never touched by app-d
   r.flag("hostplan-compose-documents-two", composeFile("documents").replaceAll("vyre-app-documents", "vyre-app-documents-two"));
   await r.run(["space-helper", "install"]);
   assert.equal(r.catalogLine().trim().split("\n").length, 2);
-  // a Space with its own rules in the same container
-  const sp = r.ask("up harlow\n");
-  await r.helper();
-  assert.equal(r.status(sp).state, "ok");
   for (const m of ["documents", "documents-two"]) { r.flag("hook-port", m === "documents" ? "43001" : "43002"); const o = await r.appUp(m); assert.equal(o.st.state, "ok", m + ": " + JSON.stringify(o.st)); }
   assert.equal(r.appFw().length, 10);
   const dn = r.ask("app-down documents\n");
@@ -73,7 +69,6 @@ test("app helper: another app's, and a Space's, rules are never touched by app-d
   const left = r.appFw();
   assert.equal(left.length, 5);
   assert.ok(left.every((/** @type {any} */ x) => x.r.c === "vyre-app:documents-two"), "documents-two keeps all five");
-  assert.equal(r.rules().filter(l => l.includes("vyre:harlow")).length, 2, "the Space keeps its two");
 });
 
 test("app helper: the handoff file is swept after ten minutes, and `reattach` walls and proves a running app again in a new container, or stops it", opts, async t => {
@@ -106,21 +101,21 @@ test("app helper: the handoff file is swept after ten minutes, and `reattach` wa
   assert.ok(!fs.existsSync(path.join(r.F, "app-running-documents")), "an app that cannot be proved is stopped, never left running unwalled");
 });
 
-test("app helper: with no catalog the helper behaves as before (no app directory, no app rule, Twenty's rules unchanged)", opts, async t => {
+test("app helper: with no catalog an unknown verb is refused and no app rule is written", opts, async t => {
   const r = appRig(t);
   r.flag("hostplan-list", "\n");
   await r.prime();
   assert.equal(r.catalogLine(), "");
   const id = r.ask("up harlow\n");
   await r.helper();
-  assert.equal(r.status(id).state, "ok");
+  assert.equal(r.status(id).state, "failed");
   assert.equal(r.appFw().length, 0);
-  assert.equal(r.rules().length, 2);
+  assert.equal(r.rules().filter((/** @type {string} */ l) => l.includes("vyre-app:")).length, 0);
 });
 
-test("app helper: app-up shares the up lane's rate limit with Twenty's up, and app-stop and app-down are never held back by it", opts, async t => {
+test("app helper: app-up is held by the up lane's rate limit, and app-stop and app-down are never held back by it", opts, async t => {
   const r = await ready(t);
-  // every app-up is refused at once (the vyre image is not the recorded one) so the eight land inside one minute; the count is taken before the work, as for Twenty's up
+  // every app-up is refused at once (the vyre image is not the recorded one) so the eight land inside one minute; the count is taken before the work
   r.flag("ctr-image", "sha256:" + "c".repeat(64));
   fs.rmSync(path.join(r.priv, "rate-up"), { force: true });
   const runHelper = () => r.run(["space-helper-run"], { VYRE_SPACES_UP_PER_MIN: "6" });

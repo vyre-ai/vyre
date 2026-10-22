@@ -1,5 +1,5 @@
 // @ts-check
-// A first start sets a Space's Records up, which takes a few minutes. Until then the box answers a records call with `unavailable` and the words "Records is setting up, this takes a few minutes" (stores/twenty).
+// A first start sets a Space's Records up, which takes a few minutes. Until then the box answers a records call with `unavailable` and the words "Records is setting up, this takes a few minutes".
 // While it is still making its types the store answers `unavailable` with the gateway's plain sentence, "the store could not list its types": that is the same wait, and the app treats it so.
 // A screen that fails to load for that reason is not broken: it says so calmly and asks again by itself. Pure.
 

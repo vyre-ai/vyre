@@ -70,7 +70,7 @@ services:
       # (2000 to 2063), and its sealing folder is 0700 under that uid, so no agent session can read it.
       - VYRE_SEAL_PROFILE=server
       # 0.3: the kernel is on, whatever a user's vyre.env says or a root-run update passes on (a packaged box must not depend on a user file; platform's MA-5 refuses a packaged
-      # daemon with the kernel off). VYRE_STORE (the Space store) is the installer's choice and the root run passes it on from vyre.env.
+      # daemon with the kernel off). Records live in the kernel's own store.
       - VYRE_KERNEL=1
       # A server exists to be reached: publish its name's address without waiting for the outside check (a router-less box cannot pass it through the hosted relay), and give links the 443 form.
       # Settings can opt out with wink.publish: false. A home or a Mac sets neither.
@@ -108,7 +108,7 @@ services:
       # here: the host writes it and vyred cannot. No socket, no arguments. See box/vyre.
       - ${VYRE_UPDATE_ROOT:-/var/lib/vyre-update}/request:/run/vyre-update
       - ${VYRE_UPDATE_ROOT:-/var/lib/vyre-update}/status:/run/vyre-update-state:ro
-      # Spaces' Twenty stores (box/vyre space-helper): vyred drops `req-<id>` files in the spool, a root path unit acts on them from its own copies, and the
+      # Spaces' record stores (box/vyre space-helper): vyred drops `req-<id>` files in the spool, a root path unit acts on them from its own copies, and the
       # answers come back as status-<id> files in the read-only folder. No socket, no secret, no path in a request. Linux only; see team/archive/work-journals/space-helper.md.
       - ${VYRE_SPACES_ROOT:-/var/lib/vyre-spaces}/spool:/run/vyre-spaces
       - ${VYRE_SPACES_ROOT:-/var/lib/vyre-spaces}/status:/run/vyre-spaces-state:ro

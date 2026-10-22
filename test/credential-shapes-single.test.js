@@ -29,7 +29,6 @@ const ALLOWED = new Map([
   ["lib/connectors/testing/", "test support: fake secrets"],
   ["lib/publish/test-kit.js", "test support: fake secrets"],
   ["records/testing/", "test support: fake secrets"],
-  ["stores/twenty/live/", "live test scripts: sample secrets"],
 ]);
 const PATTERNS = [/sk-ant-|\bghp_|\bAKIA|xox\[|\bxox[abprs]-|dop_v1_|\b[sr]k_live_|github_pat_|\bAIza|"SG\.|\bnpm_\[|\bglpat-|\bwhsec_|ya29\./];
 

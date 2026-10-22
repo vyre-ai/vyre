@@ -38,7 +38,7 @@ export function whyOf(lines, from) {
 
 /**
  * The environment a test file is spawned with: this process's, WITHOUT what a journeys world sets on it (scripts/lib/proof/server-daemon.mjs puts VYRE_HOME, VYRE_STORE and the setup code on the runner's own
- * process and takes them off only when that world stops). A test file builds its own daemon in its own home; with the world's VYRE_STORE=auto it would run on a real Twenty that is still defining its types
+ * process and takes them off only when that world stops). A test file builds its own daemon in its own home; with the world's VYRE_STORE=auto it would run on a real record store that is still defining its types
  * (3 s a call), and with the world's VYRE_HOME next to the world's. A file that wants a store asks for it in `o.env`.
  */
 export function journeyEnv() {

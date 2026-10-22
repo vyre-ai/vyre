@@ -3,7 +3,6 @@
 // (VYRE_SETUP_CODE, the variable install-box.sh writes to vyre.env), pointing at the stand-in relay and directory. This is the fast stand-in for the real installer, used on a test box where a second
 // docker stack must not be started; the installer and Mac-installer servers (server-installer.mjs, server-mac.mjs) replace it on a CI runner. It does not run the installer, so the proof says which it used.
 import fs from "node:fs";
-import { spawnSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 import { start } from "../../../core/daemon/index.js";
@@ -32,7 +31,7 @@ export async function startDaemonServer(o) {
     VYRE_SEAL_DEV: process.env.VYRE_SEAL_DEV, VYRE_KERNEL_PATH_RULE: process.env.VYRE_KERNEL_PATH_RULE };
   process.env.VYRE_HOME = root;
   if (o.code) { process.env.VYRE_SETUP_CODE = o.code; process.env.VYRE_SETUP_CODE_AT = String(Math.floor(Date.now() / 1000)); } else { delete process.env.VYRE_SETUP_CODE; delete process.env.VYRE_SETUP_CODE_AT; }
-  process.env.VYRE_STORE = o.store === "plain" ? "sqlite" : "auto";
+  delete process.env.VYRE_STORE;
   process.env.VYRE_SEAL_DEV = "1";
   process.env.VYRE_KERNEL_PATH_RULE = "1";
   const logs = /** @type {string[]} */ ([]);
@@ -68,19 +67,7 @@ export async function startDaemonServer(o) {
       memberOf: async (/** @type {string} */ space, /** @type {string} */ ownerChain, /** @type {string} */ person) => d.kernel.spaces.hosted(space).gateway.grants.members.get(ownerChain, person),
     },
     async stop() {
-      // The Spaces this server hosts at the end: a team Space made in a journey has a record store (a Twenty stack) whether or not its start line reached the log, and left running it starves the journeys that follow
-      /** @type {string[]} */ let hostedNow = [];
-      try { const l = await d.kernel.spaces.list(); hostedNow = (Array.isArray(l) ? l : []).map((/** @type {any} */ x) => String((x && (x.space || x.id)) || "")).filter(x => /^spc_[a-z2-7]{12}$/.test(x) && x !== d.kernel.id.space); } catch { hostedNow = []; }
       try { await d.stop(); } finally { restore(); await sealer.close().catch(() => {}); }
-      // Records start a record store in docker for each space (Twenty). Take away only those this run made, found by the space ids in its own log, so a shared box keeps everything else.
-      const spaces = new Set([...logs.map(l => /store for (spc_[a-z2-7]{12}): provisioning/.exec(l)).filter(Boolean).map(m => /** @type {RegExpExecArray} */ (m)[1]), ...hostedNow]);
-      for (const sp of spaces) {
-        const project = `vyre-${sp.replace(/_/g, "-")}-twenty`;
-        const sh = (/** @type {string} */ c) => spawnSync("sh", ["-c", c], { stdio: "ignore" });
-        sh(`docker ps -aq --filter name=${project}- | xargs -r docker rm -f`);
-        sh(`docker volume ls -q --filter label=com.docker.compose.project=${project} | xargs -r docker volume rm`);
-        sh(`docker network ls -q --filter label=com.docker.compose.project=${project} | xargs -r docker network rm`);
-      }
     },
   };
 }

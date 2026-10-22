@@ -123,7 +123,7 @@ The full contract is in the [specification](spec.md), Sections 5 to 7 and 11.
 
 **The records language** (`records/`) is a small typed language: record types, fields, stages, rules, views, Flows, roles and expressions. A firm describes its world in it. The app edits it, and an assistant, @Engineer, writes it. Both produce the same stored definitions, and a definition file is TypeScript that is read, never run. A Kit is a package of definitions: `records/kits/` has `base` (contacts, leads, appointments, clients, subscribers, projects), `estate-planning` and `law-firm`. `records/core-types.js` holds the built-in types, `records/comms/` logs communications with a default Flow, and `records/calendar/` syncs calendars.
 
-**Stores.** Records live behind one store interface (`kernel/store/`). The built-in store is the home's SQLite, small and always there. `stores/twenty` runs one unmodified Twenty CRM per Space behind the same interface, which is the "Records" choice at install: a server with enough memory uses it, and a small server uses the built-in store. The install decides per Space from the memory that is free: a Space on Records needs about 3.1 GB, or about 2.5 GB on a machine with under 6 GB in all (a lighter profile), plus 6 GB of disk, and the number of Spaces that fit is the free memory less 300 MB, divided by that need less 300 MB. Zero fits means the built-in store, and Records can be turned on later in Settings when the server has the room. So 8 GB is the recommended size and 4 GB the least that reaches one Records Space; with about 2.8 GB free or more a Space fits, and below that (a 2 GB server) it runs on the built-in store, which needs about 2 GB. `VYRE_STORE` chooses: `auto` (the default) or `sqlite` to force the small store. On Linux a root helper starts each Space's Twenty (`box/vyre` space helper); `vyred` only drops a request file into a spool and reads the status back.
+**Stores.** Records live in the kernel's own SQLite store (`kernel/store/sqlite.js`), behind the store interface (`kernel/contracts/store.d.ts`). The same store serves the Records screens, Kits, types, sealed fields, search, aggregates and links. `vyre status` reports how many records it holds.
 
 **Flows** (`kernel/flows/`, module `core/flows`). A Flow is a trigger plus steps. The runner knows 19 step kinds: find, pick, filter, create, update, upsert, remove, decide, repeat, wait, ask, assign, call, stage, agent, classify, extract, service and fn. `ask` and `assign` give work to a person as a task. `service` calls a connection (section 8). `agent` gives a step to an assistant. `fn` runs a short piece of code (at most 64 KB of source) in an operating-system sandbox with no network, a time limit of 5 seconds by default and an output cap of 256 KB, and it refuses to run if the sandbox's self-test has not passed. An assistant that wants to change a Flow can only draft a proposal, which becomes a task. Applying it is `flows.approve`: a person's own act, in their own name, with their hardware proof, for one version named by its hash and only what the card showed. Nothing runs until then. A run then has the authority of the person who approved it (it needs only that approver's right to run Flows), so a Flow can never do more than its approver could. By role, a member may start a Flow and give a task; reading and calling a connected service are an admin's, because an admin approves the Flow that does it, and an outward step is still held for a yes. Every run writes events, so a run can be shown and undone.
 
@@ -183,7 +183,7 @@ A person's name (`you.vyre.run`) is reserved on the web and claimed in the app, 
 | A Linux box | the stack in `/srv/vyre` (`compose.yml`, `vyre.env`, `.env`, `backups/`), the home inside the container volume `vyre_vyre-home`, work folders in `vyre_vyre-work`, update and Space spool folders `/var/lib/vyre-update` and `/var/lib/vyre-spaces` |
 | A Mac that is a server | the root service under `/Library/Application Support/Vyre` (code under `versions/`, data, the socket folder), its launchd jobs in `/Library/LaunchDaemons`, and the owner's own home as above |
 | The Windows app | `%LOCALAPPDATA%\Vyre` for the program and its log, and the app's own data folder for its keys |
-| Records of a Space on a server with Records | that Space's Twenty database, in its own Docker volumes |
+| A Space's records | the kernel's own SQLite store, in that Space's home |
 
 Nothing leaves a machine except through the relay, the Gate or a connection a person made, and every one of those is a grant and an event.
 
@@ -234,7 +234,7 @@ Every step is an event with the full chain on it, so the whole path can be shown
 | `scripts/` | Installers, the docs build, the test and walk harnesses, evals. |
 | `site/` | The public website at vyre.run. |
 | `spec/` | The deep-link specification for the apps. |
-| `stores/` | Record stores behind the kernel's store interface; today the Twenty store. |
+| `stores/` | The kernel's record store, SQLite, behind the store interface. |
 | `test/` | Tests that cross folders: boundaries, docs, installers, releases. |
 | `tools/` | Tooling for the Cloudflare workers. |
 | `updates/` | The weekly update sign-up: the Worker behind vyre.run/updates, with consent and unsubscribe. |

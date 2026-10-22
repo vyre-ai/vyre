@@ -1,7 +1,7 @@
 // @ts-check
 // The rig for the app module half of the Space helper (test/space-helper-apps.test.js). It is test/space-helper-rig.js with two fakes put in front of the Space helper's own: they answer what an app
 // needs (the app's network and container, the vyre container's address and interface on it, INPUT and OUTPUT rules kept per chain, the throwaway containers that prove the walls) and hand every
-// other call to the originals untouched, so the Twenty paths run as they do in the Space helper's own tests.
+// other call to the originals untouched.
 import fs from "node:fs";
 import path from "node:path";
 import { rig, REPO } from "./space-helper-rig.js";
@@ -170,7 +170,7 @@ if (cmd[0] === "iptables" || cmd[0] === "ip6tables") {
   const rules = load();
   const op = rest[0], ch = rest[1];
   if (op === "-S") {
-    // the originals' list (Twenty's rules, per pid) first, then ours
+    // the originals' list (rules per pid) first, then ours
     const own = rules.filter(x => x.ch === ch).map(x => form(ch, x.r));
     let theirs = "";
     if (ch === "OUTPUT") { const r = cp.spawnSync("node", [F + "/nsenter-base.cjs", ...a], { encoding: "utf8" }); theirs = r.stdout || ""; }
@@ -229,7 +229,7 @@ process.exit(0)`);
   const hostFw = () => { try { return JSON.parse(fs.readFileSync(path.join(F, "hostfw"), "utf8")); } catch { return []; } };
   const appFw = (pid = "4242") => { try { return JSON.parse(fs.readFileSync(path.join(F, "appfw-" + pid), "utf8")); } catch { return []; } };
   /** An `app-up documents` request, run. */
-  // the up-lane rate limit is the Space helper's own (six a minute, shared with Twenty's `up`); a test that asks for many ups lifts it
+  // the up-lane rate limit is the Space helper's own (six a minute); a test that asks for many ups lifts it
   const helper = () => r.run(["space-helper-run"], { VYRE_SPACES_UP_PER_MIN: "1000" });
   const appUp = async (m = "documents") => { const id = r.ask(`app-up ${m}\n`); const h = /** @type {any} */ (await helper()); return { id, h, st: r.status(id) }; };
   const catalogLine = () => fs.readFileSync(path.join(priv, "app-modules"), "utf8");

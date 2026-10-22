@@ -1,17 +1,15 @@
-// kernel/store/bench/load-bounded.mjs: records' load script (stores/twenty/live/load-live.mjs on work/records) on the built-in SQLite store, with the script's own id lists capped
-// to a sample so the process's memory is the kernel's. Run by hand from a tree that also has records/ and stores/ from work/records:
+// kernel/store/bench/load-bounded.mjs: the records load script on the built-in SQLite store, with the script's own id lists capped
+// to a sample so the process's memory is the kernel's. Run by hand:
 //   node --expose-gc kernel/store/bench/load-bounded.mjs sqlite 20000,100000,500000 30 20
-// One Space under about 20 people's worth of record work, through the kernel gateway, on either store.
-//   node stores/twenty/live/load-live.mjs <sqlite|twenty> [sizes, default 5000,20000] [seconds per size, default 60] [users, default 20]
+// One Space under about 20 people's worth of record work, through the kernel gateway, on the built-in store.
+//   node kernel/store/bench/load-bounded.mjs [sizes, default 5000,20000] [seconds per size, default 60] [users, default 20]
 // Seeds contacts and matters (the Estate planning types) up to each size, then runs `users` simulated people for the given seconds: each loops reading
 // a record, listing matters by stage sorted by fee, finding a contact by email, searching, editing (read, then update at the version read) and now and then
-// adding a record, with 200 to 500 ms between actions. Prints per-action p50 and p95, throughput, errors, memory and the box's load. Twenty is provisioned
-// in a temp home with the `small` profile and torn down at the end.
+// adding a record, with 200 to 500 ms between actions. Prints per-action p50 and p95, throughput, errors, memory and the computer's load.
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { execFileSync } from "node:child_process";
 import { bootKernel } from "../../boot.js";
 import { compile } from "../../../records/language/compile.js";
 
@@ -21,14 +19,14 @@ const home = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-load-"));
 const t0 = Date.now(); const lap = (s) => console.log(`${((Date.now() - t0) / 1000).toFixed(0)}s ${s}`);
 const load = () => os.loadavg().map((x) => x.toFixed(1)).join(" ");
 const kit = compile(fs.readFileSync(new URL("../../../records/kits/estate-planning/kit.ts", import.meta.url), "utf8"));
-const SPACE = "spc_loadtest0001", OWNER = "per_owner", space = "loadtest";
+const SPACE = "spc_loadtest0001", OWNER = "per_owner";
 
-let store; const stats = () => "";
+let store;
 const k = await bootKernel({ db: (() => { const d = new DatabaseSync(path.join(home, "kernel.db")); if (process.env.BENCH_WAL !== "0") d.exec("PRAGMA journal_mode = WAL; PRAGMA synchronous = " + (process.env.SYNC || "NORMAL") + ""); return d; })(), space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 7), ...(store ? { store } : {}) });
 const chain = () => k.chains.fromFacts({ kind: "device", device_key_id: "d-owner", person: OWNER, path: "direct", session: "s1" });
 const R = k.gateway.records;
 await R.define(chain(), { add_types: kit.types });
-lap(`${kind} ready; kernel on ${store ? "Twenty" : "SQLite"}; load ${load()}`);
+lap(`${kind} ready; kernel on ${store ? "the record store" : "SQLite"}; load ${load()}`);
 
 const stages = ["Intake", "Engagement", "Drafting", "Signing", "Funding", "Closed"];
 const rnd = (n) => Math.floor(Math.random() * n);
@@ -74,12 +72,10 @@ async function run(label) {
   for (const [n, a] of Object.entries(lat)) console.log(`  ${n.padEnd(24)} n=${String(a.length).padStart(5)}  p50 ${pct(a, 0.5).toFixed(0).padStart(5)} ms  p95 ${pct(a, 0.95).toFixed(0).padStart(5)} ms  p99 ${pct(a, 0.99).toFixed(0).padStart(5)} ms`);
   console.log(`  errors: ${JSON.stringify(err)}`);
   console.log(`  gateway process rss ${(process.memoryUsage().rss / 1048576).toFixed(0)} MB (was ${(before / 1048576).toFixed(0)}); sqlite file ${(fs.statSync(path.join(home, "kernel.db")).size / 1048576).toFixed(1)} MB`);
-  if (kind === "twenty") console.log("  Twenty containers:\n    " + stats());
 }
 try {
   for (const n of sizes) { await seedTo(n); await run(`${n}`); }
   console.log("\nlog verify:", JSON.stringify(await k.gateway.audit.verify()));
 } finally {
-  if (kind === "twenty") { try { execFileSync("docker", ["compose", "-p", names(space).project, "down", "-v"], { cwd: spaceDir(home, space), stdio: "ignore" }); } catch {} }
   fs.rmSync(home, { recursive: true, force: true });
 }

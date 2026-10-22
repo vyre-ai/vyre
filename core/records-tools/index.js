@@ -77,7 +77,7 @@ export default {
     } }); };
     const byUrn = (/** @type {any} */ i) => ({ space: parseUrn(i.urn).space });
 
-    // Called by the spaces module when a Space is made: every Space already has its built-in store (the kernel opens one per hosted Space), so this answers at once and writes nothing. Twenty is
+    // Called by the spaces module when a Space is made: every Space already has its built-in store (the kernel opens one per hosted Space), so this answers at once and writes nothing. The record store is
     // the store a Space asks for by name (VYRE_STORE), made by the stores layer at first use, never here.
     ctx.tool("records.workspace.create", {
       description: "Internal, for the spaces module: confirm a new Space has its store. The built-in store is always there.", input: obj({ space: str, name: str, store: str }, ["space"]), callers: ["module"],
@@ -150,7 +150,7 @@ export default {
       const limit = Number.isInteger(i.limit) ? Math.min(Math.max(i.limit, 1), 200) : 50;
       const type = String(i.type);
       const filter = i.filter ? withMe(i.filter, d.chain.hops.find((/** @type {any} */ h) => h.actor.kind === "person")?.actor.id ?? "") : undefined;
-      // The type's quick fields, the page and (asked for) the count are read at once: on a store that answers over the network (Twenty) each read is a round trip, and none waits on another.
+      // The type's quick fields, the page and (asked for) the count are read at once: on a store that answers over the network (the record store) each read is a round trip, and none waits on another.
       // A filter or sort on a field still being set up is refused as before; the page read beside it is dropped.
       const pageP = d.gateway.records.query(d.chain, type, { ...(filter ? { filter } : {}), ...(Array.isArray(i.sort) ? { sort: i.sort } : {}), ...(i.include_deleted === true ? { include_deleted: true } : {}), page: { limit, ...(i.cursor ? { cursor: String(i.cursor) } : {}) } })
         .then((/** @type {any} */ r) => ({ r }), (/** @type {any} */ e) => ({ e }));

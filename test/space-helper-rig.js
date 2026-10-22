@@ -1,5 +1,5 @@
 // @ts-check
-// The Space helper tests' rig (fakes for docker and nsenter, the wrapper, the folders), shared by test/space-helper.test.js and test/space-helper-2.test.js: one file ran past the per-file limit.
+// The Space helper tests' rig (fakes for docker and nsenter, the wrapper, the folders), shared by the app-module helper tests.
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -7,11 +7,10 @@ import crypto from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { SCRATCH } from "./scratch.mjs";
-import { TWENTY_TESTED_REF, composeFile } from "../stores/twenty/provision.js";
-// The Space helper (box/vyre `space-helper-run`, `space-helper`, `admin`; team/archive/work-journals/space-helper.md Revision 2): the root side of a Space's Twenty store.
+// The Space helper (box/vyre `space-helper-run`, `space-helper`, `admin`): the root side of app modules and published sites. Records live in the kernel's own store.
 // Run with sh against a temp folder standing in for /var/lib/vyre-spaces. docker, nsenter (with a tiny iptables that keeps one rule list per pid, the
-// container's namespace) and the other host tools are fakes on PATH; the compose file is the REAL one, from stores/twenty/provision.js. Linux only (stat -c).
-// A request from another uid and a real iptables owner match need a real box: see team/archive/work-journals/space-helper.md for the box test list.
+// container's namespace) and the other host tools are fakes on PATH. Linux only (stat -c).
+// A request from another uid and a real iptables owner match need a real computer: see team/archive/work-journals/space-helper.md for that test list.
 
 export const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const WRAPPER_SRC = fs.readFileSync(path.join(REPO, "box/vyre"), "utf8");
@@ -25,7 +24,7 @@ fs.appendFileSync(F + "/calls", a.join(" ") + "\\n");
 const has = n => fs.existsSync(F + "/" + n);
 const rd = (n, d = "") => has(n) ? fs.readFileSync(F + "/" + n, "utf8").trim() : d;
 const out = s => { process.stdout.write(s + "\\n"); process.exit(0); };
-const nameOf = s => (/vyre-([a-z0-9-]+?)-twenty/.exec(s) || [])[1];
+const nameOf = () => "";
 const CTR = "vyre-vyre-1";
 if (a[0] === "inspect") {
   const fmt = a[2], name = a[3];
@@ -88,7 +87,7 @@ if (a[0] === "run" && has("gone") && a.includes(rd("gone"))) { process.stderr.wr
 if (a[0] === "run" && has("gen-fails")) { process.stderr.write(rd("gen-fails") + "\\n"); process.exit(Number(rd("gen-exit", "1"))); }
 if (a[0] === "run") {
   const i = a.indexOf("-e");
-  let t = cp.execFileSync("node", ["-e", a[i + 1].replace("/opt/vyre", REPO), ...a.slice(i + 2)], { encoding: "utf8", env: { ...process.env, ...(has("golden-dir") ? { VYRE_TWENTY_GOLDEN_DIR: rd("golden-dir") } : {}) } });
+  let t = cp.execFileSync("node", ["-e", a[i + 1].replace("/opt/vyre", REPO), ...a.slice(i + 2)], { encoding: "utf8", env: { ...process.env } });
   if (has("bad-restore")) t = t.replace("$" + "{GOLDEN_DUMP:-./golden.dump}", "/etc/shadow");
   if (has("bad-compose")) t = t.replace("  server:\\n", "  server:\\n    privileged: true\\n");
   if (has("bad-image")) t = t.replace("redis:7", "redis:evil");

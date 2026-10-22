@@ -4,7 +4,7 @@
 import type { Uuid, Ms, Urn } from './common.js';
 import type { Actor } from './chain.js';
 
-/** The fixed set of field kinds (contract 5.2). Twenty has 25; ours is the language's, and a store translates. */
+/** The fixed set of field kinds (contract 5.2). The record store has 25; ours is the language's, and a store translates. */
 export type FieldKind =
   | 'text' | 'rich_text' | 'number' | 'money' | 'boolean' | 'date' | 'datetime' | 'choice' | 'multi_choice'
   | 'rating' | 'url' | 'link' | 'actor' | 'file' | 'address' | 'phones' | 'emails' | 'urls' | 'stage' | 'sealed';

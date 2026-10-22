@@ -1,6 +1,6 @@
 // kernel/store/memory.js: the in-memory reference store. It implements the whole Store interface (contracts store.d.ts)
 // and passes the conformance suite (kernel/conformance). It is what the gateway tests run against and what a real
-// store (Twenty, K-later) is measured by. Not durable; not trusted either: the gateway treats it like any store.
+// record store is measured by. Not durable; not trusted either: the gateway treats it like any store.
 import { canonical, sha256 } from "../core/canonical.js";
 import { isUuid } from "../core/ids.js";
 import { checkValue } from "./values.js";

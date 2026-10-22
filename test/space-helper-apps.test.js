@@ -35,7 +35,7 @@ test("app helper: the catalog is recorded at install, field by field, from the i
   assert.equal(fs.statSync(path.join(r.priv, "app-modules")).mode & 0o777, 0o600);
 });
 
-test("app helper: a catalog line that fails any field records NO app, and the install still succeeds (Twenty does not wait on an app)", opts, async t => {
+test("app helper: a catalog line that fails any field records NO app, and the install still succeeds", opts, async t => {
   const bad = {
     "an image with no digest": lineOf({ image: "docuseal/docuseal:3.3.1" }), "an uppercase digest": lineOf({ image: "docuseal/docuseal@sha256:" + "E".repeat(64) }),
     "an image with a space": lineOf({ image: "documents/docu seal@sha256:" + "e".repeat(64) }), "a name with a capital": lineOf({ name: "Docuseal" }), "a one letter name": lineOf({ name: "d" }),
@@ -97,7 +97,7 @@ test("app helper: a request is `app-up|app-stop|app-down <module>` for a recorde
   const r = await ready(t);
   const bad = {
     "a module that is not recorded": "app-up nothere\n", "a capital": "app-up Docuseal\n", "a dot": "app-up docu.seal\n", "a slash": "app-up ../x\n", "an equals sign": "app-up documents=1\n",
-    "a space": "app-up docu seal\n", "two words after": "app-up documents now\n", "one letter": "app-up d\n", "a Space name": "app-up harlow\n", "a Twenty name": "app-up documents-twenty\n",
+    "a space": "app-up docu seal\n", "two words after": "app-up documents now\n", "one letter": "app-up d\n", "a Space name": "app-up harlow\n", "an extra name": "app-up documents-extra\n",
     "an unknown verb": "app-purge documents\n", "app-up with a flag": "app-up --privileged\n", "a verb in capitals": "APP-UP documents\n", "no newline": "app-up documents", "two lines": "app-up documents\napp-down documents\n",
   };
   const asked = Object.entries(bad).map(([what, text]) => [what, r.ask(text)]);

@@ -6,7 +6,7 @@ import { isOwn } from "./real-model.js";
 import { plainError } from "../../src/real/error-note.js";
 
 export type Def = { name: string; label: string; icon?: string; fields: any[]; stages?: { name: string }[]; groups?: { name: string; collapsed?: boolean }[]; [k: string]: unknown };
-type S = { defs: Def[]; /** Types being set up or changed in Records right now (a type on Twenty takes about a minute): name to its label. */ busy: Record<string, string>; loading: boolean; error: string; load: (space?: string) => Promise<void>; save: (d: Def) => void; create: (d: Def) => void };
+type S = { defs: Def[]; /** Types being set up or changed in Records right now: name to its label. */ busy: Record<string, string>; loading: boolean; error: string; load: (space?: string) => Promise<void>; save: (d: Def) => void; create: (d: Def) => void };
 
 const real = () => !allowsMock();
 /** Writes go one after another: each is the whole type as the person left it, so a later one is never overtaken by an earlier. */

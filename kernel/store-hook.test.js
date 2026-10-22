@@ -10,7 +10,7 @@ import { tempHome } from "../test/helpers.js";
 
 process.env.VYRE_SEAL_DEV = "1";
 
-test("the Space's record store is the one the caller brings (the per-Space Twenty), for the home's own kernel; grants, tasks and the log stay in the home's SQLite", { timeout: 60_000 }, async t => {
+test("the Space's record store is the one the caller brings, for the home's own kernel; grants, tasks and the log stay in the home's SQLite", { timeout: 60_000 }, async t => {
   const root = tempHome(t);
   const seen = [];
   const inner = createMemoryStore({});

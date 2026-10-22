@@ -154,7 +154,7 @@ export function createSpaceKernels(cfg) {
       fs.mkdirSync(d, { recursive: true, mode: 0o700 });
       if (!cfg.sealer) { if (cfg.fileKey !== true) throw new KernelError("key_custody", "a hosted Space's kernel key must live in the sealing process: give the registry the home's sealer"); fs.writeFileSync(path.join(d, "kernel.key"), crypto.randomBytes(32).toString("hex"), { mode: 0o600 }); }
       fs.writeFileSync(path.join(d, "space.json"), JSON.stringify({ space: id, owner: o.owner, ...(o.name ? { name: String(o.name).slice(0, 80) } : {}), made_at: (cfg.clock || Date.now)() }), { mode: 0o600 });
-      // a Space that cannot be opened (the box cannot run its record store, Twenty) is not left half made
+      // a Space that cannot be opened (it cannot run its record store) is not left half made
       let k;
       try { k = await open(id); } catch (e) { fs.rmSync(d, { recursive: true, force: true }); throw e; }
       live.set(id, k);

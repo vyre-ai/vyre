@@ -138,21 +138,19 @@ test("install-mac-server.sh: installs, writes the code and its time at 0600, run
   assert.match(m.calls(), /colima start/);
 });
 
-test("install-mac-server.sh: Records is always on: auto or nothing is Records, sqlite is refused unless the CI proof flag is set, anything else is refused, all before anything is installed", t => {
+test("install-mac-server.sh: an old VYRE_STORE in the environment does not stop the install and is not written into a fresh vyre.env", t => {
   const m = mac(t);
   const f = path.join(m.env.VYRE_HOME, "vyre.env");
   assert.equal(run({ ...m.env }, ["--yes", "--from", m.src]).status, 0);
-  assert.match(fs.readFileSync(f, "utf8"), /^VYRE_STORE=auto$/m);
+  assert.doesNotMatch(fs.readFileSync(f, "utf8"), /^VYRE_STORE=/m);
   const n = mac(t);
-  let r = run({ ...n.env, VYRE_STORE: "sqlite" }, ["--yes", "--from", n.src]);
-  assert.notEqual(r.status, 0);
-  assert.match(r.stderr, /Vyre always uses Records, so VYRE_STORE=sqlite is not a choice any more\. Run the install line again without VYRE_STORE \(or with VYRE_STORE=auto\)\./);
-  assert.ok(!fs.existsSync(n.env.VYRE_SERVER_DIR), "nothing was laid out");
-  const p2 = mac(t);
-  assert.equal(run({ ...p2.env, VYRE_STORE: "sqlite", VYRE_PROOF_BUILTIN_STORE: "1" }, ["--yes", "--from", p2.src]).status, 0);
-  assert.match(fs.readFileSync(path.join(p2.env.VYRE_HOME, "vyre.env"), "utf8"), /^VYRE_STORE=sqlite$/m);
-  const bad = run({ ...m.env, VYRE_STORE: "twenty" }, ["--yes", "--from", m.src]);
-  assert.notEqual(bad.status, 0); assert.match(bad.stderr, /VYRE_STORE is auto \(Records\), not twenty\. Run the install line again without it\./);
+  const r = run({ ...n.env, VYRE_STORE: "sqlite" }, ["--yes", "--from", n.src]);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.doesNotMatch(fs.readFileSync(path.join(n.env.VYRE_HOME, "vyre.env"), "utf8"), /^VYRE_STORE=/m);
+  const old = mac(t);
+  const bad = run({ ...old.env, VYRE_STORE: "twenty" }, ["--yes", "--from", old.src]);
+  assert.equal(bad.status, 0, bad.stdout + bad.stderr);
+  assert.doesNotMatch(fs.readFileSync(path.join(old.env.VYRE_HOME, "vyre.env"), "utf8"), /^VYRE_STORE=/m);
 });
 
 test("install-mac-server.sh: under 4 GB of memory it stops before anything is laid out and says so; a dry run only says it; 4 GB goes on", t => {

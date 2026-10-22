@@ -45,7 +45,7 @@ export const LAYOUT = {
   scripts: "Installers, the docs build, the test and walk harnesses, evals.",
   site: "The public website at vyre.run.",
   spec: "The deep-link specification for the apps.",
-  stores: "Record stores behind the kernel's store interface; today the Twenty store.",
+  stores: "The kernel's record store, SQLite, behind the store interface.",
   test: "Tests that cross folders: boundaries, docs, installers, releases.",
   tools: "Tooling for the Cloudflare workers.",
   web: "Static web assets.",

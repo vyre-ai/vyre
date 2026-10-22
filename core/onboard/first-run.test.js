@@ -23,7 +23,7 @@ test("a username, an invite link and the install line have one shape", () => {
   assert.equal(old && old.spaceHost, "juniper.vyre.run");
   assert.equal(parseInvite("https://vyre.run/setup"), null);
   assert.equal(commandOk("curl -fsSL vyre.run/i | sh"), true);
-  assert.equal(commandOk("curl -fsSL vyre.run/i | VYRE_CODE=abc VYRE_STORE=auto sh"), true);
+  assert.equal(commandOk("curl -fsSL vyre.run/i | VYRE_CODE=abc sh"), true);
   assert.equal(commandOk("curl -fsSL vyre.run/box/install-mac-server.sh | sh"), true);
   assert.equal(commandOk("vyre words"), false);
   assert.equal(commandOk("curl -fsSL vyre.run/i | sh; vyre words"), false);
@@ -72,8 +72,8 @@ function harness(opt = {}) {
     if (name === "spaces.list") return [];
     if (name === "wink.install.issue") {
       const line = input.os === "mac"
-        ? "curl -fsSL vyre.run/box/install-mac-server.sh | VYRE_CODE=abc VYRE_STORE=auto sh"
-        : "curl -fsSL vyre.run/i | VYRE_CODE=abc VYRE_STORE=auto sh";
+        ? "curl -fsSL vyre.run/box/install-mac-server.sh | VYRE_CODE=abc sh"
+        : "curl -fsSL vyre.run/i | VYRE_CODE=abc sh";
       return { line, expires: Math.floor(Date.now() / 1000) + 1800, os: input.os };
     }
     if (name === "wink.install.status") return opt.status || { issued: true, owned: false, locked: false, expires: Math.floor(Date.now() / 1000) + 1800 };

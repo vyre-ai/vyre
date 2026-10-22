@@ -1,12 +1,12 @@
 // @ts-check
 // The host-helper driver of an app module: the second driver behind the interface runtime.js describes (up, exec, status, stop, down, logs). On a server vyred runs in a container with no Docker;
 // the root helper on the host (box/vyre `space-helper`, team/0.3/DESIGN-appmods-helper.md) starts the app from the catalog line root recorded out of the vyre image, walls it off, and runs the
-// app's one-time setup itself. This side only asks: `app-up|app-stop|app-down <module>`, through the same spool and status folders as Twenty's (stores/twenty/helper.js). Nothing here names
+// app's one-time setup itself. This side only asks: `app-up|app-stop|app-down <module>`, through the spool and status folders (stores/helper.js). Nothing here names
 // an image, a flag, a path, a port or a key; the keys and the setup's outputs come back once in a file only this uid can read.
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { askHelper, helperPresent, STATE_DIR } from "../../stores/twenty/helper.js";
+import { askHelper, helperPresent, STATE_DIR } from "../../stores/helper.js";
 import { requestText, writeServerFolder, removeServerFolder } from "../../lib/publish/server-folder.js";
 
 /** The subnets the helper walled for an app (status/subnets, `app:<module> <subnet>`). @param {string} state @param {string} module */
@@ -34,7 +34,7 @@ export function readHandoff(state, module) {
   return Object.keys(out).length ? out : null;
 }
 
-/** Is this server one with a host helper? The same check as Twenty's. */
+/** Is this server one with a host helper? */
 export const hostHelperHere = helperPresent;
 
 /**

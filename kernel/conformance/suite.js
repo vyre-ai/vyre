@@ -1,5 +1,5 @@
 // kernel/conformance/suite.js: the conformance suite. It defines what "a store" is (contract 3.5). Any store (the
-// in-memory reference, Twenty, a file store) registers these tests against a factory that returns a fresh, empty store.
+// in-memory reference, the record store, a file store) registers these tests against a factory that returns a fresh, empty store.
 // A store that passes carries the revision in `version().conformance`. The gateway never relies on a store for
 // permissions, so nothing here tests who may see what; it tests that the store keeps our ids, versions and values.
 import { mintUuid } from "../core/ids.js";

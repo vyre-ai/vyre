@@ -45,7 +45,6 @@ export const RECORD_COUNTS: Record<string, number> = { contact: 124, matter: 38,
 
 export const VERSION = "0.3";
 export const CREDITS: { name: string; line: string; href?: string }[] = [
-  { name: "Twenty", line: "The business-records engine behind Vyre's own gateway. Its server is AGPL-3.0 and its SDK packages are MIT." },
   // The signing engine behind Documents (the app module that sends a document to be signed). AGPL-3.0: its source is public, and the link is the obligation.
   // The methods behind learned website operations (two-example learning, the layered request codec, the failure classifier, verified heal). MIT: ported into lib/siteops, credited here and in NOTICE.
   { name: "api-anything", line: "Methods behind learned website operations: two-example learning, the request codec, the failure classifier and verified healing. MIT licence, (c) goodnight000; github.com/goodnight000/api-anything.", href: "https://github.com/goodnight000/api-anything" },

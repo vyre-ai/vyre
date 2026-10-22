@@ -1,5 +1,5 @@
 // @ts-check
-// The fixed record types of a Basic (device) install. A device keeps its records in its own SQLite store and has no Twenty, so it holds only the personal types the
+// The fixed record types of a Basic (device) install. A device keeps its records in its own SQLite store and has no separate record store, so it holds only the personal types the
 // product itself defines: projects and chat records (the user, 5 Oct). A custom type needs a Cloud space. Flows, Kits, roles and views, and the
 // planner and tasks, need a server too, so none of their types is allowed here. Anything else answers BASIC_REFUSAL.
 
