@@ -21,7 +21,8 @@ import { startThread } from "./new-thread";
 import { ComputerPage } from "./ComputerPage";
 import { canDrop, carriesFiles, dropTarget, dropWords, plan, progressLine } from "./drop-model.js";
 import { Thumb } from "./Thumb";
-import { warm } from "./preload";
+import { warm, warmLinked } from "./preload";
+import { aheadOf } from "./preload-plan";
 import { LIST_MS, SLOW_WORDS, filesKey, packRows, pickRows } from "./files-keep.js";
 import { withTimeout } from "../../src/real/with-timeout.js";
 import { viewCache } from "../../src/state/cache";
@@ -598,13 +599,14 @@ function MoveDelete({ dialog, onClose, onDone }: { dialog: { kind: "move" | "del
 }
 
 /** The full-size look at one file (Space or a double click): a card with the file's icon, name, kind and size shows first and stays, so the sheet is never blank while the shared FileViewer reads and draws it (image, PDF,
- *  video, audio, text, code, markdown, documents and sheets; anything else is a card with Download). The neighbours of the open file are read in the background so the arrow keys open the next one at once. */
+ *  video, audio, text, code, markdown, documents and sheets; anything else is a card with Download). The neighbours of the open file, in the Space or in the same linked folder, are read in the background so the arrow keys open the next one at once. */
 function QuickLookSheet({ row, shown, onClose }: { row: FileRow | null; shown: FileRow[]; onClose: () => void }) {
   useEffect(() => {
     if (!row) return;
-    const files = shown.filter((r) => !r.dir && r.root === "space");
-    const i = files.findIndex((r) => r.key === row.key);
-    for (const n of [files[i + 1], files[i - 1], files[i + 2]]) if (n) warm(n.path, n.size);
+    for (const n of aheadOf(shown, row.key)) {
+      if (n.root === "linked" && n.link) warmLinked(n.link, n.path, n.size);
+      else if (n.root === "space") warm(n.path, n.size);
+    }
   }, [row?.key]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!row) return <Sheet open={false} onClose={onClose} title="" children={null} />;
   const source = row.root === "space" ? driveSource(row.path) : row.root === "linked" && row.link ? linkedFileSource(row.link, row.path) : null;
