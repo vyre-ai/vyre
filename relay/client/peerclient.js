@@ -35,7 +35,15 @@ export function peerClient(stream, o = {}) {
   /** @type {Map<number, { type: number, parts: Uint8Array[], size: number }>} */ const partial = new Map();
   /** @type {Map<string, { onframe: (data: any, seq: number) => void, onend: (why: string) => void }>} */ const streams = new Map();
   /** @type {Map<string, { frames: any[], ended: string | null, at: number }>} frames that arrive before their stream's handlers (the open call's answer is still on its way) */ const early = new Map();
-  const finish = (/** @type {string} */ why) => { if (closed) return; closed = true; for (const [sid, h] of [...streams]) { streams.delete(sid); try { h.onend("closed"); } catch { /* the app's handler */ } } for (const [, c] of calls) { clearTimeout(c.timer); c.reject(err("unreachable", `the connection closed: ${why}`)); } calls.clear(); };
+  const finish = (/** @type {string} */ why) => {
+    if (closed) return;
+    closed = true;
+    for (const [sid, h] of [...streams]) { streams.delete(sid); try { h.onend("closed"); } catch { /* the app's handler */ } }
+    // The home closes an invite stream with "not admitted" when the invite is not for this person. That is a refusal, not a server that cannot be reached.
+    const refused = why === "not admitted";
+    for (const [, c] of calls) { clearTimeout(c.timer); c.reject(refused ? err("denied", "This invite cannot be used.") : err("unreachable", `the connection closed: ${why}`)); }
+    calls.clear();
+  };
   /** @param {number} type @param {number} id @param {Uint8Array} payload */
   const send = (type, id, payload) => {
     for (let off = 0; off === 0 || off < payload.length; off += SLICE) {

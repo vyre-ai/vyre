@@ -20,3 +20,16 @@ test("peerclient speaks the real peer wire: a call, an error, and a message larg
   c.close();
   await assert.rejects(() => c.call("a"), e => e.code === "unreachable");
 });
+
+test("an invite the home will not admit is a refusal, not an unreachable server", async () => {
+  const stream = { ondata() {}, onend() {}, onreset() {}, write() {}, end() {} };
+  const c = peerClient(stream);
+  const pending = c.call("kernel.call", {});
+  stream.onreset("not admitted");
+  await assert.rejects(() => pending, (e) => e.code === "denied" && e.message === "This invite cannot be used.");
+  const stream2 = { ondata() {}, onend() {}, onreset() {}, write() {}, end() {} };
+  const c2 = peerClient(stream2);
+  const dropped = c2.call("kernel.call", {});
+  stream2.onreset("reset");
+  await assert.rejects(() => dropped, (e) => e.code === "unreachable");
+});
