@@ -95,10 +95,12 @@ test("chat core: a send sits on your side at once, two paired servers follow the
     const r = await w.tool("recall.search", { q: "quincecake", limit: 20 });
     return !r.error && JSON.stringify(r.data).includes("quincecake") ? r.data : null;
   }, "recall finding quincecake", 30_000);
+  /** @type {any} */ let lastSearch = null;
   const found = await until(async () => {
     const r = await w.tool("stream.search", { q: "quincecake", limit: 20 });
+    lastSearch = r;
     return !r.error && r.data && Array.isArray(r.data.hits) && r.data.hits.some((h) => String(h.snippet).toLowerCase().includes("quincecake")) ? r.data.hits : null;
-  }, "stream.search finding quincecake", 20_000);
+  }, "stream.search finding quincecake", 20_000).catch((e) => { throw new Error(`${e.message} last ${JSON.stringify(lastSearch).slice(0, 400)}`); });
   const { findSource } = await import("../../apps/app/screens/find/source.ts");
   const { sectionsPlain, emptyBase } = await import("../../apps/app/screens/find/model.ts");
   /** @type {any} */ let viaFind = null;

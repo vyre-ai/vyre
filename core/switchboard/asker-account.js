@@ -49,6 +49,18 @@ export async function askerOver(sb, id, kernelTurn, memberOnly = false) {
 export async function accountProviderFor(sb, o) {
   const asker = (o.kernelTurn && o.kernelTurn.asker) || (typeof o.person === "string" && o.person) || undefined;
   const who = asker ? { person: asker } : {};
+  // A member starting a thread that names no provider has no use of the computer's own Claude login (that sign-in is the owner's). Their own account on another provider is where the thread starts, the same choice a later turn makes. None of theirs: leave it, and the start says so.
+  if (!o.provider && !o.account && !(o.agent && o.agent_kind !== "assistant") && asker) {
+    const owner = ownerOf(sb);
+    if (owner && !isOwner(sb, owner, asker)) {
+      const mine = await sb.accountFor({ provider: "claude", person: asker, any: true }).catch(() => null);
+      const same = mine && mine.person && (typeof sb.canon === "function" ? sb.canon(String(mine.person)) === sb.canon(asker) : String(mine.person) === String(asker));
+      if (mine && mine.id && !mine.synthetic && same) {
+        if (String(mine.provider || "claude") === "claude") return null;
+        return { provider: String(mine.provider), account: String(mine.id), ...(mine.provider === "openrouter" && !mine.model && !o.model ? { model: OPENROUTER_DEFAULT_MODEL } : {}) };
+      }
+    }
+  }
   // The model picked for the Assistant (or any agent) names its provider (agents_agents.model_provider): an OpenRouter model runs on OpenRouter, even with Claude connected. The account is still the asker's own of it.
   if (typeof o.model_provider === "string" && o.model_provider && o.model_provider !== "claude" && !o.provider && !o.account && o.agent) {
     const picked = await sb.accountFor({ provider: o.model_provider, ...who }).catch(() => null);

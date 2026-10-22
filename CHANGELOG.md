@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6.9
 
+- fix(chat): a new thread a member starts, when they have no sign-in on that provider, starts on their own account of another provider. The computer's own Claude login is not a sign-in of theirs (core/switchboard/asker-account.js).
+- fix(find): search reads a thread's own log when the person may list that thread, including one this app has not opened. Opening a thread id as a chat stays refused. A private message stays out (core/stream/access.js, core/stream/chat-search.js).
 - fix(chat): when a provider answers a limit or rate error and no routing list names a next entry, the turn moves to the asker's next signed-in account on another provider. The chat says so in one line, "Claude is at its limit, so Codex answered". A saved routing list still wins. A second account of the same provider is not an automatic hop (core/switchboard/limit-fallback.js, core/switchboard/switched.js, core/sessions/next-signed.js).
 - fix(chat): a reply in a group carries the provider that spoke, so the chat can draw that provider's mark (core/stream/adapter.js).
 - fix(find): search finds words in the chats and threads a person can read, including ones this app has not opened. A private message stays out (core/stream/chat-search.js, apps/app/screens/find).

@@ -86,8 +86,11 @@ export async function searchChats(o) {
   /** @type {{ chat: string, id: string, who: string, snippet: string }[]} */ const hits = [];
   const ids = typeof o.logs.ids === "function" ? o.logs.ids() : [];
   for (const session of ids.slice(0, 80)) {
-    try { await o.access.read(session, o.meta, o.input || {}); }
-    catch { continue; }
+    // A chat the person is in, or a thread they may list. A refusal skips that session and names nothing about it.
+    const ok = typeof o.access.searchable === "function"
+      ? await o.access.searchable(session, o.meta, o.input || {}).catch(() => false)
+      : await o.access.read(session, o.meta, o.input || {}).then(() => true).catch(() => false);
+    if (!ok) continue;
     for (const h of searchFrames(session, allFrames(o.logs.get(session)), query)) {
       hits.push(h);
       if (hits.length >= cap) return { hits };

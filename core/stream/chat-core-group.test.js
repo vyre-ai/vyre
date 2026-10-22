@@ -136,7 +136,7 @@ test("chat core: two people and two agents, an @mention picks who answers, and e
   const askKit = await b.as("carol")("stream.send", { chat: chat.id, text: "@kit the word is QUINCE-7", cwd: w.work });
   assert.equal(askKit.error, undefined, askKit.error && `${askKit.error.code} ${askKit.error.message}`);
   assert.deepEqual(askKit.data.routed, ["assistant:kit"]);
-  await until(() => deltas(carol.frames, "assistant:kit", "QUINCE-7").length > 0, "kit's answer", 120_000).catch((e) => { throw new Error(`${e.message} log ${JSON.stringify(LOGS.slice(-30))} frames ${JSON.stringify(carol.frames.slice(-8).map((f) => [f.type, f.author, String(JSON.stringify(f.data)).slice(0, 80)]))}`); });
+  await until(() => deltas(carol.frames, "assistant:kit", "QUINCE-7").length > 0, "kit's answer", 120_000).catch((e) => { throw new Error(`${e.message} log ${JSON.stringify(LOGS.slice(-30))} frames ${JSON.stringify(carol.frames.slice(-8).map((f) => [f.type, f.author, String(JSON.stringify(f.data)).slice(0, 220)]))}`); });
   const kitFrames = deltas(carol.frames, "assistant:kit", "QUINCE-7");
   assert.ok(kitFrames.every((f) => f.data.provider === "codex"), JSON.stringify(kitFrames.map((f) => f.data.provider)));
   assert.ok(kitFrames.every((f) => f.acts_for === `person:${CAROL}`));

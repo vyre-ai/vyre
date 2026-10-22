@@ -20,6 +20,7 @@
 
 import { isAgent } from "../../lib/caller.js";
 import { personCallOpts } from "../../lib/person-relay.js";
+import { chainPerson, isStaffPerson, recallSessionsForPerson } from "../../lib/member-scope.js";
 
 /** @param {string} code @param {string} message */
 const fail = (code, message) => Object.assign(new Error(message), { code });
@@ -104,6 +105,27 @@ export function createAccess({ ctx, groups, logs }) {
         throw fail("not_found", "no such session");
       }
       throw fail("not_found", "no such session");
+    },
+    /**
+     * Whether search may read this session's words. A chat is access.read. A thread id is not a chat (opening it stays refused); its log is still the person's to search when they may list that thread, the same set threads.list uses. A call that does not say who is asking searches no thread log.
+     * @param {string} session @param {any} meta @param {any} [i]
+     * @returns {Promise<boolean>}
+     */
+    async searchable(session, meta, i = {}) {
+      try { await this.read(session, meta, i); return true; }
+      catch (e) { if (!e || /** @type {any} */ (e).code !== "not_found") return false; }
+      if (!(ctx.kernel && ctx.kernel.chats)) return false;
+      let person = "";
+      try { person = await chainPerson(ctx.kernel, meta) || ""; } catch { return false; }
+      if (!person) return false;
+      try {
+        if (!(await isStaffPerson(ctx.kernel, person))) {
+          const sessions = await recallSessionsForPerson(ctx, person);
+          if (!sessions.map(String).includes(String(session))) return false;
+        }
+      } catch { return false; }
+      try { return Boolean(await thread(session, meta)); }
+      catch { return false; }
     },
   };
 }
