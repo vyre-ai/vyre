@@ -585,6 +585,10 @@ function noDocker(t, { fail = false } = {}) {
   fs.mkdirSync(tools);
   for (const d of ["/usr/bin", "/bin"]) for (const n of fs.readdirSync(d)) if (!/^(docker|podman)/.test(n) && !fs.existsSync(path.join(tools, n))) { try { fs.symlinkSync(path.join(d, n), path.join(tools, n)); } catch {} }
   b.env.PATH = `${bin}:${tools}`;
+  // Ubuntu and Debian install Docker from apt with no question (the tests below set that release file). Every other system still runs Docker's own script.
+  const osr = path.join(b.base, "os-release");
+  fs.writeFileSync(osr, "ID=fedora\n");
+  b.env.VYRE_OS_RELEASE = osr;
   const script = `echo NOISE_FROM_DOCKER_SCRIPT\necho "rootless note" >&2\n` + (fail ? "exit 1\n" : `printf '%s' '${installed.replace(/'/g, "'\\''")}' > "${path.join(bin, "docker")}"\nchmod 755 "${path.join(bin, "docker")}"\n`);
   fs.writeFileSync(path.join(bin, "curl"), `#!/bin/sh\ncat <<'EOS'\n${script}EOS\n`, { mode: 0o755 });
   return b;
