@@ -42,7 +42,7 @@ import path from "node:path";
 export const MANIFEST = "docs/shots.json";
 export const RERUN = "run npm run docs:shots on testbox";
 
-const ONBOARD = ["web/onboard/index.html", "web/css/deck.css", "core/onboard/index.js", "core/onboard/first-run.js", "apps/app/screens/first-run/FirstRun.tsx"];
+const ONBOARD = ["web/css/deck.css", "core/onboard/index.js", "core/onboard/first-run.js", "apps/app/screens/first-run/FirstRun.tsx"];
 const BOTH = ["light", "dark"];
 
 

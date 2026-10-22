@@ -18,7 +18,7 @@ function res() {
 const get = (/** @type {string} */ p) => { const r = res(); const hit = serveWeb(r, p, {}); return { hit, r }; };
 
 test("web: the pre-app pages are answered from web/ with the Deck's headers", () => {
-  for (const [p, needle] of [["/onboard", "Continue setup"], ["/onboard/", "Continue setup"], ["/person/signin", "signin.js"]]) {
+  for (const [p, needle] of [["/person/signin", "signin.js"]]) {
     const { hit, r } = get(p);
     assert.equal(hit, true, p);
     assert.equal(r.status, 200, p);
@@ -37,7 +37,7 @@ test("web: the code, styles and fonts the pages load come from web/ too", () => 
 });
 
 test("web: what web/ does not hold is not claimed (the Deck or the app answers), and nothing escapes web/", () => {
-  for (const p of ["/js/app.js", "/views/now.js", "/onboard/nothing.js", "/", "/u/now", "/../deck/index.html", "/%2e%2e/package.json", "/onboard/%2e%2e/%2e%2e/package.json", "/%zz", "/test/fake-dom.js", "/TEST/fake-dom.js", "/fixtures/onboard.json", "/Fixtures/onboard.json", "/js/api.test.js", "/js/API.TEST.js"]) assert.equal(get(p).hit, false, p);
+  for (const p of ["/onboard", "/onboard/", "/js/app.js", "/views/now.js", "/onboard/nothing.js", "/", "/u/now", "/../deck/index.html", "/%2e%2e/package.json", "/onboard/%2e%2e/%2e%2e/package.json", "/%zz", "/test/fake-dom.js", "/TEST/fake-dom.js", "/fixtures/onboard.json", "/Fixtures/onboard.json", "/js/api.test.js", "/js/API.TEST.js"]) assert.equal(get(p).hit, false, p);
 });
 
 for (const root of [false, true]) {
@@ -49,11 +49,13 @@ for (const root of [false, true]) {
     const hit = (/** @type {string} */ p) => new Promise((resolve, reject) => {
       http.get({ socketPath: paths(home).socket, path: p }, r => { let b = ""; r.on("data", c => { b += c; }); r.on("end", () => resolve({ status: r.statusCode, type: r.headers["content-type"], body: b })); }).on("error", reject);
     });
-    for (const [p, needle] of [["/onboard", "Continue setup"], ["/person/signin", "/person/signin/signin.js"], ["/js/api.js", "export"], ["/css/tokens.css", "--"]]) {
+    for (const [p, needle] of [["/person/signin", "/person/signin/signin.js"], ["/js/api.js", "export"], ["/css/tokens.css", "--"]]) {
       const r = /** @type {any} */ (await hit(p));
       assert.equal(r.status, 200, p);
       assert.ok(r.body.includes(needle), `${p} holds ${needle}`);
     }
+    assert.equal(/** @type {any} */ (await hit("/onboard")).status, 404, "the old owner wizard is not served");
+    assert.equal(/** @type {any} */ (await hit("/onboard/")).status, 404, "the old owner wizard is not served");
     assert.equal(/** @type {any} */ (await hit("/fixtures/onboard.json")).status, 404, "sample data is never served");
   });
 }
