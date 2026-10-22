@@ -117,9 +117,9 @@ export function script(o: { tps?: number } = {}): Segment[] {
   c.push("tool-finished", {
     tool_id: "tl5", ok: true,
     result: {
-      block: "record", urn: "urn:vyre:juniper:project:nb-0042", type: "Project", title: "Northwind Bakery, supplier dispute",
+      block: "record", urn: "urn:vyre:juniper:project:nb-0042", type: "Project", title: "Northwind Bakery, poster order",
       fields: [
-        { label: "Stage", kind: "stage", value: "Demand sent" },
+        { label: "Stage", kind: "stage", value: "Proof sent" },
         { label: "Lead", kind: "text", value: "Alex Rivera" },
         { label: "Next date", kind: "date", value: "14 Oct 2026" },
         { label: "Tax ID", kind: "sealed", value: { sealed: "tax-id", present: true, valid_format: true } },
@@ -129,7 +129,7 @@ export function script(o: { tps?: number } = {}): Segment[] {
   c.say("a4", "I found the project. A short status note to the client needs your approval before it goes out.", tps);
   c.push("ask", {
     ask_id: "k1", kind: "approval", title: "Send the status note to Northwind Bakery",
-    task: { block: "task", id: "tk1", title: "Send the status note to Northwind Bakery", doer: "juno", state: "needs-approval", why: "It goes to an outside person, so it waits for you.", approve: { label: "Send with Face ID", face: true }, tags: ["Matter nb-0042", "Email"] },
+    task: { block: "task", id: "tk1", title: "Send the status note to Northwind Bakery", doer: "juno", state: "needs-approval", why: "It goes to an outside person, so it waits for you.", approve: { label: "Send with Face ID", face: true }, tags: ["Job nb-0042", "Email"] },
   }, 150);
   c.push("status", { state: "asking", turn: "turn-1" }, 20);
   const first = c.steps;
@@ -138,11 +138,11 @@ export function script(o: { tps?: number } = {}): Segment[] {
   d.push("ask-answered", { ask_id: "k1", decision: "approve" });
   d.push("status", { state: "working", turn: "turn-1" }, 30);
   d.push("tool-started", { tool_id: "tl6", tool: "memory.search", kind: "answer", summary: "Northwind Bakery, last contact" }, 150);
-  d.push("tool-finished", { tool_id: "tl6", ok: true, result: { block: "answer", text: "The last contact was a call with the owner on 2 October. She asked for a written timeline.", sources: [{ title: "Call note, 2 Oct", url: "urn:vyre:juniper:note:2210" }, { title: "Lease, section 4", url: "urn:vyre:juniper:file:lease" }] } }, 300);
+  d.push("tool-finished", { tool_id: "tl6", ok: true, result: { block: "answer", text: "The last contact was a call with the owner on 2 October. She asked for a written timeline.", sources: [{ title: "Call note, 2 Oct", url: "urn:vyre:juniper:note:2210" }, { title: "Notes, section 4", url: "urn:vyre:juniper:file:notes" }] } }, 300);
   d.push("tool-started", { tool_id: "tl7", tool: "draft.email", kind: "draft", summary: "Status note" }, 150);
-  d.push("tool-finished", { tool_id: "tl7", ok: true, result: { block: "draft", kind: "email", to: "owner@northwind.example", subject: "Where your project stands", body: "Hello,\n\nThe demand letter went out on 2 October. The landlord has until 14 October to reply. I will write again that day either way." } }, 300);
+  d.push("tool-finished", { tool_id: "tl7", ok: true, result: { block: "draft", kind: "email", to: "owner@northwind.example", subject: "Where your project stands", body: "Hello,\n\nThe proof went out on 2 October. The printer has until 14 October to reply. I will write again that day either way." } }, 300);
   d.push("tool-started", { tool_id: "tl8", tool: "flow.propose", kind: "flow", summary: "Follow-up on 14 Oct" }, 150);
-  d.push("tool-finished", { tool_id: "tl8", ok: true, result: { block: "flow-change", title: "Follow-up on the supplier's reply", steps: [{ op: "add", label: "Wait for 14 October" }, { op: "add", label: "Task: check for a reply, then call" }, { op: "change", label: "Stage: Demand sent to Response due" }] } }, 300);
+  d.push("tool-finished", { tool_id: "tl8", ok: true, result: { block: "flow-change", title: "Follow-up on the printer's reply", steps: [{ op: "add", label: "Wait for 14 October" }, { op: "add", label: "Task: check for a reply, then call" }, { op: "change", label: "Stage: Proof sent to Reply due" }] } }, 300);
   d.say("a5", "Sent. I added a follow-up for 14 October so the reply does not slip.", tps);
   d.push("status", { state: "waiting", turn: "turn-1" }, 60);
   return [{ gate: null, steps: first }, { gate: "k1", steps: d.steps }];
