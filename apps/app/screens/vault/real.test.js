@@ -27,7 +27,7 @@ function box(o = {}) {
 }
 
 test("a name and a site are shown as a person reads them; the name that is sent is the vault's own", { skip: !strip }, async () => {
-  const { displayName, fieldWord, hostWord, iconOf, lineOf, toItem } = await import("./real-model.ts");
+  const { displayName, fieldWord, hostWord, iconOf, itemTitle, lineOf, toItem } = await import("./real-model.ts");
   assert.deepEqual(["login", "api-key", "card", "ssh-key", "note", "weird"].map(iconOf), ["globe", "key", "card", "term", "file", "key"]);
   assert.deepEqual(["username", "totp", "client_secret", "password"].map(fieldWord), ["Username", "One-time code", "Client secret", "Password"]);
   assert.equal(displayName("Airline-account"), "Airline account");
@@ -38,6 +38,8 @@ test("a name and a site are shown as a person reads them; the name that is sent 
   assert.equal(lineOf(row), "drive.juniper.example");
   const item = toItem(row);
   assert.deepEqual({ id: item.id, name: item.name, title: item.title }, { id: "juniper-drive", name: "juniper-drive", title: "juniper drive" });
+  assert.equal(itemTitle("juniper-drive", { title: "Juniper Drive" }), "Juniper Drive");
+  assert.equal(toItem({ ...row, details: { title: "Juniper Drive" } }).title, "Juniper Drive");
 });
 
 test("the list becomes tabs: logins, cards, and everything else as keys", { skip: !strip }, async () => {

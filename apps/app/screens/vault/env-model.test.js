@@ -60,8 +60,9 @@ test("an item saves as an env-set: names in one form, the plain ones named, a me
     { id: "2", key: "Ghl_Location_Id", value: "loc", secret: false, on: true },
     { id: "3", key: "unwanted", value: "x", secret: true, on: false },
   ] };
-  assert.deepEqual(itemCall(d), { tool: "vault.put", input: { name: "GHL-Sales", kind: "env-set", fields: { GHL_API_KEY: "k", GHL_LOCATION_ID: "loc" } }, plain: ["GHL_LOCATION_ID"] }, "the plain fields are the item's rule, saved by vault.use.set");
+  assert.deepEqual(itemCall(d), { tool: "vault.put", input: { name: "GHL-Sales", kind: "env-set", fields: { GHL_API_KEY: "k", GHL_LOCATION_ID: "loc" }, details: { title: "GHL Sales" } }, plain: ["GHL_LOCATION_ID"] }, "the plain fields are the item's rule, saved by vault.use.set");
   assert.deepEqual(itemCall(d, { member: true }), { tool: "vault.me.put", input: { name: "GHL-Sales", kind: "env-set", fields: { GHL_API_KEY: "k", GHL_LOCATION_ID: "loc" } }, plain: [] });
+  assert.equal("details" in (itemCall({ ...d, name: "GHL-Sales" }).input ?? {}), false, "a name that is already the slug needs no title");
   assert.deepEqual(itemCall({ name: "", fields: d.fields }), { error: "Give the item a name." });
 });
 

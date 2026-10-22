@@ -12,7 +12,7 @@ import { SAMPLE_EVENTS, SAMPLE_ITEMS, SAMPLE_NEEDS, type Event } from "./sample-
 import type { Directory, Level, Share, Who } from "./ShareSheet";
 import { AGENTS, GROUPS0, ME, PEOPLE } from "./share-sample";
 import type { Need, Saved } from "./add-model.js";
-import { shownName } from "./env-model.js";
+import { readTitle, shownName } from "./env-model.js";
 
 export type Scope = "mine" | "shared";
 export type Loaded = { items: VItem[]; locked: boolean; /** Mine only: the member has not made a vault yet. */ noAccount?: boolean; /** Who is looking: the owner, or a member. */ owner?: boolean };
@@ -107,7 +107,7 @@ export function sampleData(): VaultData {
 const day = (ms: number) => Math.floor((Date.now() - ms) / 86_400_000);
 const when = (ms: number) => new Date(ms).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
-type OwnerRow = ListRow & { details?: { expires?: string | number; provider?: string; plain?: string[] }; folder?: string };
+type OwnerRow = ListRow & { details?: { expires?: string | number; provider?: string; plain?: string[]; title?: string }; folder?: string };
 
 /** The real tools, over a `call` (the app's box connection). A locked Mine vault says so; the screen then shows the locked card. */
 export function realData(call: Call): VaultData {
@@ -133,7 +133,7 @@ export function realData(call: Call): VaultData {
     const plain = r.kind === "login" ? ["username"] : [];
     const slash = r.name.indexOf("/");
     return {
-      id: r.name, sp, kind: r.kind, group: groupOf(r.kind, r.name, r.details?.provider), provider: r.details?.provider, sharedWithMe: slash > 0, name: shownName(slash > 0 ? r.name.slice(slash + 1) : r.name),
+      id: r.name, sp, kind: r.kind, group: groupOf(r.kind, r.name, r.details?.provider), provider: r.details?.provider, sharedWithMe: slash > 0, name: readTitle(slash > 0 ? r.name.slice(slash + 1) : r.name, r.details),
       detail: r.fields.join(", ") || r.description || r.kind, secret: "", url: r.url, hosts: r.hosts,
       fields: r.fields.map((n) => ({ name: n, plain: plain.includes(n) })),
       folder: r.folder ? { id: r.folder, name: names[r.folder] ?? "Folder" } : slash > 0 ? { id: r.name.slice(0, slash), name: shownName(r.name.slice(0, slash)) } : null,

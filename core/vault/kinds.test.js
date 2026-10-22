@@ -44,6 +44,8 @@ test("kinds: every kind has a spec; the field handed over; what each needs", () 
 test("kinds: details are checked by name, and derived from fields without any value", () => {
   assert.deepEqual(cleanDetails({ scope: ["repo", "workflow", "repo"], provider: "github", expires: 1800000000000 }),
     { scope: ["repo", "workflow"], provider: "github", expires: 1800000000000 });
+  assert.equal(cleanDetails({ title: "Kit's login" }).title, "Kit's login");
+  assert.throws(() => cleanDetails({ title: "x".repeat(81) }), /not a usable title/);
   assert.throws(() => cleanDetails({ password: "x" }), /details.password is not one of/);
   assert.throws(() => cleanDetails({ provider: "GitHub Inc!" }), /not a usable provider/);
   assert.throws(() => cleanDetails([]), /details must be an object/);

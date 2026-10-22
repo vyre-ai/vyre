@@ -82,7 +82,7 @@ test("a catalog app saves as its kind with the provider noted; an added field is
   assert.equal(c.tool, "vault.put");
   assert.equal(c.input.name, "Twilio-main");
   assert.deepEqual(c.input.fields, { value: "a".repeat(32), TWILIO_REGION: "us1" });
-  assert.deepEqual(c.input.details, { provider: "twilio" });
+  assert.deepEqual(c.input.details, { provider: "twilio", title: "Twilio main" });
   assert.deepEqual(c.plain, ["TWILIO_REGION"], "plain fields are saved as the item's rule, not in its details");
   d.fields[0].value = "nope";
   const bad = /** @type {any} */ (saveCall(tw, d));
@@ -106,8 +106,8 @@ test("a login and a note: a login's address names its site; values are kept exac
   const l = loginDraft();
   l.name = "Airline account";
   l.fields[0].value = "https://airline.example/login"; l.fields[1].value = "alex"; l.fields[2].value = " pass word ";
-  assert.deepEqual(kindCall("login", l), { tool: "vault.put", input: { name: "Airline-account", kind: "login", fields: { username: "alex", password: " pass word " }, url: "https://airline.example/login", hosts: ["airline.example"] } });
+  assert.deepEqual(kindCall("login", l), { tool: "vault.put", input: { name: "Airline-account", kind: "login", fields: { username: "alex", password: " pass word " }, details: { title: "Airline account" }, url: "https://airline.example/login", hosts: ["airline.example"] } });
   assert.deepEqual(kindCall("login", l, { member: true }).input.fields.url, "https://airline.example/login");
   const n = noteDraft(); n.name = "Office wifi"; n.fields[0].value = "line one\nline two\n";
-  assert.deepEqual(kindCall("note", n), { tool: "vault.put", input: { name: "Office-wifi", kind: "note", fields: { text: "line one\nline two\n" } } });
+  assert.deepEqual(kindCall("note", n), { tool: "vault.put", input: { name: "Office-wifi", kind: "note", fields: { text: "line one\nline two\n" }, details: { title: "Office wifi" } } });
 });

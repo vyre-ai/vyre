@@ -5,7 +5,7 @@
 // AI accounts (Settings, AI accounts), app sign-ins (Connections) and three expert kinds (Advanced) are not offered here. Pure, so Node tests it. Values pass through only on
 // their way to the person's own Save, byte-exact.
 import { PROVIDERS } from "../../../../core/vault/providers.js";
-import { NAME_RE, canonical, fieldProblems, itemCall, slugOf } from "./env-model.js";
+import { NAME_RE, canonical, fieldProblems, itemCall, slugOf, titleOf } from "./env-model.js";
 
 export { NAME_RE, slugOf };
 
@@ -126,6 +126,7 @@ export function saveCall(t, d, { member = false } = {}) {
   if (!p) return itemCall(d, { member });
   const name = slugOf(d.name);
   if (!NAME_RE.test(name)) return { error: "Give the item a name." };
+  const title = titleOf(d.name, name);
   const own = new Set(p.fields.map((f) => f.name));
   /** @type {Record<string, string>} */ const fields = {};
   for (const f of filled) {
@@ -136,7 +137,7 @@ export function saveCall(t, d, { member = false } = {}) {
     fields[key] = f.value;
   }
   const plain = filled.filter((f) => !f.secret).map((f) => (own.has(f.key) ? f.key : canonical(f.key)));
-  return member ? { tool: "vault.me.put", input: { name, kind: p.kinds[0], fields } } : { tool: "vault.put", input: { name, kind: p.kinds[0], fields, details: { provider: p.name } }, plain };
+  return member ? { tool: "vault.me.put", input: { name, kind: p.kinds[0], fields } } : { tool: "vault.put", input: { name, kind: p.kinds[0], fields, details: { provider: p.name, ...(title ? { title } : {}) } }, plain };
 }
 
 /** A login: its web address, username, password and an optional one-time code secret. @returns {Draft} */
@@ -161,12 +162,13 @@ export function kindCall(kind, d, { member = false } = {}) {
   if (!NAME_RE.test(name)) return { error: "Give it a name." };
   const v = Object.fromEntries(d.fields.map((f) => [f.key, f.value]));
   const tool = member ? "vault.me.put" : "vault.put";
-  if (kind === "note") return v.text ? { tool, input: { name, kind: "note", fields: { text: v.text } } } : { error: "Write the note." };
+  const titled = member ? {} : (titleOf(d.name, name) ? { details: { title: titleOf(d.name, name) } } : {});
+  if (kind === "note") return v.text ? { tool, input: { name, kind: "note", fields: { text: v.text }, ...titled } } : { error: "Write the note." };
   if (!v.username || !v.password) return { error: "A login needs a username and a password." };
   const url = String(v.url ?? "").trim(), host = hostOf(url);
   if (url && !host) return { error: "That is not a web address." };
   const fields = { username: v.username, password: v.password, ...(v.totp ? { totp: v.totp } : {}), ...(member && url ? { url } : {}) };
-  return { tool, input: { name, kind: "login", fields, ...(!member && host ? { url, hosts: [host] } : {}) } };
+  return { tool, input: { name, kind: "login", fields, ...titled, ...(!member && host ? { url, hosts: [host] } : {}) } };
 }
 
 /**
