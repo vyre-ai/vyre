@@ -2396,7 +2396,7 @@ Work on a computer: the cloud one by default, or one named in `on`. `do` picks t
 
 ### `computers.agent.file.make`
 
-Make a file in the agent's Files, in the agent's own folder on its computer. The same bytes show in Vyre Files under the agent's folder. An agent may write its own folder; a person needs the right to edit the agent.
+Write a text file in the agent's folder on its computer. It shows in Vyre Files. An agent writes its own. A person needs edit.
 
 - Input:
   - `path` string, required
@@ -2454,7 +2454,7 @@ A one-use ticket (30 s) to open one terminal of the agent in Glass; a new name m
 
 ### `computers.agent.terminal.run`
 
-Type one command into the agent's Terminal, the desk session, and press Enter. The session is the one the dock opens, so the person sees it on the agent's computer. One line. An agent may run it on its own computer; a person needs the right to edit the agent.
+Type one command into the agent's desk Terminal and press Enter. An agent uses its own computer. A person needs edit.
 
 - Input:
   - `command` string, required
