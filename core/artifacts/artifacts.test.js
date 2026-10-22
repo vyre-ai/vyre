@@ -429,7 +429,7 @@ test("artifacts: a row still being written (head 0) is left out of the list, the
   const at = Date.now();
   const by = JSON.stringify({ kind: "session" });
   db.prepare(`INSERT INTO artifacts_items (id, project, title, kind, format, made_by, thread, untrusted, head, text, created_at, updated_at)
-    VALUES (?,?,?,?,?,?,?,0,0,?,?,?)`).run("a_unfinished", "northwind", "Still writing", "doc", "markdown", by, null, at, at);
+    VALUES (?,?,?,?,?,?,?,0,0,?,?,?)`).run("a_unfinished", "northwind", "Still writing", "doc", "markdown", by, null, "Still writing", at, at);
   db.prepare(`INSERT INTO artifacts_items (id, project, title, kind, format, made_by, thread, untrusted, head, text, media, created_at, updated_at)
     VALUES (?,?,?,?,?,?,?,0,0,?,?,?,?)`).run("a_mediawait", "northwind", "Picture waiting", "image", "png", by, null, "", JSON.stringify({ mime: "image/png", bytes: 4 }), at, at);
   const list = await ok("artifacts.list", { project: "northwind" });
