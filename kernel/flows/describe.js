@@ -80,8 +80,8 @@ export function explainRun(run, flow) {
   /** @type {string[]} */ const sent = [];
   for (const [key, e] of Object.entries(run.steps || {})) {
     const entry = /** @type {any} */ (e);
-    if (!entry || key.includes("?") || key.includes("!") || entry.status !== "done") continue;
-    const id = key.replace(/@.*$/, "");
+    if (!entry || key.includes("?") || entry.status !== "done") continue;
+    const id = key.replace(/@.*$/, "").replace(/!.*$/, "");
     const meta = idx.get(id);
     if (!meta || meta.kind === "decide" || meta.kind === "repeat" || meta.kind === "parallel" || meta.kind === "branch" || meta.kind === "wait") continue;
     const verb = /** @type {Record<string, string>} */ (DID)[meta.kind] || "did";
@@ -94,10 +94,25 @@ export function explainRun(run, flow) {
   else parts.push("It has not done anything yet.");
   const w = run.waiting;
   const err = run.error && run.error.code && run.error.code !== "note" ? run.error : null;
-  const label = (/** @type {string} */ id) => (idx.get(String(id).replace(/\?.*$/, "")) || { label: id }).label;
-  if (run.state === "done") parts.push("It finished.");
+  const label = (/** @type {string} */ id) => (idx.get(String(id).replace(/\?.*$/, "").replace(/!.*$/, "")) || { label: id }).label;
+  // A step that waited past its deadline is failed_handled when its on timeout path (the step's on_fail steps) ran and the Flow went on.
+  const late = [];
+  for (const [key, e] of Object.entries(run.steps || {})) {
+    const entry = /** @type {any} */ (e);
+    if (!entry || key.includes("?") || entry.status !== "failed_handled") continue;
+    const bad = entry.error || (entry.output && entry.output.error) || null;
+    if (bad && bad.code === "timeout") late.push(label(key));
+  }
+  const lateLine = late.length ? `The deadline on ${late[0]} passed, so the Flow took that step's on timeout path.` : "";
+  if (run.state === "done") { if (lateLine) parts.push(lateLine); parts.push("It finished."); }
   else if (run.state === "cancelled") parts.push("It was stopped.");
-  else if (run.state === "failed") parts.push(`It stopped at ${label(err ? err.step : "?")} (${err ? err.code : "an error"}); retry it, skip that step, or stop the run.`);
+  else if (run.state === "failed") {
+    const where = label(err ? err.step : "?");
+    const whyFail = err && err.code === "timeout"
+      ? `The deadline on ${where} passed${err.message ? `: ${err.message}` : ""}.`
+      : `It stopped at ${where}${err && err.message ? `: ${err.message}` : err && err.code ? ` (${err.code})` : ""}.`;
+    parts.push(`${whyFail} Retry it, skip that step, or stop the run.`);
+  }
   else if (run.state === "paused") parts.push(`It is paused${err ? ` at ${label(err.step)}` : ""}.`);
   else if (run.state === "queued") parts.push(`It is held (${String(run.queued && run.queued.reason || "waiting its turn").replace(/_/g, " ")}) and starts, in order, when it can.`);
   else if (run.state === "waiting" && w) parts.push(w.kind === "task" ? `It is waiting for ${(idx.get(String(w.step || "").replace(/\?.*$/, "")) || {}).kind === "ask" || String(w.step || "").endsWith("?ask") ? "a person's yes" : "a person"} on ${label(w.step)}.` : w.kind === "time" ? "It is waiting for a time." : w.kind === "children" ? `It is waiting for the runs ${label(w.step)} started to finish.` : `It is waiting for ${w.event || "an event"}.`);

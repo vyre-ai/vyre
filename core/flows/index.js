@@ -5,6 +5,7 @@
 // decides who a person is from a label ("mcp", "harness", "device:x"). Approving, pausing, resuming and removing a Kit are a person's own and name a person's chain, and approving also asks for the person's
 // proof. The module decides nothing about authority: every record, task and send a Flow makes goes through the kernel.
 import { bridgeWatchers } from "../../kernel/flows/watcher-bridge.js";
+import { projectFromThread } from "./ask-project.js";
 import { secretsIn } from "../../kernel/flows/no-secrets.js";
 import { serveMember, mayInspectFlow, hideFor, notYours, CALLS as MEMBER_CALLS } from "./member.js";
 import { kitLibrary, kitFromLibrary } from "../../records/kits/library.js";
@@ -155,6 +156,11 @@ export default {
             const run = own.run && f.flows.store.getRun ? await f.flows.store.getRun(String(own.run)).catch(() => null) : null;
             const hf = run ? hideFor(run, me, role === "owner" || role === "admin") : null;
             return f.flows.tools[INNER(name)](chain, { ...own, ...(hf ? { hide_for: hf } : {}) });
+          }
+          // An agent asked in a project's chat often leaves the project off the Flow. The thread's short name is what the project's Flows list filters on.
+          if ((name === "flows.define" || name === "flows.from-chat") && rest.project === undefined && !(rest.flow && rest.flow.project !== undefined)) {
+            const project = await projectFromThread(ctx, meta, rest);
+            if (project) rest.project = project;
           }
           const out = await f.flows.tools[INNER(name)](chain, rest);
           // a draft made from a chat remembers the chat (work keeps it, and only for a person in that chat): "How it was made" is a thread of the Flow

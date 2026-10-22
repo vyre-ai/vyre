@@ -10,10 +10,10 @@ test("an open address reachable from the internet is the one address to copy", (
   assert.deepEqual(addressFacts(hook()), { state: "live", address: URL1, line: "" });
 });
 
-test("an address the internet cannot reach yet says why in one plain line, and shows no address", () => {
+test("an address the internet cannot reach yet says why in one plain line, and the path is what you copy", () => {
   const f = addressFacts(hook({ address: { path: "/hooks/orders-x", url: null }, why: "The public address is not up yet. Senders on the internet reach it once the server has its public address." }));
   assert.equal(f.state, "here");
-  assert.equal(f.address, "");
+  assert.equal(f.address, "/hooks/orders-x");
   assert.match(f.line, /not up yet/);
   assert.equal(addressFacts(hook({ open: false, address: null, why: null })).state, "off");
   assert.match(addressFacts(hook({ open: false, address: null, why: null })).line, /Turn the Flow on/);
@@ -36,6 +36,7 @@ test("the samples post JSON or a form to the address, and need nothing else", ()
 test("the trigger editor offers one address, Copy, Send a test, the last delivery and the signature check under Advanced", async () => {
   const fs = await import("node:fs");
   const src = fs.readFileSync(new URL("./WebhookFields.tsx", import.meta.url), "utf8");
-  for (const words of ["Send a test", "Get a new address", "Advanced, verify a signature", "Last delivery"]) assert.ok(src.includes(words), words);
+  for (const words of ["Send a test", "Get a new address", "Advanced, verify a signature", "Last delivery", "CodeBlock"]) assert.ok(src.includes(words), words);
+  assert.match(src, /f\.address \?/, "the address is shown with Copy whenever there is one, including a path with no public url");
   assert.doesNotMatch(src, /Open the route|Turn the listener on/, "no separate steps to open a route or turn the listener on");
 });

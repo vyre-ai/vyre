@@ -51,13 +51,14 @@ export function WebhookFields({ kind, route, address, onOwn, sources }: { kind: 
   const open = Boolean(h && h.open && h.address);
   return (
     <View className="gap-s3">
-      {f.state === "live" ? (
+      {f.address ? (
         <View className="gap-s2">
           <Text size="caption" strong tone="label">Address</Text>
           <CodeBlock code={f.address} lang="URL" />
-          <Text size="caption" tone="label">{WORDS[kind]}</Text>
+          {f.state === "live" ? <Text size="caption" tone="label">{WORDS[kind]}</Text> : null}
         </View>
-      ) : <Banner tone={f.state === "here" ? "warn" : "plain"} icon={f.state === "here" ? "warning" : "info"}><Text>{f.line}</Text></Banner>}
+      ) : null}
+      {f.state !== "live" ? <Banner tone={f.state === "here" ? "warn" : "plain"} icon={f.state === "here" ? "warning" : "info"}><Text>{f.line}</Text></Banner> : null}
       {open ? (
         <View className="flex-row flex-wrap gap-s2">
           {sources.testHook ? <Button kind="secondary" size="sm" label={busy === "test" ? "Sending" : "Send a test"} disabled={!!busy} onPress={() => void run("test", async () => { setSaid(await sources.testHook!()); load(); })} /> : null}
@@ -75,8 +76,8 @@ export function WebhookFields({ kind, route, address, onOwn, sources }: { kind: 
       ) : null}
       {said ? <Banner tone={said.ok ? "plain" : "warn"} icon={said.ok ? "check" : "warning"}><Text>{said.line}</Text></Banner> : null}
       {open ? <Row dense title="Last delivery" sub={lastWords(h?.last)} /> : null}
-      {f.state === "live" && kind !== "webhook" ? <CodeBlock code={formSample(f.address)} lang="html" /> : null}
-      {f.state === "live" && kind === "webhook" ? <CodeBlock code={curlSample(f.address)} lang="sh" /> : null}
+      {f.address && kind !== "webhook" ? <CodeBlock code={formSample(f.address)} lang="html" /> : null}
+      {f.address && kind === "webhook" ? <CodeBlock code={curlSample(f.address)} lang="sh" /> : null}
       {open && kind === "webhook" && sources.signHook ? (
         <View className="gap-s2">
           <View className="flex-row"><Button kind="ghost" size="sm" icon={advanced ? "chevron-up" : "chevron-down"} label="Advanced, verify a signature" onPress={() => setAdvanced(!advanced)} /></View>

@@ -30,10 +30,10 @@ export function policyKeys(kind) {
   return kind === "wait" ? ["retry", "on_fail", "verify"] : POLICY;
 }
 
-/** What the panel offers for a kind: the engine ignores a time limit on a step that waits for a person or an agent, so none is offered there. @param {string} kind */
+/** What the panel offers for a kind. Ask and assign wait for a person, so this panel does not offer them a deadline. An agent step's timeout_ms is that deadline: past it the step fails with timeout and its on timeout path runs. @param {string} kind */
 export function offers(kind) {
   const k = policyKeys(kind);
-  return { timeout: k.includes("timeout_ms") && !["ask", "assign", "agent"].includes(kind), retry: k.includes("retry"), verify: k.includes("verify"), fail: k.includes("on_fail"), readback: ["create", "update", "upsert", "stage"].includes(kind) };
+  return { timeout: k.includes("timeout_ms") && !["ask", "assign"].includes(kind), retry: k.includes("retry"), verify: k.includes("verify"), fail: k.includes("on_fail"), readback: ["create", "update", "upsert", "stage"].includes(kind) };
 }
 
 const isObj = (/** @type {any} */ v) => v !== null && typeof v === "object" && !Array.isArray(v);
