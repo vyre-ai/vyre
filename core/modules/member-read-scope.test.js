@@ -113,6 +113,7 @@ function probeFor(tool, seed) {
     "agents.used": { agent: "assistant" },
     "agents.level": { agent: "assistant" },
     "stream.read": {},
+    "stream.search": { q: seed.MARK_O || "probe", limit: 5 },
     "stream.catchup": {},
     "spaces.list": {},
     "spaces.members.list": {},
