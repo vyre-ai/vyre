@@ -21,12 +21,39 @@ export const STAGE_SETS: { id: string; stages: string[] }[] = [
 export const setLabel = (stages: string[]): string => stages.join(" › ");
 
 export type KitOutline = { id: string; name: string; stages: number; tasks: number; outline?: { name: string; tasks: string[] }[] };
-/** The Kit whose stage names are this set's, in order (any case), or null. */
+const normStage = (s: string) => s.trim().toLowerCase();
+/** A stage name matches when it is the same, or one contains the other and the shorter is at least four letters. */
+const stageHit = (want: string, have: string): boolean => {
+  const a = normStage(want), b = normStage(have);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const short = a.length <= b.length ? a : b;
+  return short.length >= 4 && (a.includes(b) || b.includes(a));
+};
+/** A Kit close to this set: at least two stages hit, and at least half of the longer list. The closest one wins. */
+function fuzzyKit(set: string[], lib: KitOutline[]): KitOutline | null {
+  let best: KitOutline | null = null, bestScore = 0;
+  for (const k of lib) {
+    if (!k.outline?.length) continue;
+    const used = new Set<number>();
+    let hits = 0;
+    for (const name of set) {
+      const i = k.outline.findIndex((o, n) => !used.has(n) && stageHit(name, o.name));
+      if (i >= 0) { used.add(i); hits++; }
+    }
+    if (hits < 2) continue;
+    const score = hits / Math.max(set.length, k.outline.length);
+    if (score >= 0.5 && score > bestScore) { best = k; bestScore = score; }
+  }
+  return best;
+}
+/** The Kit whose stage names are this set's, in order (any case). An exact match wins; otherwise a close one. */
 export function kitFor(id: string, lib: KitOutline[]): KitOutline | null {
   const set = STAGE_SETS.find((s) => s.id === id);
   if (!set) return null;
-  const same = (a: string[], b: string[]) => a.length === b.length && a.every((x, i) => x.trim().toLowerCase() === b[i].trim().toLowerCase());
-  return lib.find((k) => k.outline && same(k.outline.map((o) => o.name), set.stages)) || null;
+  const same = (a: string[], b: string[]) => a.length === b.length && a.every((x, i) => normStage(x) === normStage(b[i]));
+  const exact = lib.find((k) => k.outline && same(k.outline.map((o) => o.name), set.stages));
+  return exact || fuzzyKit(set.stages, lib);
 }
 
 /** The stage titles become the set's; the tasks already written stay in the stage at the same place; a matching Kit fills the stages that have none with its tasks (titles only, given to the owner until someone chooses). */

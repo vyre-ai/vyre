@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
 import { Banner, Button, Card, Divider, EmptyState, Field, LoadingState, Row, Segmented, Text, showToast } from "@vyre/ui";
 import { tool } from "../../src/real/box";
+import { workedInLately, workedLine, type WorkedFolder } from "./computer-recent";
 import type { Status } from "./real-model";
 
 const say = (e: unknown) => (e instanceof Error && e.message ? e.message : "Vyre did not do that.");
@@ -16,9 +17,11 @@ export function ComputerPage({ status, reload }: { status: Status | null; reload
   const [offer, setOffer] = useState({ path: "", name: "", access: "ro" as "ro" | "rw" });
   const [busy, setBusy] = useState(false);
   const [receiving, setReceiving] = useState<boolean | null>(null);
+  const [worked, setWorked] = useState<WorkedFolder[] | null>(null);
   const load = useCallback(() => {
     tool<{ devices?: Device[] }>("files.drop.targets", {}).then((r) => setDevices(r?.devices ?? [])).catch(() => setDevices([]));
     tool<{ drops?: unknown[] }>("files.drop.pending", {}).then((r) => setPending(Array.isArray(r?.drops) ? r!.drops!.length : 0)).catch(() => setPending(null));
+    tool<unknown>("files.recent", { limit: 8 }).then((r) => setWorked(workedInLately(r))).catch(() => setWorked([]));
   }, []);
   useEffect(load, [load]);
   const run = (f: () => Promise<unknown>, done: string) => { setBusy(true); f().then(() => { showToast(done); reload(); load(); }).catch((e) => showToast(say(e))).finally(() => setBusy(false)); };
@@ -27,6 +30,13 @@ export function ComputerPage({ status, reload }: { status: Status | null; reload
     <View className="gap-s3">
       <Card>
         {status ? <View className="gap-s2"><Text strong>{status.enabled ? "Sharing to your computer is on" : "Sharing to your computer is off"}</Text>{status.why ? <Text tone="muted">{status.why}</Text> : null}{status.fix ? <Text tone="label">{status.fix}</Text> : null}</View> : <LoadingState rows={2} />}
+      </Card>
+      <Card flush>
+        <View className="p-s3"><Text strong>Worked in lately</Text><Text size="caption" tone="muted">Folders chats worked in, newest first.</Text></View>
+        <Divider />
+        {worked === null ? <LoadingState rows={2} /> : worked.length ? worked.map((f, i) => (
+          <View key={f.path}>{i ? <Divider /> : null}<Row title={f.name} sub={workedLine(f)} /></View>
+        )) : <EmptyState title="No folders yet" body="Folders your chats work in show up here." />}
       </Card>
       <Card flush>
         <View className="p-s3"><Text strong>Folders shared with this computer</Text></View>

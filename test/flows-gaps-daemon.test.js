@@ -132,7 +132,7 @@ test("a classify step in a home with no model door fails plainly instead of hang
   await host.flows.tools["flows.start"](host.personChain(), { id: flow.id, input: { body: "hello" } });
   const runs = await until(async () => { const r = await host.flows.tools["flows.runs"](host.personChain(), { id: flow.id }); return r.length && r[0].state === "failed" ? r : null; }, "the run to fail");
   // a home with the door but no AI account for the person the Flow runs as says so plainly (nothing is sent); one with no door at all says that. Either way it fails, never hangs.
-  assert.match(runs[0].error.message, /no model door|residency|Connect an AI account to run this Flow/);
+  assert.match(runs[0].error.message, /no model door|no model may answer here|Connect an AI account to run this Flow/);
 });
 
 // ---- a real watcher ----

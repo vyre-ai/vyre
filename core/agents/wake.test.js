@@ -89,6 +89,17 @@ test("agents.wake: the thread says where it came from, and the wake message open
   assert.match(l.prompt, /^From Flow Refund request, step Handle refund\./);
 });
 
+test("agents.wake: with no approver the job is the agent's own and names no person", async t => {
+  const call = await world(t);
+  await call("agents.create", { name: "juno", kind: "agent", projects: ["northwind-bakery"] });
+  const r = await call("agents.wake", { task: "t8", agent: "juno", title: "Pack the Quill posters", project: "northwind-bakery" }, "module:vyred");
+  assert.equal(r.error, undefined, JSON.stringify(r));
+  const l = globalThis.__launched.at(-1);
+  assert.equal(l.agent, "juno");
+  assert.equal(l.for_person, undefined, "no person's access is attached");
+  assert.equal(l.run_as, undefined, "the kernel session is not a person's");
+});
+
 test("agents.wake: a failed launch keeps the claim as failed and allows one retry, then no more; agents.woken names the task of a thread", async t => {
   const call = await world(t);
   await call("agents.create", { name: "juno", kind: "agent", projects: ["harlow-legal"] });

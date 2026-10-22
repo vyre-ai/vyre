@@ -7,7 +7,7 @@ import { Icon } from "./Icon";
 import { IconButton } from "./Button";
 import { Menu } from "./Menu";
 import { Text } from "./Text";
-import { addGroup, moveGroup, removeGroup, renameGroup, sectionsOf } from "./groups.js";
+import { addGroup, moveGroup, removeGroup, renameGroup, sectionsOf, viewSections } from "./groups.js";
 import type { Group } from "./groups.js";
 
 export type { Group };
@@ -24,7 +24,7 @@ export function GroupedList<T extends { group?: string }>({ groups, items, rende
   const [renaming, setRenaming] = useState<{ from: string; to: string } | null>(null);
   const [adding, setAdding] = useState<string | null>(null);
   const emit = (n: { groups: Group[]; items?: T[] }) => onChange?.({ groups: n.groups, items: n.items ?? items });
-  const sections = sectionsOf(groups, items);
+  const sections = onChange ? sectionsOf(groups, items) : viewSections(groups, items);
   return (
     <View className="gap-s3">
       {sections.map((s) => {

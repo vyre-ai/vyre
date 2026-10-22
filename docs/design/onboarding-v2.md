@@ -31,7 +31,7 @@ Every outward first-run write (`onboard.person.create`, `onboard.space.*`, `onbo
 ## What was removed
 
 - Removed prototype screens: former `apps/app/screens/onboard` and `apps/app/screens/onboarding` trees (superseded by `screens/first-run`).
-- The server-hosted wizard under `web/onboard/*` (the daemon now serves a short redirect into the app flow).
+- The server-hosted wizard under `web/onboard/*` is gone. Setup is the app's first run. `/onboard` is not a page.
 - The old STEPS box wizard in `core/onboard/index.js` is no longer the product path; first run is `registerFirstRun` only for people setting up identity and spaces.
 
 ## Related tools

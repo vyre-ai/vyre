@@ -9,9 +9,10 @@ import { CSP } from "./app.js";
 
 const root = new URL("../../", import.meta.url).pathname;
 const hosts = (/** @type {string} */ s) => [...s.matchAll(/https?:\/\/[a-z0-9.-]+/gi)].map((m) => m[0]);
-const htmlIn = (/** @type {string} */ dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => e.isDirectory() ? htmlIn(path.join(dir, e.name)) : e.name.endsWith(".html") ? [path.join(dir, e.name)] : []);
+const htmlIn = (/** @type {string} */ dir) => !fs.existsSync(dir) ? [] : fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => e.isDirectory() ? htmlIn(path.join(dir, e.name)) : e.name.endsWith(".html") ? [path.join(dir, e.name)] : []);
 
 test("the onboarding pages load nothing from outside this box", () => {
+  // The owner wizard folder is gone. No folder means no pages, so nothing is loaded from outside. A page put back is still checked.
   for (const f of htmlIn(path.join(root, "web", "onboard"))) assert.deepEqual(hosts(fs.readFileSync(f, "utf8")), [], `${path.relative(root, f)} names an outside host`);
 });
 

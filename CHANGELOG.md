@@ -62,6 +62,26 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - fix(site): vyre.run/terms is a page, the one the welcome screen already links to. It says Vyre is free under Apache 2.0, you run it yourself, and you pay your own AI providers (scripts/gen-site.mjs, site/terms/).
 - fix(settings): the Star button is gone once the project is starred (apps/app/screens/settings/StarOnGithub.tsx).
 - fix(agents): a new agent starts in Personal when that is the only project (apps/app/screens/assistants/agent-model.ts, NewAgent.tsx).
+- fix(app): design pictures match the stage strip and the sample site job.
+- fix(setup): with the old setup page gone, the relay check reads the sign-in page, and a missing setup folder is not a crash.
+- fix(flows): a wake with no approver carries no person's name, so it does not run as someone else. The editor already says the agent runs with its own access.
+- fix(setup): the old setup page is no longer served. Setup is the app's first run.
+- fix(app): the sample chat and projects read as a poster order, a site refresh and a job, not a dispute or a matter.
+- fix(memory): an empty list is one quiet line, with the next step beside it when there is one.
+- fix(blocks): a stage strip on a page keeps its height.
+- fix(flows): a playbook's stage-set chip finds a kit whose stage names are close, and an exact match still wins.
+- fix(records): a field group with nothing you can read is left out of the record, so its name is not shown. An editor still sees an empty group.
+- fix(artifacts): the check that a half-written artifact stays out of the list stores that row's text and time.
+- fix(records): search on a record type stays in that type's list. The top hit is no longer lifted out as a Best match.
+- fix(github): making a repo from a folder with a long history sends the files that are there now, as one commit. The folder's own history stays on the computer.
+- fix(install): an older release over one already accepted says how to clear it (vyre updater remove and remove the update folder, or vyre uninstall --delete-data; a running server asks the owner with vyre update --rollback).
+- fix(relay): one invitation can hold two channels open, so it cannot fill every slot. The person still sees "try again in a minute" when the cap is reached.
+- fix(files): On your computer lists the folders chats worked in lately.
+- fix(records): search opened from a record type stays on that type.
+- fix(files): Quick Look reads the next and previous file ahead in a linked folder, the same way it does for a Space file.
+- fix(planner): a reminder added as a title and a due in words ("in 2 minutes") keeps that time. A note that is given a due says so, instead of dropping the time.
+- fix(artifacts): a list, a search and the gallery leave out an artifact that is still being written.
+- fix(flows): a classify step with no provider it may use says "no model may answer here: add a provider in Settings" instead of the bare word residency.
 - fix(records): switching Spaces shows the new Space's records. The shared records world was kept by its filters alone, so Records kept drawing the last Space's rows after a switch; it is now kept per Space (apps/app/ui/views/data.ts, world-space.js, screens/shell/state.ts).
 - fix(chat): the Computer tab is the screen, one line under it, and Reset. Pressing an asleep screen wakes it. Pressing a live screen opens the computer full screen. Open, Sleep, the Chrome / Files / Terminal rows, and the files row are gone (apps/app/ui/chat/AgentComputerPane.tsx, apps/app/src/chat/ComputerTab.tsx).
 - fix(glass): a live computer opens over the whole window: the screen, Take over (Hand back while you hold the keyboard), Sign in privately, and close. Escape hands the keyboard back, then closes. The old page chrome (title, Screen/Files, Activity, and the paused card while the window is visible) is gone (apps/app/screens/glass/ComputerOverlay.tsx).

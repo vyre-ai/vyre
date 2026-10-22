@@ -924,7 +924,7 @@ export default {
       examples: [{}],
       run: async (i, meta) => {
         const scope = await scopeOf(meta);
-        const where = ["deleted_at IS NULL"], args = [];
+        const where = ["deleted_at IS NULL", "head > 0"], args = [];
         if (!("all" in scope)) {
           const mine = "project" in scope ? scope.project : PERSONAL;
           if (i.project !== undefined && i.project !== null && i.project !== mine) throw refuse("an agent lists only its own project's artifacts", "denied");
@@ -946,7 +946,7 @@ export default {
         const q = String(i.q || "").trim();
         if (!q) throw refuse("say what to look for", "bad_input");
         const scope = await scopeOf(meta);
-        const where = ["deleted_at IS NULL", "(title LIKE ? ESCAPE '\\' OR text LIKE ? ESCAPE '\\')"];
+        const where = ["deleted_at IS NULL", "head > 0", "(title LIKE ? ESCAPE '\\' OR text LIKE ? ESCAPE '\\')"];
         const like = `%${q.replace(/[\\%_]/g, c => `\\${c}`)}%`;
         const args = [like, like];
         const mine = "all" in scope ? null : "project" in scope ? scope.project : PERSONAL;
@@ -1236,7 +1236,7 @@ export default {
       examples: [{ kind: "image", limit: 24 }],
       run: async (i, meta) => {
         const scope = await scopeOf(meta);
-        const where = ["deleted_at IS NULL", "archived_at IS NULL", "media IS NOT NULL"], args = [];
+        const where = ["deleted_at IS NULL", "archived_at IS NULL", "media IS NOT NULL", "head > 0"], args = [];
         if (!("all" in scope)) { where.push("project = ?"); args.push("project" in scope ? scope.project : PERSONAL); }
         else if (i.project) { where.push("project = ?"); args.push(i.project); }
         if (i.kind) { where.push("kind = ?"); args.push(i.kind); }

@@ -254,7 +254,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
         </>
       ) : null}
       {phone || pane === "records" ? (
-      <ListHeader askBar compact={!phone} onSearch={() => openFind("records")} noun={vd.plural.toLowerCase()} shown={rows.length} total={world.partial && !query && !chips.length ? Math.max(countOf(def.name) ?? all.length, all.length) : all.length} query={query} onQuery={setQuery} chips={chips} onChips={setChips} def={def} ctx={lctx} onImport={() => setImporting(true)} onExport={Platform.OS === "web" ? exportCsv : undefined}
+      <ListHeader askBar compact={!phone} onSearch={() => openFind("records", type ? { type, label: vd.plural } : undefined)} noun={vd.plural.toLowerCase()} shown={rows.length} total={world.partial && !query && !chips.length ? Math.max(countOf(def.name) ?? all.length, all.length) : all.length} query={query} onQuery={setQuery} chips={chips} onChips={setChips} def={def} ctx={lctx} onImport={() => setImporting(true)} onExport={Platform.OS === "web" ? exportCsv : undefined}
         title={<>
           {named.length > 1 ? (
             <Menu trigger={<Pressable accessibilityRole="button" accessibilityLabel={`${vd.plural}, choose a view`} className="flex-row items-center gap-s1 self-start"><Text size="page" strong>{viewName ? (named.find((n) => n.name === viewName)?.label ?? vd.plural) : `All ${vd.plural.toLowerCase()}`}</Text><Icon name="chevron-down" size={16} tone="label" /></Pressable>}

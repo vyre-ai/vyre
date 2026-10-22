@@ -494,9 +494,9 @@ export function createMockStore(opts = {}) {
     m("m5", { title: "Ortiz photo shoot", client: "c5", plan: "Brand", fee: 800, owner: WHO.alex, closing: "2026-10-05" }, "Launch");
     const p = (/** @type {string} */ alias, /** @type {string} */ space, /** @type {any} */ v) => { const { owner, brief, ...rest } = v; put("project", space, { ...rest, owner: own(owner, space), brief: file(brief) }, alias); };
     p("p1", H, { title: "Site rebuild", template: "tpl_ad-campaign", owner: WHO.kit, due: "2026-10-30", brief: "Site rebuild brief.docx" });
-    p("p2", H, { title: "Northwind Holdings billing dispute", template: "tpl_estate-plan", owner: WHO.iris, due: "2026-10-15", brief: "Invoice matching notes.pdf" });
+    p("p2", H, { title: "Northwind Holdings site refresh", template: "tpl_ad-campaign", owner: WHO.iris, due: "2026-10-15", brief: "Site notes.pdf" });
     p("p3", M, { title: "Vyre site", template: "tpl_ad-campaign", owner: WHO.juno, due: "2026-11-05", brief: "Wink page outline.md" });
-    p("p4", M, { title: "Passport renewal", template: "tpl_estate-plan", owner: WHO.juno, due: "2026-10-20", brief: "Renewal checklist.pdf" });
+    p("p4", M, { title: "Passport renewal", template: "tpl_ad-campaign", owner: WHO.juno, due: "2026-10-20", brief: "Renewal checklist.pdf" });
     put("trip", M, { title: "Lisbon in November", where: addr("", "Lisbon", "", "", "Portugal"), leaves: "2026-11-14", budget: money(2400), stage: "Booked" }, "t1");
     put("trip", M, { title: "Hike weekend", where: addr("", "Point Reyes", "CA"), leaves: "2026-10-10", budget: money(200), stage: "Dreaming" }, "t2");
 

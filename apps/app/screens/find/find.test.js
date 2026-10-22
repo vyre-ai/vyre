@@ -70,6 +70,21 @@ const base = async () => {
   return { ...l, records, places: [{ id: "memory", label: "Memory", href: "/u/memory" }, { id: "vault", label: "Vault", href: "/u/vault" }] };
 };
 
+test("a record type page keeps search on that type, including a type filed under People", { skip: !strip }, async () => {
+  const { sections } = await import("./model.ts");
+  const b = await base();
+  const typed = { ...b, records: [
+    { id: "j1", type: "job", typeLabel: "Job", title: "Quill poster", sub: "print run", person: false },
+    { id: "c2", type: "client", typeLabel: "Client", title: "Quill studio", sub: "print run", person: false },
+    { id: "p1", type: "contact", typeLabel: "Contact", title: "Quill printer", sub: "print run", person: true },
+  ] };
+  const jobs = sections(typed, "quill", "records", {}, { recordType: "job", recordLabel: "Jobs" });
+  assert.deepEqual(jobs.map((s) => [s.key, s.label, s.rows.map((r) => r.title)]), [["records", "Jobs", ["Quill poster"]]]);
+  const people = sections(typed, "quill", "records", {}, { recordType: "contact", recordLabel: "Contacts" });
+  assert.deepEqual(people.map((s) => [s.label, s.rows.map((r) => r.title)]), [["Contacts", ["Quill printer"]]]);
+  assert.deepEqual(sections(typed, "quill", "chats", {}, { recordType: "job", recordLabel: "Jobs" }).map((s) => s.key).includes("records"), false);
+});
+
 test("records are searched by their title and text values, never a sealed field", { skip: !strip }, async () => {
   const b = await base();
   assert.deepEqual(b.records.map((r) => [r.id, r.title, r.person]), [["c1", "Dana Reyes", true], ["m1", "Reyes estate", false]]);

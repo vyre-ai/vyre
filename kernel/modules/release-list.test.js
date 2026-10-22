@@ -90,7 +90,7 @@ test("release list at boot: the signed list makes modules first party, a rollbac
   const logs = [];
   k = await boot(logs);
   assert.equal(k.firstPartyCheck(r.dir("alpha")), false, "alpha was edited: not first party by either list");
-  assert.ok(logs.some(m => /older than one already accepted/.test(m)), logs.join(" | "));
+  assert.ok(logs.some(m => /older than one already accepted/.test(m) && /vyre update --rollback/.test(m)), logs.join(" | "));
   // the signed files go away on a packaged build: NO first-party list (SG-5-3), not the last accepted one; the accepted names stay reserved
   fs.rmSync(path.join(r.root, "SHA256SUMS.sig"));
   const logs2 = [];
@@ -311,7 +311,7 @@ test("L-2 rollback route with a REAL sealing process: ask, the phone's proof ove
   const logs = [];
   k = await boot(r, logs);
   t.after(() => k.stop());
-  assert.ok(logs.some(m => /older than one already accepted/.test(m)), logs.join(" | "));
+  assert.ok(logs.some(m => /older than one already accepted/.test(m) && /vyre update --rollback/.test(m)), logs.join(" | "));
   const phone = signer(k.id.owner);
   await enrolDevice(sealer, phone);
   const tools = new Map();

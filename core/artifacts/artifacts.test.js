@@ -41,7 +41,7 @@ async function boot(t) {
   // One of Vyre's own modules calling a reach "modules" tool (sessions, the network setup): the
   // registry sets firstParty from the loader, which a fake module in a temp home never is.
   const asVyre = (tool, input, who = "sessions") => reg.tools.get(tool).run(input, { caller: `module:${who}`, firstParty: true });
-  return { home, reg, events, call, ok, asVyre };
+  return { home, db, reg, events, call, ok, asVyre };
 }
 
 /** @param {string} url @returns {Promise<{ status: number, headers: http.IncomingHttpHeaders, body: string }>} */
@@ -421,4 +421,20 @@ test("artifacts: an interactive artifact is flagged, and a frame that loads twic
   assert.equal((await call("artifacts.activity.log", { id: doc.id, kind: "navigated-away" })).error.code, "bad_input", "a document runs no code to navigate");
   assert.equal((await call("artifacts.activity.log", { id: page.id, kind: "navigated-away" }, "mcp:agent:juno", { thread: "t1" })).error !== undefined, true, "a model never writes the person's activity log");
   assert.equal((await ok("artifacts.activity.log", { id: page.id, kind: "navigated-away", host: "bad host;x" })).host, null, "a host is a hostname or nothing");
+});
+
+test("artifacts: a row still being written (head 0) is left out of the list, the search and the gallery", async t => {
+  const { db, ok } = await boot(t);
+  const done = await ok("artifacts.create", { project: "northwind", kind: "doc", title: "Cedar notes", content: "Cedar notes are ready." });
+  const at = Date.now();
+  const by = JSON.stringify({ kind: "session" });
+  db.prepare(`INSERT INTO artifacts_items (id, project, title, kind, format, made_by, thread, untrusted, head, text, created_at, updated_at)
+    VALUES (?,?,?,?,?,?,?,0,0,?,?,?)`).run("a_unfinished", "northwind", "Still writing", "doc", "markdown", by, null, "Still writing", at, at);
+  db.prepare(`INSERT INTO artifacts_items (id, project, title, kind, format, made_by, thread, untrusted, head, text, media, created_at, updated_at)
+    VALUES (?,?,?,?,?,?,?,0,0,?,?,?,?)`).run("a_mediawait", "northwind", "Picture waiting", "image", "png", by, null, "", JSON.stringify({ mime: "image/png", bytes: 4 }), at, at);
+  const list = await ok("artifacts.list", { project: "northwind" });
+  assert.deepEqual(list.map(a => a.id), [done.id]);
+  assert.equal((await ok("artifacts.search", { q: "Still writing" })).length, 0);
+  assert.equal((await ok("artifacts.search", { q: "Cedar" })).some(a => a.id === done.id), true);
+  assert.equal((await ok("artifacts.media.gallery", {})).items.some(a => a.id === "a_mediawait"), false);
 });

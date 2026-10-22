@@ -103,7 +103,7 @@ export function peopleHits(base: Base, q: string): Row[] {
   const people = base.records.filter((r) => r.person && hasAll(`${r.title} ${r.sub}`, ws)).map((r): Row => ({ key: `r:${r.id}`, kind: "person", title: r.title, sub: r.sub.slice(0, 60), href: `/u/record/${r.id}` }));
   return [...agents, ...people];
 }
-export const recordHits = (base: Base, q: string): Row[] => { const ws = words(q); return base.records.filter((r) => !r.person && hasAll(`${r.title} ${r.sub}`, ws)).map((r) => ({ key: `r:${r.id}`, kind: "record", title: r.title, sub: r.typeLabel, href: `/u/record/${r.id}` })); };
+export const recordHits = (base: Base, q: string, recordType = ""): Row[] => { const ws = words(q); return base.records.filter((r) => (recordType ? r.type === recordType : !r.person) && hasAll(`${r.title} ${r.sub}`, ws)).map((r) => ({ key: `r:${r.id}`, kind: "record", title: r.title, sub: r.typeLabel, href: `/u/record/${r.id}` })); };
 export const settingsHits = (base: Base, q: string, keys = false): Row[] => { const ws = words(q); return [...(base.settings || []), ...(keys ? base.settingKeys || [] : [])].filter((x) => hasAll(`${x.title} ${x.sub}`, ws)).map((x) => ({ key: `st:${x.href}`, kind: "setting", title: x.title, sub: x.sub, href: x.href })); };
 export const placeHits = (base: Base, q: string): Row[] => { const lc = q.toLowerCase(); return base.places.filter((p) => p.label.toLowerCase().includes(lc)).map((p) => ({ key: `g:${p.id}`, kind: "place", title: p.label, sub: "Go to", href: p.href })); };
 
@@ -164,7 +164,7 @@ export function queryOf(raw: string, scope: Scope): { scope: Scope; q: string; t
 }
 
 /** The sections for a query, in the fixed order: Best match, Actions, Go to, Chats, Projects, People, Records, Files, Settings, From memory. A search tool that has not answered yet adds nothing; `missing` says which never will. */
-export function sections(base: Base, raw: string, scope: Scope, fetched: Fetched, opts: { best?: boolean } = {}): Section[] {
+export function sections(base: Base, raw: string, scope: Scope, fetched: Fetched, opts: { best?: boolean; recordType?: string; recordLabel?: string } = {}): Section[] {
   const { scope: sc, q, type, from, within, keys } = queryOf(raw, scope);
   const filtered = Boolean(type || from || within);
   if (q.length < 1 && !filtered) return [];
@@ -177,15 +177,19 @@ export function sections(base: Base, raw: string, scope: Scope, fetched: Fetched
   if (want("chats") && q.length >= MIN) add("messages", "Messages", messageHits(base, fetched.messages));
   if (want("projects")) add("projects", "Projects", projectHits(base, q));
   if (sc === "all" && q.length >= MIN && fetched.skills !== undefined) add("skills", "Skills", skillHits(fetched.skills));
-  if (want("people")) add("people", "People", peopleHits(base, q));
-  if (want("records")) add("records", "Records", recordHits(base, q));
+  if (opts.recordType) {
+    if (want("records") || want("people")) add("records", opts.recordLabel || "Records", recordHits(base, q, opts.recordType));
+  } else {
+    if (want("people")) add("people", "People", peopleHits(base, q));
+    if (want("records")) add("records", "Records", recordHits(base, q));
+  }
   if (want("files") && q.length >= MIN) { const f = fileHits(fetched.files); if (fetched.files !== undefined) add("files", "Files", f.rows, f.rows.length ? f.notes : []); }
   if (want("files") && q.length >= MIN && fetched.drive !== undefined) add("drive", "Files", driveHits(fetched.drive));
   if (want("settings") && q) add("settings", "Settings", settingsHits(base, q, keys || sc === "settings"));
   if (sc === "all" && q.length >= MIN) add("memory", "From memory", factHits(fetched.memory));
   if (sc === "all" && q.length >= MIN && fetched.mentions !== undefined) for (const m of mentionSections(fetched.mentions).sections) out.push(m);
   if (filtered) out = out.map((s) => ({ ...s, rows: filterRows(s.rows, { type, from, within }) })).filter((s) => s.rows.length > 0);
-  if (opts.best === false) return out;
+  if (opts.best === false || opts.recordType) return out;
   const { best, rest } = bestMatch(out, q) as unknown as { best: Row | null; rest: Section[] };
   return best ? [{ key: "best", label: "Best match", rows: [best] }, ...rest] : rest;
 }

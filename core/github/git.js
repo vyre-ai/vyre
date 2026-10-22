@@ -559,9 +559,34 @@ async function pushLocalBranch({ repoDir, branch, token, fullName, base = "https
  * swept in (`left_out` names what was kept out), and what would go is scanned for secrets (`hit`). Local only.
  * @param {{ dir: string }} p @returns {Promise<{ branch: string, left_out: string[], hit: null | { pattern: string, file: string, line: number } | { unreadable: true } }>}
  */
+/** More commits than this is a long past: the first push sends the files that are there now, as one commit, and leaves the folder's own history where it is. */
+const HANDFUL = 8;
+
+async function commitCount(dir) {
+  const n = await gitAsync(dir, ["rev-list", "--count", "HEAD"]);
+  const c = n.ok ? Number(n.stdout.trim()) : 0;
+  return Number.isFinite(c) ? c : 0;
+}
+
+/** A copy of the folder without its git history, so a first push can be one new commit. The caller deletes it. */
+function copyForPublish(dir) {
+  const dest = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-publish-"));
+  fs.cpSync(dir, dest, { recursive: true, filter: (src) => { const rel = path.relative(dir, src); return rel === "" || !rel.split(path.sep).includes(".git"); } });
+  return dest;
+}
+
 export async function prepareFirstPush({ dir }) {
   const init = await localInit(dir);
-  return { branch: init.branch, left_out: init.left_out, hit: await scanWholeBranch({ repoDir: dir, branch: init.branch }) };
+  const long = init.already && await commitCount(dir) > HANDFUL;
+  if (!long) return { branch: init.branch, left_out: init.left_out, fresh: false, hit: await scanWholeBranch({ repoDir: dir, branch: init.branch }) };
+  const publishDir = copyForPublish(dir);
+  try {
+    const made = await localInit(publishDir);
+    return { branch: made.branch, left_out: made.left_out, fresh: true, publishDir, hit: await scanWholeBranch({ repoDir: publishDir, branch: made.branch }) };
+  } catch (e) {
+    fs.rmSync(publishDir, { recursive: true, force: true });
+    throw e;
+  }
 }
 
 /**

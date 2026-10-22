@@ -1,7 +1,7 @@
 // The Space Drive as a FileSource for the file viewer (ui/files): read a version, list the versions, save text as a new version. These are the existing files.drive.space.* and files.drive.* tools.
 import { linked, spaceRead, spaceUpload, spaceVersions } from "./real";
 import { bytesOf } from "./real-model";
-import { take } from "./preload";
+import { take, takeLinked } from "./preload";
 import { base64Of, bytesOfText } from "../../ui/files/viewer-model.js";
 import type { FileSource, FileVersion } from "../../ui/files/source";
 
@@ -30,6 +30,8 @@ export function linkedFileSource(link: string, path: string): FileSource {
   let rev: string | undefined;
   return {
     load: async () => {
+      const kept = takeLinked(link, path);
+      if (kept) return { bytes: bytesOf(kept), base64: kept };
       const r = await linked.read(link, path);
       rev = r.rev;
       return { bytes: bytesOf(r.base64), base64: r.base64, mime: r.mime };

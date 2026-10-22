@@ -424,6 +424,23 @@ test("planner: at in words is the next such time in the item's zone", async t =>
   assert.equal((await w.ok("planner.add", { kind: "reminder", title: "ISO still", at: "2026-09-24T20:00:00+05:00" })).at, Z(2026, 9, 24, 15));
 });
 
+test("planner: a due in words with no kind is a reminder, and a note refuses a due", async t => {
+  const w = await world(t);
+  const p = await w.ok("planner.parse", { text: "remind me x in 2 minutes" });
+  if (p === null) return t.skip("parse.js is not in this tree");
+  const rem = await w.ok("planner.add", { title: "Check the Quill oven", due: "in 2 minutes" });
+  assert.equal(rem.kind, "reminder");
+  assert.equal(rem.at, T0 + 2 * MIN);
+  const named = await w.ok("planner.add", { kind: "reminder", title: "Glaze the Quill buns", due: "in 2 minutes" });
+  assert.equal(named.at, T0 + 2 * MIN);
+  const bad = await w.call("planner.add", { title: "Quill", due: "not a time at all" });
+  assert.equal(bad.error.code, "bad_input");
+  assert.match(bad.error.message, /not a time/);
+  const note = await w.call("planner.add", { kind: "note", title: "Quill dough notes", due: "in 2 minutes" });
+  assert.equal(note.error.code, "bad_input");
+  assert.match(note.error.message, /note does not take a due/);
+});
+
 test("planner: an idle planner never asks Intl for a zone (ICU's zone data is about 8 MB)", async () => {
   const NEEDS_JSON = NEEDS;
   // A fresh process, since time.js keeps its formatters: start the planner on an empty store, let

@@ -108,3 +108,20 @@ test("a stage set matches a Kit when the stage names are the same in order, and 
   const keep = applyStageSet({ name: "X", stages: [{ name: "Stage 1", tasks: [{ title: "Mine", doer: "role:owner", output: { kind: "note" } }] }, { name: "Done" }] }, set.id, kitFor(set.id, lib));
   assert.deepEqual((keep.stages[0].tasks || []).map((t) => t.title), ["Mine"], "tasks already written are never replaced by a Kit's");
 });
+
+test("a stage set matches a Kit whose stage names are close, and an exact Kit still wins", async () => {
+  const { kitFor, STAGE_SETS } = await import("./compose.ts");
+  const set = STAGE_SETS[0];
+  const close = { id: "k/close", name: "Close", stages: 4, tasks: 1, outline: [
+    { name: "Client intake", tasks: ["Collect the brief"] },
+    { name: "Review the draft", tasks: [] },
+    { name: "Signing day", tasks: [] },
+    { name: "Closing notes", tasks: [] },
+  ] };
+  const exact = { id: "k/exact", name: "Exact", stages: 4, tasks: 0, outline: set.stages.map((name) => ({ name, tasks: [] })) };
+  const one = { id: "k/one", name: "One", stages: 1, tasks: 0, outline: [{ name: "Intake form", tasks: [] }] };
+  assert.equal(kitFor(set.id, [close]).id, "k/close");
+  assert.equal(kitFor(set.id, [one, close]).id, "k/close");
+  assert.equal(kitFor(set.id, [one]), null);
+  assert.equal(kitFor(set.id, [close, exact]).id, "k/exact");
+});

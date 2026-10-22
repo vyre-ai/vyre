@@ -12,10 +12,17 @@ class StepFail extends Error {
   /** @param {string} code @param {string} message */
   constructor(code, message) { super(message); this.name = "StepFail"; this.code = code; }
 }
-/** A port's own failure (the sandbox's timeout, the door's refusal) keeps its code as the step's. @param {any} e @returns {never} */
+/** What a classify step says when the door's only word is the code residency: no provider it may use. */
+const NO_PROVIDER = "no model may answer here: add a provider in Settings";
+/** A port's own failure (the sandbox's timeout, the door's refusal) keeps its code as the step's. A residency refusal whose message is only the code is said in words. @param {any} e @returns {never} */
 function portFail(e) {
   if (e instanceof StepFail || e instanceof Suspend || e instanceof PauseFlow || !e || typeof e.code !== "string") throw e;
-  throw new StepFail(e.code, e instanceof Error ? e.message : String(e));
+  const bare = e instanceof Error ? e.message : String(e);
+  const detail = e.refusal && typeof e.refusal.detail === "string" ? e.refusal.detail : "";
+  const message = e.code === "residency" && (bare === "residency" || bare === e.code)
+    ? (detail && detail !== "provider is not available" && detail.length > 12 ? detail : NO_PROVIDER)
+    : bare;
+  throw new StepFail(e.code, message);
 }
 /** What went wrong, as a code and words, whatever was thrown. A port's own code is kept; the usual network faults get the names a retry policy knows. @param {any} e @returns {{ code: string, message: string }} */
 function failOf(e) {
