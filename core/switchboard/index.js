@@ -51,7 +51,7 @@ import { memberListFilter, launchPersonOf, startedBy } from "./member-list.js";
 import { registerRecallSessions } from "./recall-sessions.js";
 import { ingressProviderCall } from "../../lib/person-relay.js";
 import { isStaffPerson } from "../../lib/member-scope.js"; import { hearActsFor, hearOwnFor } from "./hear.js";
-import { threadStatus, LIVE_STATUSES } from "../../lib/thread-status.js";
+import { threadStatus, LIVE_STATUSES } from "../../lib/thread-status.js"; import { noteIdleWake } from "./idle-wake.js";
 import { normalizeCaps } from "../../lib/caps-flags/index.js";
 import { load as loadSdk, install as installSdk, installed as sdkInstalled, autoInstallAllowed, abortInstalls } from "../sessions/sdk.js";
 import { Leases, ownSurface, sameKeyboard } from "./lease.js";
@@ -718,11 +718,9 @@ export class Switchboard {
   }
 
   set(id, fields) {
+    noteIdleWake(this, id, fields);
     const keys = Object.keys(fields);
     this.db.prepare(`UPDATE threads_runs SET ${keys.map(k => `${k} = ?`).join(", ")}, last_at = ? WHERE id = ?`).run(...keys.map(k => fields[k]), Date.now(), id);
-    // thread.state (legacy words, kept for surfaces that already read it) and thread.status (the
-    // canonical vocabulary, lib/thread-status.js), once per change: the working dot and "waiting
-    // on you" read one of these.
     if (fields.status && this.states.get(id) !== fields.status) {
       this.states.set(id, fields.status);
       const rec = /** @type {any} */ (this.db.prepare("SELECT project, stopped_reason FROM threads_runs WHERE id = ?").get(id));

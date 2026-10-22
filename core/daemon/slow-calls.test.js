@@ -2,7 +2,7 @@
 import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { timeCalls } from "./slow-calls.js";
+import { timeCalls, holdUntilUp } from "./slow-calls.js";
 
 test("slow calls: a call over the limit is logged by tool and time, and its answer or error is unchanged", async () => {
   let t = 0;
@@ -16,4 +16,17 @@ test("slow calls: a call over the limit is logged by tool and time, and its answ
   await assert.rejects(reg.call("mail.send", { takes: 3000, boom: true }), /boom/);
   assert.equal(logged.length, 2);
   assert.equal(reg.n, 3, "this is still the same registry");
+});
+
+test("slow calls: ones from before vyred is up are not logged, and later ones are", async () => {
+  let t = 0;
+  const logged = /** @type {string[]} */ ([]);
+  const reg = { async call(/** @type {string} */ tool, /** @type {any} */ input) { t += input.takes; return { data: tool }; } };
+  const log = holdUntilUp(m => logged.push(m));
+  timeCalls(reg, log, { now: () => t });
+  await reg.call("files.list", { takes: 2600 });
+  log("warn: [mail] still said");
+  log("vyred 0.6.8 up · role box · 1 modules");
+  await reg.call("threads.send", { takes: 2600 });
+  assert.deepEqual(logged, ["warn: [mail] still said", "vyred 0.6.8 up · role box · 1 modules", "warn: slow call threads.send took 2600 ms"]);
 });

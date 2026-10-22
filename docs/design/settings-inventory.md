@@ -121,7 +121,7 @@ Composer behaviour (Vyre-owned, account level with a session override):
 
 | Area | Setting | Lv | Default | Today | UI today | CLI today |
 |---|---|---|---|---|---|---|
-| Sessions | Idle close minutes | A | 10 | `sessions.idle_minutes` | none | none |
+| Sessions | Idle close minutes | A | 15 | `sessions.idle_minutes` | none | none |
 | Sessions | Max live sessions (machine) | A | box 6, Mac no cap | `sessions.max_live` | none | none |
 | Sessions | Driver (sdk or cli fallback) | A | sdk after the flip | `sessions.driver` | none | env only |
 | Sessions | SDK install on first use | A | on | `sessions.install` | none | none |
