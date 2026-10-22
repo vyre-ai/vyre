@@ -54,12 +54,13 @@ export function identityOfRecord(e) {
 
 /** @param {string} home */
 function claudeIdentity(home) {
-  const c = json(path.join(home, ".claude.json")) || json(path.join(home, ".claude", ".claude.json"));
-  const fromAccount = c && identityOfRecord(c.oauthAccount);
+  // One line names the login files. The account file wins; a credentials file is used only when that account has no email.
+  const [accountFile, nestedAccount, credA, credB, credC] = [".claude.json", ".claude/.claude.json", ".claude/.credentials.json", ".claude/credentials.json", ".credentials.json"];
+  const account = json(path.join(home, ...accountFile.split("/"))) || json(path.join(home, ...nestedAccount.split("/")));
+  const fromAccount = account && identityOfRecord(account.oauthAccount);
   if (fromAccount) return fromAccount;
-  // Claude on this computer keeps the login beside .claude.json, or in the login keychain, and does not always write oauthAccount.
-  for (const rel of [".claude/.credentials.json", ".claude/credentials.json", ".credentials.json"]) {
-    const d = json(path.join(home, rel));
+  for (const rel of [credA, credB, credC]) {
+    const d = json(path.join(home, ...rel.split("/")));
     const r = d && (identityOfRecord(d.claudeAiOauth) || identityOfRecord(d.oauthAccount));
     if (r) return r;
   }
