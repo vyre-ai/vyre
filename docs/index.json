@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":360,"tool":1996,"event":556,"config":307,"env":306,"screen":0,"concept":39},
+  "counts": {"command":360,"tool":1998,"event":556,"config":307,"env":306,"screen":0,"concept":39},
   "things": [
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
     {"kind":"event","name":"account.changed","definedIn":"core/sessions/index.js","page":"reference/events.md#models","module":"sessions","mentions":[]},
@@ -362,11 +362,13 @@
     {"kind":"event","name":"computer.updated","definedIn":"core/computers/update.js","page":"reference/events.md#computers","module":"computers","mentions":[]},
     {"kind":"tool","name":"computer.use","definedIn":"core/computer/index.js","page":"reference/tools.md#computeruse","module":"computer","mentions":[{"page":"using/computer.md","line":13,"anchor":"vyre-computer"},{"page":"using/computer.md","line":23,"anchor":"which-computer"},{"page":"using/computer.md","line":55,"anchor":"logging-in"}]},
     {"kind":"config","name":"computers","definedIn":"core/config/index.js","page":"reference/config.md#configjson","mentions":[]},
+    {"kind":"tool","name":"computers.agent.file.make","definedIn":"core/computers/desk-ask.js","page":"reference/tools.md#computersagentfilemake","module":"computers","mentions":[]},
     {"kind":"tool","name":"computers.agent.files","definedIn":"core/computers/index.js","page":"reference/tools.md#computersagentfiles","module":"computers","mentions":[]},
     {"kind":"tool","name":"computers.agent.reset","definedIn":"core/computers/agent-tools.js","page":"reference/tools.md#computersagentreset","module":"computers","mentions":[{"page":"using/agent-computer.md","line":109,"anchor":"for-agents"}]},
     {"kind":"tool","name":"computers.agent.sleep","definedIn":"core/computers/agent-tools.js","page":"reference/tools.md#computersagentsleep","module":"computers","mentions":[{"page":"using/agent-computer.md","line":105,"anchor":"for-agents"}]},
     {"kind":"tool","name":"computers.agent.status","definedIn":"core/computers/agent-tools.js","page":"reference/tools.md#computersagentstatus","module":"computers","mentions":[{"page":"using/agent-computer.md","line":104,"anchor":"for-agents"}]},
     {"kind":"tool","name":"computers.agent.terminal.open","definedIn":"core/computers/agent-tools.js","page":"reference/tools.md#computersagentterminalopen","module":"computers","mentions":[{"page":"using/agent-computer.md","line":108,"anchor":"for-agents"}]},
+    {"kind":"tool","name":"computers.agent.terminal.run","definedIn":"core/computers/desk-ask.js","page":"reference/tools.md#computersagentterminalrun","module":"computers","mentions":[]},
     {"kind":"tool","name":"computers.agent.terminals","definedIn":"core/computers/agent-tools.js","page":"reference/tools.md#computersagentterminals","module":"computers","mentions":[{"page":"using/agent-computer.md","line":107,"anchor":"for-agents"}]},
     {"kind":"tool","name":"computers.agent.wake","definedIn":"core/computers/agent-tools.js","page":"reference/tools.md#computersagentwake","module":"computers","mentions":[{"page":"using/agent-computer.md","line":105,"anchor":"for-agents"}]},
     {"kind":"tool","name":"computers.agent.watch","definedIn":"core/computers/agent-tools.js","page":"reference/tools.md#computersagentwatch","module":"computers","mentions":[{"page":"using/agent-computer.md","line":106,"anchor":"for-agents"}]},

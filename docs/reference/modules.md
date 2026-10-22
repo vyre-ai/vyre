@@ -36,7 +36,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`commands`](#commands) | `core/commands` | `box`, `local` | 1 | 0 | none |
 | [`comms`](#comms) | `core/comms` | `box` | 6 | 2 | none |
 | [`computer`](#computer) | `core/computer` | `box`, `local` | 2 | 0 | none |
-| [`computers`](#computers) | `core/computers` | `box` | 38 | 28 | cli, deck |
+| [`computers`](#computers) | `core/computers` | `box` | 40 | 28 | cli, deck |
 | [`connectors`](#connectors) | `core/connectors` | `box`, `local` | 41 | 15 | capsule, cli, deck |
 | [`context`](#context) | `core/context` | `box`, `local` | 2 | 1 | cli |
 | [`design`](#design) | `core/design` | `box`, `local` | 11 | 3 | cli |
@@ -350,7 +350,7 @@ Vyre Computer: one front door over the cloud computer, your computers and the sc
 - Folder: `core/computers`, version 0.1.0
 - Runs on: `box`
 - Requires: none
-- Tools: [38](tools.md#computers), 9 of them only for other modules
+- Tools: [40](tools.md#computers), 9 of them only for other modules
 - Emits: [28 events](events.md#computers)
 - Shows on: cli, deck
 - Streams: `glass`, `browser-glass`, `terminal`
