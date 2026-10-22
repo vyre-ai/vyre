@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6.9
 
+- fix(home): the more-row and the done line on Home use the headline type size, not a hand-set font (apps/app/screens/now/HomeWork.tsx).
 - docs: the install page is titled for a Mac or a Windows PC, and the Mac app step says Mac, so a search for installing on a Mac finds it.
 - fix(docs): alarm, timer and reminder tips open Home, where those steps live (core/planner/module.json).
 - docs: the hand-written docs match the app as it ships. Five places (Home, Chats, Projects, Records, Files), with Vault and Settings at the foot. One Space at a time. Sign-in is the Space, a username and a password, or Continue with GitHub. Records live in Vyre's own store. Every chat with an agent is one of its threads. The agent's computer is press to wake, full screen, Take over and Sign in privately. Flows are made by asking, and a failed run offers Retry. Files has agent folders, Shared with me, Office previews and versions. Your profile photo is under Settings, Your profile. An idle agent sleeps. The Planner page, the Apps grid, Sites as a sidebar place and All spaces are gone from these pages.
