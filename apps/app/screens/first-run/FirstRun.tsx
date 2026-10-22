@@ -6,13 +6,14 @@ import {
   Button, ChoiceHero, ChoiceList, CodeBlock, Field, FlowStep, InviteShare, PasswordField, ProviderSignInButton,
   Avatar, FlowOver, Icon, ModelPicker, ProviderBadge, RecoveryKeySheet, RolePicker, Segmented, SpaceSwitcherTitle, Text, markRef, passwordStrength, useUiTheme,
 } from "@vyre/ui";
-import { ANOTHER_COPY, AI_SIGNIN_COPY, INVITE_ROLES, JOIN_COPY, PHASES, SIGNIN_COPY, SPACE_NAME_SAY, afterAi, afterRecovery, commandOk, entryScreen, displayNameOf, isAnother, passwordOk, phaseOf, spaceAddressOf, spaceNameSuggestions, usernameOf } from "../../../../lib/first-run-shape.js";
+import { ANOTHER_COPY, AI_SIGNIN_COPY, INVITE_ROLES, JOIN_COPY, PHASES, SIGNIN_COPY, SPACE_NAME_SAY, afterAi, afterRecovery, afterSpace, commandOk, entryScreen, displayNameOf, isAnother, passwordOk, phaseOf, spaceAddressOf, spaceNameSuggestions, usernameOf } from "../../../../lib/first-run-shape.js";
 import { MOCK } from "../../src/real/box";
 import { checkName } from "../../src/real/install";
 import { takeJoin } from "../../src/shell/join-hold.js";
 import { HalftoneField, measureCalm } from "./HalftoneField";
 import { ripple, setWelcome } from "./field-state.js";
 import { Welcome } from "./Welcome";
+import { AfterSpace } from "./AfterSpace";
 import { AgentLookPicker } from "../../ui/chat/NewAgentDialog";
 import { PARTS, lookOf, lookSeed, partsOf, setPart, withParts } from "../../ui/chat/agent-look.js";
 import { ASK_COPY, askAddressOf, entryWords, nextForAsk } from "../spaces/join-requests-model.js";
@@ -30,7 +31,7 @@ import {
   loadProgress, makeInvite, openSpace, pageHasNoDaemon, addAgentKey, askJoin, askJoinStatus, copyAccounts, currentAssistant, listCopyable, listAssistantModels, removeSpace, renameSpace, setAssistant, setAssistantModel, personStatus, pollSpace, readInvite, saveProgress, signInAgent, signInGithub, signInPassword, unlockGithub,
 } from "./real.js";
 
-export type Screen = "id.choice" | "id.signin" | "id.signin.spaces" | "id.create" | "id.name" | "id.password" | "id.recovery" | "id.ai" | "space.choice" | "join.link" | "join.review" | "create.kind" | "create.wait" | "join.ask" | "setup.assistant" | "setup.model" | "invite.share" | "ready";
+export type Screen = "id.choice" | "id.signin" | "id.signin.spaces" | "id.create" | "id.name" | "id.password" | "id.recovery" | "id.ai" | "space.choice" | "join.link" | "join.review" | "create.kind" | "create.wait" | "join.ask" | "setup.name" | "setup.photo" | "setup.assistant" | "setup.model" | "setup.chat" | "invite.share" | "ready";
 
 type Review = { link: string; role: string; space: string | null };
 type Membership = { id: string; name: string; role: string; server: string | null };
@@ -79,7 +80,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
   const [command, setCommand] = useState(shot?.command || "");
   const [waitId, setWaitId] = useState("");
   const [online, setOnline] = useState(false);
-  // A page with no daemon has no server to sign an AI in on until its space is online: its AI step comes then, and goes on to Ready.
+  // A page with no daemon has no server to sign an AI in on until its space is online: its AI step comes then, and goes on to the next screen.
   const noDaemon = pageHasNoDaemon();
   const [aiThen, setAiThen] = useState<string>("");
   const [paired, setPaired] = useState<{ id: string; name: string; address: string } | null>(null);
@@ -693,7 +694,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
         lead={online ? "Your server is paired and your space has its address." : "Run this one line there. Nothing else. This screen updates when it is up."}
         failure={failure}
         secondary={back ? { label: "Cancel", onPress: back } : undefined}
-        primary={{ label: online ? "Continue" : "Waiting", disabled: !online, onPress: () => { if (noDaemon) { setAiThen("setup.assistant"); go("id.ai"); } else go("setup.assistant"); } }}>
+        primary={{ label: online ? "Continue" : "Waiting", disabled: !online, onPress: () => { const next = afterSpace() as Screen; if (noDaemon) { setAiThen(next); go("id.ai"); } else go(next); } }}>
         {taken ? (
           <>
             <Field label="Space name" name="Space name" value={space} onChangeText={setSpace} help={suggest ? `${suggest} is free.` : undefined} />
@@ -743,6 +744,12 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
     );
   }
 
+  if (screen === "setup.name" || screen === "setup.photo" || screen === "setup.chat") {
+    return (
+      <AfterSpace screen={screen} steps={steps} back={back} backLabel={backLabel} failure={failure} busy={busy} first={first} last={last} go={go} run={run} setFailure={setFailure} />
+    );
+  }
+
   if (screen === "setup.assistant") {
     const name = (carried && !changing ? carried!.name : asName.trim()) || ASSISTANT_COPY.suggestion;
     // the character a look names: shape and colour from the picker, the parts from a hash of the name until a tap changes one (every part is always written, so a tap keeps the rest)
@@ -757,7 +764,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
           if (!r.ok) { setFailure(r.message); return; }
           setAsName(String(r.display || name));
           setAsLookSeed(full); setAsDone(true);
-          go("setup.model");
+          go(afterSpace("setup.assistant") as Screen);
         }) }}>
         <View style={{ alignItems: "center" }}><Avatar of={markRef("agent", name, undefined, full)} size={56} /></View>
         {keep ? <Button kind="ghost" label="Change its name or look" onPress={() => { setAsName(carried!.name); if (carried!.look) { const lk = lookOf(carried!.look); if (lk) setAsLook({ shape: lk.shape, color: lk.color, seed: carried!.look }); } setChanging(true); }} /> : (<>
@@ -778,10 +785,10 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
     const stepNow = modelStep(models, Boolean(now));
     return (
       <FlowStep steps={steps} onBack={back} backLabel={backLabel} title={MODEL_COPY.title(who)} lead={stepNow.lead} failure={failure}
-        secondary={{ label: "Keep the default", onPress: () => go("ready") }}
+        secondary={{ label: "Keep the default", onPress: () => go(afterSpace("setup.model") as Screen) }}
         primary={{ label: "Continue", loading: busy, disabled: busy || !stepNow.canContinue, onPress: () => void run(async () => {
           if (now && modelPick) { const r = await setAssistantModel(now.model.id, now.model.provider, effortFor(now.model, modelPick.effort)); if (!r.ok) { setFailure(r.message); return; } }
-          go("ready");
+          go(afterSpace("setup.model") as Screen);
         }) }}>
         {models === null ? <Text tone="muted">Looking at your AI accounts...</Text> : null}
         {groups && groups.some((g) => g.models.length) ? (

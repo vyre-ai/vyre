@@ -229,5 +229,26 @@ export async function unlockGithub(password) {
   catch (e) { return fail(e); }
 }
 
-/** Is this page one with no daemon of its own (the hosted web app, or the Mac or Windows window with no vyred)? Its AI accounts are made on its server, so the AI step comes after the space is online. */
+/** The name people see, kept beside the username. @param {string} display */
+export async function setDisplayName(display) {
+  if (MOCK) return { ok: true, display };
+  try { return done(await tool("identity.display.set", { display })); }
+  catch (e) { return fail(e); }
+}
+
+/** A photo as an https address. A file upload is a later step. @param {string} photo */
+export async function setPhoto(photo) {
+  if (MOCK) return { ok: true, photo };
+  try { return done(await tool("identity.photo.set", { photo })); }
+  catch (e) { return fail(e); }
+}
+
+/** The first chat: the server's welcome when the space is online, else the same words from the name just saved. */
+export async function firstChat() {
+  if (MOCK) return { ok: true, text: "Hi. I'm your assistant. Everything is set up. Tell me what you want to do.", cards: [] };
+  try { return done(await tool("onboard.first.chat", {})); }
+  catch (e) { return fail(e); }
+}
+
+/** Is this page one with no daemon of its own (the hosted web app, or the computer app's window with no vyred)? Its AI accounts are made on its server, so the AI step comes after the space is online. */
 export const pageHasNoDaemon = () => !MOCK && hostWanted();

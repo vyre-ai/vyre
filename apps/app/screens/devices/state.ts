@@ -3,6 +3,7 @@ import { MOCK, said, tool } from "../../src/real/box";
 import { loadAccess, loadDeviceSpaces, loadLend, SPACE_NAMES, type AccessItem } from "./data";
 import { within } from "../../src/state/kept-model.js";
 import { deviceRows, deviceSpaces, spaceNames } from "./real.js";
+import { withThisComputer } from "./this-computer.js";
 
 type S = {
   items: AccessItem[];
@@ -37,7 +38,7 @@ export const useDevices = create<S>((set, get) => ({
     set({ loading: true });
     try {
       const [devices, spaces] = await within(Promise.all([tool("relay.devices.list"), tool("spaces.list").catch(() => [])]));
-      const items = deviceRows(devices);
+      const items = deviceRows(withThisComputer(devices));
       const names = spaceNames(spaces);
       set({ items, spaceNames: names, devSpaces: deviceSpaces(items.map((i) => i.id), names), error: null });
     } catch (e) {

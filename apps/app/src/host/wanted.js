@@ -4,6 +4,11 @@
 
 const HOSTED = /^web\.vyre\.run$/i;
 
+/** The label a sign-in sends. The computer app (a mac or windows shell) says "This computer". A browser says "This browser". @param {string | null | undefined} kind */
+export function deviceLabelFor(kind) {
+  return kind === "mac" || kind === "windows" ? "This computer" : "This browser";
+}
+
 /** @param {{ web: boolean, flag?: string, hostname?: string, shell?: { kind?: string, boxless?: boolean } | null }} p */
 export function hostWantedFor(p) {
   if (!p.web) return false;

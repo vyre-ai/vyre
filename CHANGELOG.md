@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6.9
 
+- feat(signin): a space, a username and a password sign in on the computer app and on the web. A device the space has already seen does not ring the others, and the computer app calls itself "This computer" (apps/app/src/host/wanted.js, apps/app/src/host/index.ts).
+- feat(signin): Continue with GitHub keeps the name and the photo GitHub already gave, and a photo address that is not a GitHub avatar is not stored (apps/app/src/host/github-person.js, apps/app/src/host/host-core.js).
+- fix(spaces): Settings, Devices lists this computer and the other paired computers. spaces.devices.list from the owner's computer answers this computer instead of no_identity (core/spaces/who-read.js, apps/app/screens/devices/this-computer.js).
+- feat(onboard): after a Space is online, first run continues with your name, a photo address, your assistant, a model and the first chat (lib/first-run-shape.js, apps/app/screens/first-run/AfterSpace.tsx).
 - fix(records): switching Spaces shows the new Space's records. The shared records world was kept by its filters alone, so Records kept drawing the last Space's rows after a switch; it is now kept per Space (apps/app/ui/views/data.ts, world-space.js, screens/shell/state.ts).
 - fix(chat): the Computer tab is the screen, one line under it, and Reset. Pressing an asleep screen wakes it. Pressing a live screen opens the computer full screen. Open, Sleep, the Chrome / Files / Terminal rows, and the files row are gone (apps/app/ui/chat/AgentComputerPane.tsx, apps/app/src/chat/ComputerTab.tsx).
 - fix(glass): a live computer opens over the whole window: the screen, Take over (Hand back while you hold the keyboard), Sign in privately, and close. Escape hands the keyboard back, then closes. The old page chrome (title, Screen/Files, Activity, and the paused card while the window is visible) is gone (apps/app/screens/glass/ComputerOverlay.tsx).
