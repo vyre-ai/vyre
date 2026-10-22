@@ -36,8 +36,8 @@ export function computerWords(v, name) {
   return `${name}'s computer is asleep. Its browser opens where it was left when it wakes.`;
 }
 
-/** What the person can do from this state. "wake" starts it (the asleep screen itself is the control); "open" goes full screen; "sleep" closes the screen and the browser (terminal jobs keep running). @param {ComputerView} v @returns {("wake" | "open" | "sleep")[]} */
-export const computerActions = (v) => (v.state === "asleep" ? ["wake"] : v.state === "live" ? ["open", "sleep"] : []);
+/** What the person can do from this state. "wake" starts it (the asleep screen itself is the control). "open" is the live screen itself: it opens the computer full screen. @param {ComputerView} v @returns {("wake" | "open")[]} */
+export const computerActions = (v) => (v.state === "asleep" ? ["wake"] : v.state === "live" ? ["open"] : []);
 
-/** The dock under the full-screen view. */
+/** The desktop's apps, named by the product map. The Computer tab does not draw them. */
 export const DOCK = [{ id: "chrome", label: "Chrome", icon: "globe" }, { id: "files", label: "Files", icon: "folder" }, { id: "terminal", label: "Terminal", icon: "terminal" }];

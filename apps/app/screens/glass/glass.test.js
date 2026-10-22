@@ -206,3 +206,16 @@ test("the hand-back banner claims the note is in the thread only when the box sa
   assert.equal(handedBackBanner("kit", 125000, "all done", false), "You handed the keyboard back to kit after 2:05. kit has no thread open, so your note did not go anywhere.");
   assert.equal(handedBackBanner("kit", null, "  ", false), "You handed the keyboard back to kit.");
 });
+
+test("the full-screen computer is the screen, Take over, Sign in privately and close", async () => {
+  const fs = await import("node:fs");
+  const src = fs.readFileSync(new URL("./ComputerOverlay.tsx", import.meta.url), "utf8");
+  assert.match(src, /label=\{g\.mine \? "Hand back" : "Take over"\}/);
+  assert.match(src, /label="Sign in privately"/);
+  assert.match(src, /icon="x"/);
+  assert.match(src, /e\.key !== "Escape"/);
+  assert.match(src, /latched\.current = true/, "Escape while holding hands back before it closes");
+  assert.match(src, /QUIET = new Set\(\["live", "hidden", "connecting", "waiting"\]\)/, "no paused card while the window is visible, and none while connecting");
+  assert.doesNotMatch(src, /Paused while this tab was hidden/);
+  assert.doesNotMatch(src, /Segmented|Activity/);
+});

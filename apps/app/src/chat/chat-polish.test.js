@@ -41,7 +41,7 @@ test("an agent chat is said by the agent's name as a person reads it: header, op
 });
 
 test("Open in Vyre Files goes to the agent's own folder: the Files page reads ?agent= and opens that place", () => {
-  assert.match(read("./ComputerTab.tsx"), /router\.push\(`\/u\/files\?agent=\$\{encodeURIComponent\(who\)\}`/);
+  assert.match(read("../../screens/chats/WhoPane.tsx"), /go\(`\/u\/files\?agent=\$\{encodeURIComponent\(name\)\}`/);
   const files = read("../../screens/drive/FilesManager.web.tsx");
   assert.match(files, /const \{ agent, folder \} = useLocalSearchParams<\{ agent\?: string; folder\?: string \}>\(\);/);
   assert.match(files, /agentPlace\(r\?\.agents, String\(agent\)\)/);

@@ -142,9 +142,12 @@ export class Keyboard extends EventEmitter {
   async takeover(agent, surface, caller, extra = {}) {
     if (!isSurface(surface)) throw new Error(`"${surface}" is not a person's screen; a surface looks like glass:<device>, deck:<device>, phone:<device> or capsule:<device>`);
     const before = this.holder(agent);
-    // A take-over needs the computer running: shared browser hold or a desktop checkout.
-    if (this.shared && this.shared.enabled()) await this.shared.hold(agent, { why: "take-over" });
-    else await this.pool.checkout(agent, { why: "take-over" });
+    // A desktop or the shared browser has to be running. An agent-user screen is already its own display: checking a desktop out would refuse an assistant that has no computer: true.
+    const onSpace = typeof this.onSpace === "function" && this.onSpace(agent);
+    if (!onSpace) {
+      if (this.shared && this.shared.enabled()) await this.shared.hold(agent, { why: "take-over" });
+      else await this.pool.checkout(agent, { why: "take-over" });
+    }
     const thread = await this.threadFor(agent);
     let previous = before;
     let leased = thread;

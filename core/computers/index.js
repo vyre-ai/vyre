@@ -48,6 +48,7 @@ import { ensure as ensureBearer } from "../../lib/bearer/index.js";
 import { agentClaim } from "../modules/index.js";
 import { effectiveComputers } from "../../lib/computers-env.js";
 import { plainError, plainComputerError, NO_EXEC_WORDS } from "./plain.js";
+import { glassComputers } from "./glass-map.js";
 import { AGENT_NAME_RE, modelSessionMustClaimAgent, resolveComputerAgent } from "../../lib/computer-agent.js";
 
 const str = { type: "string" };
@@ -347,6 +348,8 @@ export default {
       ctl: { createUser: lazy("createUser"), removeUser: lazy("removeUser"), startScreen: lazy("startScreen"), stopScreen: lazy("stopScreen"), wipeAgentHome: lazy("wipeAgentHome"),
         // the screen relay's tickets, the Chrome link, a harness session, a command and the terminals: every action agentd answers, or AgentUsers says "this computer cannot" and the agent has no Chrome of its own
         screenTicket: lazy("screenTicket"), cdpTicket: lazy("cdpTicket"), runTicket: lazy("runTicket"), terminalTicket: lazy("terminalTicket"), exec: lazy("exec"), terminals: lazy("terminals"), fsTicket: lazy("fsTicket") } });
+    // Take-over of an agent's own screen must not check out a desktop. Keyboard is built above, before this table exists.
+    keyboard.onSpace = (agent) => Boolean(agentUsers.row(agent));
     // Pool.reconcile has just made the table agree with the runtime: when the space's computer is gone or stopped, no agent's screen is up, whatever the rows said last time.
     { const box = pool.row(SHARED_COMPUTER_ID); if (!box || (box.state !== "running" && box.state !== "frozen")) agentUsers.asleepAll(); }
     const tool = (name, description, input, run, extra = {}) => ctx.tool(name, { description, input, run, ...extra });
@@ -402,10 +405,12 @@ export default {
         const claim = agentClaim(caller);
         const mine = claim && (await kindOf(claim)) !== "assistant" ? claim : null;
         const labels = (ctx.config.computerLabels && typeof ctx.config.computerLabels === "object") ? ctx.config.computerLabels : {};
-        const computers = [...names].filter(n => !mine || n === mine).sort().map(n => ({
-          ...agentBrowser.view(n),
-          label: labels[n] || null,
-        }));
+        const see = (/** @type {string} */ n) => !mine || n === mine;
+        const listed = [...names].filter(see).map(n => ({ ...agentBrowser.view(n), label: labels[n] || null }));
+        const space = agentUsers.list().filter(u => u && see(String(u.agent_id))).map(u => ({ agent: String(u.agent_id), state: String(u.state) }));
+        const have = new Set(listed.map(c => c.agent));
+        for (const u of space) if (u.state && u.state !== "none" && !have.has(u.agent)) listed.push({ ...agentBrowser.view(u.agent), label: labels[u.agent] || null });
+        const computers = glassComputers(listed, space).map((row) => { const c = { ...row }; delete c.perAgent; return c; });
         return { driver: driver ? driver.name : "none", screens: agentBrowser.mode() === "browser" ? 0 : pool.opts.screens, computers, browse: agentBrowser.mode() };
       });
 
@@ -501,12 +506,16 @@ export default {
         const agent = await resolve(i, caller);
         const surface = await ownSurface(i, caller);
         if (!driver) throw new Error(NO_DRIVER);
-        await pool.allowed(agent);
-        // A computer that died on its own is not started behind the person's back by opening its screen.
-        await pool.verifyAlive(agent).catch(() => false);
-        if (pool.died.has(agent) && (pool.row(agent) || {}).state !== "running") throw Object.assign(new Error(STOPPED), { code: "stopped" });
-        if (pool.unknown.has(agent)) throw Object.assign(new Error(UNKNOWN), { code: "unavailable" });
-        const ticket = pool.ticket(agent, surface, { slow: i.slow === true });
+        // An agent-user row is the screen the Computer tab calls live. It has no desktop, so pool.allowed ("has no computer") does not apply, and the ticket opens that screen.
+        const place = agentUsers.row(agent);
+        if (!place) {
+          await pool.allowed(agent);
+          // A computer that died on its own is not started behind the person's back by opening its screen.
+          await pool.verifyAlive(agent).catch(() => false);
+          if (pool.died.has(agent) && (pool.row(agent) || {}).state !== "running") throw Object.assign(new Error(STOPPED), { code: "stopped" });
+          if (pool.unknown.has(agent)) throw Object.assign(new Error(UNKNOWN), { code: "unavailable" });
+        }
+        const ticket = pool.ticket(agent, surface, { slow: i.slow === true, ...(place ? { perAgent: true } : {}) });
         const { w, h } = pool.size(agent);
         const path = `${agentBrowser.glassPath()}?ticket=${encodeURIComponent(ticket)}`;
         if (agentBrowser.mode() === "browser") {

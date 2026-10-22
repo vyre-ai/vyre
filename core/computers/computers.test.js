@@ -334,6 +334,34 @@ test("computers: watch hands out a one-use ticket that expires", async t => {
   assert.match((await s.cli("computers.watch", { agent: "juno", surface: "glass:laptop" })).error.message, /juno has no computer/);
 });
 
+test("computers: a live agent-user screen is a glass computer, and watch and take-over use that screen", async t => {
+  const s = await boot(t);
+  const db = s.d.registry.deps.db;
+  const now = Date.now();
+  db.prepare("INSERT INTO computers_agent_users (agent_id, agent_name, uid, display, state, last_active, created) VALUES (?, ?, ?, ?, 'live', ?, ?)").run("juno", "juno", 20901, 61, now, now);
+  const all = (await s.cli("computers.list")).data.computers;
+  const row = all.find((/** @type {any} */ c) => c.agent === "juno");
+  assert.ok(row, "juno is listed once its screen is live");
+  assert.equal(row.state, "live");
+  assert.equal(row.perAgent, undefined, "perAgent stays internal to watch");
+  assert.deepEqual((await s.kit("computers.list")).data.computers.map((/** @type {any} */ c) => c.agent), ["kit"], "another agent still sees only its own");
+  const before = s.h.pool.driver.containers.size;
+  const w = (await s.cli("computers.watch", { agent: "juno", surface: "glass:laptop" })).data;
+  assert.ok(w && w.ticket, JSON.stringify(w));
+  assert.deepEqual(s.h.pool.redeem(w.ticket), { agent: "juno", surface: "glass:laptop", slow: false, perAgent: true });
+  const taken = await s.cli("computers.takeover", { agent: "juno", surface: "glass:laptop", private: true });
+  assert.equal(taken.error, undefined, JSON.stringify(taken.error));
+  assert.equal(s.h.keyboard.canType("juno", "glass:laptop"), true);
+  assert.equal(s.h.pool.checkouts.has("juno"), false, "no desktop was checked out");
+  assert.equal(s.h.pool.driver.containers.size, before, "no desktop container was made");
+  const act = await s.module("computers.may-act", { agent: "juno", tool: "chrome.click" });
+  assert.equal(act.data.ok, false);
+  const sh = await s.d.registry.call("computers.shield", { agent: "juno", on: true }, "module:glass");
+  assert.equal(sh.error, undefined, JSON.stringify(sh.error));
+  assert.equal(s.h.shield.has("juno"), true);
+  assert.deepEqual((await s.cli("computers.giveback", { agent: "juno", surface: "glass:laptop" })).data, { agent: "juno", handed_back: true });
+});
+
 test("computers: watch refuses a computer that died on its own, in plain words, until it is started again", async t => {
   const s = await boot(t);
   await s.cli("computers.checkout", { agent: "kit" });

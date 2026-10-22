@@ -29,10 +29,10 @@ test("the words under the screen say what is happening and what to do", () => {
   assert.match(computerWords(computerOf({ state: "live" }), "Ads"), /live/i);
 });
 
-test("asleep offers Wake; waking offers nothing; live offers Open and Sleep", () => {
+test("asleep offers Wake; waking offers nothing; live offers Open", () => {
   assert.deepEqual(computerActions(computerOf({ state: "asleep" })), ["wake"]);
   assert.deepEqual(computerActions(computerOf({ state: "waking" })), []);
-  assert.deepEqual(computerActions(computerOf({ state: "live" })), ["open", "sleep"]);
+  assert.deepEqual(computerActions(computerOf({ state: "live" })), ["open"]);
 });
 
 test("a computer the server has never made says so while it starts the first time", () => {
@@ -60,6 +60,19 @@ test("why a computer cannot run reads in plain words, even from an older server 
 test("the dock is Chrome, Files and Terminal, in that order (the product map names the desktop's apps)", () => {
   assert.deepEqual(DOCK.map((d) => d.id), ["chrome", "files", "terminal"]);
   assert.deepEqual(DOCK.map((d) => d.label), ["Chrome", "Files", "Terminal"]);
+});
+
+test("the pane is the screen, one line and Reset: a live screen opens, and Open, Sleep, the dock and the files row are gone", async () => {
+  const fs = await import("node:fs");
+  const src = fs.readFileSync(new URL("./AgentComputerPane.tsx", import.meta.url), "utf8");
+  assert.match(src, /onPress=\{onOpen\}/, "pressing the live screen opens it");
+  assert.match(src, /Reset its computer/);
+  assert.doesNotMatch(src, /label="Open"/);
+  assert.doesNotMatch(src, /label="Sleep"/);
+  assert.doesNotMatch(src, /DOCK/);
+  assert.doesNotMatch(src, /Open in Vyre Files/);
+  assert.doesNotMatch(src, /onDock/);
+  assert.doesNotMatch(src, /onFiles/);
 });
 
 test("asleep, the whole screen wakes it: no separate Wake button, a gently breathing sleep mark (still with reduced motion), and Press to wake", async () => {

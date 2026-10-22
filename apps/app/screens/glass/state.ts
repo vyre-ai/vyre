@@ -207,7 +207,10 @@ export function useGlass(name: string, target: string) {
   }, [addLog, hasScreen, name, refresh, surface, target]);
 
   const take = useCallback(async (priv: boolean) => {
-    if (busy || isMine(holderRef.current, surface)) return;
+    if (busy) return;
+    // Already holding: Take over is Hand back. Sign in privately still raises the shield on this same hold.
+    const held = isMine(holderRef.current, surface);
+    if (held && (!priv || holderRef.current?.private)) return;
     setBusy(true);
     try {
       const h = await glass.take(target, surface, priv);
