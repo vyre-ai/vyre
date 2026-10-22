@@ -25,6 +25,26 @@ test("identity: claude's oauthAccount and codex's id_token email, nothing else",
   assert.ok(!out.includes("SECRET"));
 });
 
+test("identity: grok's email and claude's credentials file, never the token", t => {
+  const home = tempHome(t);
+  fs.mkdirSync(path.join(home, ".grok"));
+  fs.writeFileSync(path.join(home, ".grok", "auth.json"), JSON.stringify({
+    "https://accounts.x.ai::grok": { key: "SECRET-GROK", refresh_token: "SECRET-REFRESH", email: "sam@example.com", name: "Kit", team: "Northwind" },
+  }));
+  assert.deepEqual(readIdentity("grok", home), { email: "sam@example.com", org: "Northwind", name: "Kit" });
+  fs.writeFileSync(path.join(home, ".grok", "auth.json"), JSON.stringify({
+    "https://accounts.x.ai::grok": { key: jwt({ email: "alex@example.com", secret: "SECRET-NESTED" }), refresh_token: "SECRET-REFRESH" },
+  }));
+  assert.deepEqual(readIdentity("grok", home), { email: "alex@example.com" });
+  fs.mkdirSync(path.join(home, ".claude"));
+  fs.writeFileSync(path.join(home, ".claude", ".credentials.json"), JSON.stringify({
+    claudeAiOauth: { accessToken: jwt({ email: "alex@example.com", name: "Kit", secret: "SECRET-CLAUDE" }), refreshToken: "SECRET-REFRESH" },
+  }));
+  assert.deepEqual(readIdentity("claude", home), { email: "alex@example.com", name: "Kit" });
+  const back = JSON.stringify([readIdentity("grok", home), readIdentity("claude", home)]);
+  assert.ok(!back.includes("SECRET"), "no token or key ever comes back");
+});
+
 test("identity: unreadable, unknown provider or garbage is null (the card says account not identified)", t => {
   const home = tempHome(t);
   assert.equal(readIdentity("claude", home), null);
