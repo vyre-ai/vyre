@@ -12,6 +12,7 @@ import { ItemSharing } from "./ItemSharing";
 import { ScriptsSetting } from "./ScriptsSetting";
 import { UsedWith } from "./UsedWith";
 import { MoveItem } from "./MoveItem";
+import { LiveCode } from "./LiveCode";
 import { levelWord } from "./share-model.js";
 import type { VItem } from "./redesign.js";
 import type { Rules, Scope, VaultData } from "./redesign-data";
@@ -105,6 +106,7 @@ export function VaultItem({ item, scope, data, owner, needs, events, onChanged, 
 
         <Sec title="Fields">
           <Card flush>{fields.length ? fields.map(fieldRow) : <View className="p-s3"><Text tone="muted">No fields are listed for this item.</Text></View>}</Card>
+          {owner && data.code && fields.some((f) => f.name === "totp") ? <LiveCode key={item.id} load={() => data.code!(item)} /> : null}
           <View className="flex-row flex-wrap gap-s2 pt-s2">
             {mayRead && fields.length ? <Button kind="secondary" size="sm" icon="copy" label="Copy as .env" disabled={busy} onPress={copyEnv} /> : null}
             {mayEdit && !memberShared ? <Button kind="secondary" size="sm" icon="edit" label={clash.length ? "Rename one" : "Edit"} disabled={busy} onPress={startEdit} /> : null}

@@ -28,6 +28,8 @@ export interface VaultData {
   load(scope: Scope): Promise<Loaded>;
   /** One field's value, at the person's click. */
   read(scope: Scope, item: VItem, field: string): Promise<string>;
+  /** The current one-time code for an item that has one (vault.totp). The secret stays on the item. */
+  code?(item: VItem): Promise<{ code: string; period: number; remaining: number }>;
   /** Mine only, for a member: open her own vault, or make it (the Secret Key stays on this device). */
   unlock(password: string): Promise<void>;
   create(password: string): Promise<void>;
@@ -71,6 +73,7 @@ export function sampleData(): VaultData {
     real: false,
     load: async (scope) => ({ items: items.filter((v) => (scope === "mine") === (v.sp === "mine")), locked: false, owner: true }),
     read: async (_s, v, field) => v.values?.[field] ?? "",
+    code: async () => ({ code: "492039", period: 30, remaining: 20 }),
     rules: async (v) => ({ plain: Object.fromEntries((v.fields ?? []).filter((f) => f.plain).map((f) => [f.name, v.values?.[f.name] ?? ""])), scripts: false, usedWith: [] }),
     scripts: { load: async () => false, set: async () => {} },
     usedWith: { set: async () => {} },
@@ -184,6 +187,12 @@ export function realData(call: Call): VaultData {
       if (scope === "shared") return String((await ask<{ value?: string }>("vault.me.shared.reveal", { item: item.id, field })).value ?? "");
       const r = await ask<{ fields: Record<string, string> }>("vault.me.get", { name: item.id });
       return r.fields[field] ?? "";
+    },
+    async code(item) {
+      const r = await ask<{ code?: string; period?: number; remaining?: number }>("vault.totp", { name: item.id });
+      const period = Number(r.period);
+      const remaining = Number(r.remaining);
+      return { code: String(r.code ?? ""), period: Number.isFinite(period) && period > 0 ? period : 30, remaining: Number.isFinite(remaining) && remaining >= 0 ? remaining : 0 };
     },
     // The Secret Key is held by this device (src/state/member-key.js), saved when the vault is made and sent with the password at each unlock.
     async unlock(password) { await unlockMine(ask, deviceKeys, password); },

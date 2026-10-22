@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6.9
 
+- fix(vault): a login with a one-time code shows the current code, and the count runs down until the next one. The secret stays on the item (apps/app/screens/vault/LiveCode.tsx).
 - fix(settings): Privacy has switches for the vault yes and the outward yes. Each is on until you turn it off, and an agent is never let through by either one (core/presence/module.json).
 - fix(chat): the confirm card names the Grok account, and a Claude account signed in on this computer, instead of "account not identified". Only the email and name are read. The token stays put (core/sessions/identity.js).
 - fix(chat): a chat you were removed from leaves search while it is still open. The words go when the chat says you are not in it, even if no leave notice arrived, and they come back when you are in it again (apps/app/src/chat/store.ts).
