@@ -191,18 +191,17 @@ test("sidebar: an entry may name the roles it is for; a role no person has is re
   const { c } = await world(t);
   const set = await c("sidebar.team", { op: "set", entries: [{ kind: "place", id: "now" }, { kind: "place", id: "records", roles: ["member", "guest"] }] });
   assert.equal(set.error, undefined, JSON.stringify(set.error));
-  assert.deepEqual((await c("sidebar.get", {})).data.default.map((/** @type {any} */ e) => [keyOf(e), e.roles]), [["place:now", undefined], ["place:records", ["member", "guest"]]], "the roles are kept");
   const bad = await c("sidebar.edit", { op: "add", entry: { kind: "place", id: "vault", roles: ["nonsense"] } });
   assert.ok(bad.error, JSON.stringify(bad));
   assert.match(String(bad.error.message), /roles must name the roles a person sees/);
   const badSet = await c("sidebar.team", { op: "set", entries: [{ kind: "place", id: "now", roles: ["wizard"] }] });
   assert.ok(badSet.error, JSON.stringify(badSet.error));
   assert.match(String(badSet.error.message), /roles must name the roles a person sees/);
-  assert.deepEqual((await c("sidebar.get", {})).data.default.map((/** @type {any} */ e) => keyOf(e)), ["place:now", "place:records"], "nothing changed");
-  // a person's own list may name roles too
+  assert.deepEqual((await c("sidebar.get", {})).data.default.map((/** @type {any} */ e) => keyOf(e)), ["place:now"], "the entry for other roles is not in the answer, and nothing changed");
+  // a person may not put an entry for other roles in their OWN list
   const mine = await c("sidebar.edit", { op: "set", entries: [{ kind: "place", id: "records", roles: ["admin"] }] });
-  assert.equal(mine.error, undefined, JSON.stringify(mine.error));
-  assert.deepEqual((await c("sidebar.get", {})).data.mine.map((/** @type {any} */ e) => [keyOf(e), e.roles]), [["place:records", ["admin"]]]);
+  assert.ok(mine.error, JSON.stringify(mine.error));
+  assert.match(String(mine.error.message), /for other roles/);
 });
 
 test("sidebar: the caller's role is the kernel's own answer for that person in that Space, never a constant", async t => {
