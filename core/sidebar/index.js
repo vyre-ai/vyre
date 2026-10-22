@@ -111,10 +111,10 @@ export default {
       } catch { return ""; }
     };
 
-    /** The box's own reach in that Space: the role the kernel states, and whether this caller may set the Space's default (an owner or an admin, at their own surface). */
+    /** The box's own reach in that Space: the role the kernel states, and whether this caller may set the Space's default (a person at their own surface). */
     const reachOf = async (/** @type {any} */ meta, /** @type {any} */ i) => {
       const role = await roleIn(spaceArg(i));
-      return { role, can: isPerson(meta) && roleSetsDefault(role) };
+      return { role, can: isPerson(meta) };
     };
 
     /** The role the person has in this Space, as the kernel states it (a team member's comes from the Space's own kernel, through the service). */
