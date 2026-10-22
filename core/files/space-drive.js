@@ -3,9 +3,11 @@
 // Not the box's shared folders (files.drive.list and files.drive.read in browse.js are those). Every call is the CALLER'S own chain in the Space it names (lib/gateway-door.js): a call that proved
 // no person is refused, the kernel's `drive.write`, `drive.read` and `drive.restore` grants decide, a path is checked in one form (kernel/seal/uses.js safePath) and an upload is size-capped.
 // A Space with no Drive wired answers `unavailable`.
+import path from "node:path";
 import { createDoor } from "../../lib/gateway-door.js";
 import { safePath } from "../../kernel/seal/uses.js";
 import { agentFolderOf, agentPathOf, NOT_IN_DRIVE } from "./agent-folder.js";
+import { createWriteLock, holderOf } from "./write-lock.js";
 
 const obj = (/** @type {any} */ props = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties: props, ...(required.length ? { required } : {}) });
 const str = { type: "string" };
@@ -19,7 +21,11 @@ export const MAX_UPLOAD = 8 * 1024 * 1024;
 /** @param {any} ctx */
 export function registerSpaceDrive(ctx) {
   const door = createDoor(ctx);
-  /** @param {string} name @param {string} description @param {any} input @param {(i: any, d: any, drive: any) => Promise<any>} fn */
+  // A home with a root shares one lock directory between processes. A rig with no root (a unit stand-in) does not lock.
+  const locks = ctx.paths && typeof ctx.paths.root === "string" && ctx.paths.root ? createWriteLock(path.join(ctx.paths.root, "files", "write-locks")) : null;
+  /** @param {string} key @param {any} chain @param {any} meta @param {() => Promise<any>} fn */
+  const held = (key, chain, meta, fn) => (locks ? locks.hold(key, holderOf(chain, meta), fn) : fn());
+  /** @param {string} name @param {string} description @param {any} input @param {(i: any, d: any, drive: any, meta: any) => Promise<any>} fn */
   const agents = agentFolderOf(ctx);
   const tool = (name, description, input, fn) => ctx.tool(name, { description, input, callers: /^files\.drive\.space\.(list|read)$/.test(name) ? READ_CALLERS : CALLERS, run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
     const d = await door.open(i || {}, meta);
@@ -27,7 +33,7 @@ export function registerSpaceDrive(ctx) {
     const routed = await toAgentFolder(name, i || {}, d, meta);
     if (routed !== undefined) return routed;
     if (!d.gateway.drive) throw refuse("this Space has no Drive yet; ask the owner or an admin of the Space", "unavailable");
-    return fn(i || {}, d, d.gateway.drive);
+    return fn(i || {}, d, d.gateway.drive, meta);
   } });
   /** The Drive call, answered from the agent's folder on its computer when its path is under agents/<id>/; undefined for every other path. @param {string} name @param {any} i @param {any} d @param {any} meta */
   async function toAgentFolder(name, i, d, meta) {
@@ -41,7 +47,7 @@ export function registerSpaceDrive(ctx) {
       if (!/^[A-Za-z0-9+/]*={0,2}$/.test(text) || text.length % 4 === 1) throw refuse("base64 is the file's bytes, standard base64", "bad_input");
       if (Math.floor(text.length / 4) * 3 > MAX_UPLOAD + 3) throw refuse(`a file here is at most ${MAX_UPLOAD / 1048576} MB: send a smaller file, or put it there from the agent's computer`, "too_large");
       // with `base` the person had this file open and is saving over it; without, an existing file is never replaced
-      return agents.upload(d, meta, p, text, i.base !== undefined);
+      return held(p, d.chain, meta, () => agents.upload(d, meta, p, text, i.base !== undefined));
     }
     if (name === "files.drive.restore") throw refuse(NOT_IN_DRIVE, "unavailable");
     return undefined;   // versions: the Drive copy's history, read-only
@@ -49,7 +55,7 @@ export function registerSpaceDrive(ctx) {
   const pathOf = (/** @type {any} */ p) => { try { return safePath(String(p ?? "")); } catch { throw refuse("that is not a path in the Drive: no leading slash, dot segments, backslash, encoded slash or control characters", "bad_input"); } };
 
   tool("files.drive.upload", `Put a file in the Space's Drive as a new version, under the caller's own grants: { space?, path, base64, base? }. \`path\` is relative (Clients/A/retainer.pdf), \`base64\` the bytes (at most ${MAX_UPLOAD / 1048576} MB here), \`base\` the version you edited from (a second writer on one file makes a new version flagged conflict, never a merge). Answers { path, version, conflict }.`,
-    obj({ space: str, path: str, base64: str, base: { type: "integer" } }, ["path", "base64"]), async (i, d, drive) => {
+    obj({ space: str, path: str, base64: str, base: { type: "integer" } }, ["path", "base64"]), async (i, d, drive, meta) => {
       const p = pathOf(i.path), text = String(i.base64 ?? "");
       if (!/^[A-Za-z0-9+/]*={0,2}$/.test(text) || text.length % 4 === 1) throw refuse("base64 is the file's bytes, standard base64", "bad_input");
       // Check the size before decoding: 4 base64 characters carry 3 bytes.
@@ -57,7 +63,7 @@ export function registerSpaceDrive(ctx) {
       const bytes = new Uint8Array(Buffer.from(text, "base64"));
       if (bytes.length > MAX_UPLOAD) throw refuse(`a file here is at most ${MAX_UPLOAD / 1048576} MB; a larger one goes through a Flow (flows.list shows them) or the VyreDrive mount`, "too_large");
       if (i.base !== undefined && (!Number.isInteger(i.base) || i.base < 1)) throw refuse("base is a version number", "bad_input");
-      const r = await drive.put(d.chain, p, bytes, { base: i.base ?? null });
+      const r = await held(p, d.chain, meta, () => drive.put(d.chain, p, bytes, { base: i.base ?? null }));
       return { path: p, version: r.version, conflict: Boolean(r.conflict), size: bytes.length };
     });
 

@@ -7,5 +7,6 @@ import { LINK_MIGRATIONS } from "./space-links.js";
 import { LINKED_MIGRATIONS } from "./linked.js";
 import { INDEX_MIGRATIONS } from "./linked-index.js";
 import { AGENT_FOLDER_MIGRATIONS } from "./agent-folder.js";
+import { WITH_MIGRATIONS } from "./with-me.js";
 
-export const filesMigrations = () => [...MENTION_MIGRATIONS, ...LINK_MIGRATIONS, ...LINKED_MIGRATIONS, ...INDEX_MIGRATIONS, ...ASKER_MIGRATIONS, ...AGENT_FOLDER_MIGRATIONS];
+export const filesMigrations = () => [...MENTION_MIGRATIONS, ...LINK_MIGRATIONS, ...LINKED_MIGRATIONS, ...INDEX_MIGRATIONS, ...ASKER_MIGRATIONS, ...AGENT_FOLDER_MIGRATIONS, ...WITH_MIGRATIONS];

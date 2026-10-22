@@ -29,7 +29,7 @@ test("one ordered list: mentions first, shared links next, and both tables exist
   assert.equal(all[MENTION_MIGRATIONS.length], LINK_MIGRATIONS[0]);
   const db = fresh();
   migrate(db, "files", all);
-  for (const t of ["files_links", "files_mention_grants", "files_linked", "files_linked_index", "files_linked_sync"]) assert.ok(tables(db).includes(t), t);
+  for (const t of ["files_links", "files_mention_grants", "files_linked", "files_linked_index", "files_linked_sync", "files_with"]) assert.ok(tables(db).includes(t), t);
 });
 
 test("a box that already ran mentions as version 1 keeps it and gets shared links as the next step", () => {

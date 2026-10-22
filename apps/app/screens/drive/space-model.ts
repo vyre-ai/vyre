@@ -95,6 +95,8 @@ export function spaceDriveRefusal(code: string | undefined, message: string): st
   if (code === "denied") return "You may not do that in this space's Files.";
   if (code === "not_found") return "That file is not there, or you may not read it.";
   if (code === "presence_required") return "That needs you. Approve on this device, then try again.";
+  if (code === "needs_approval") return "That needs a yes first. The file is still there.";
+  if (code === "locked") return message || "Someone else has this file open for writing.";
   if (code === "bad_input") return message || "That path is not allowed.";
   return message || "Files did not answer.";
 }

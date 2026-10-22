@@ -8,7 +8,7 @@ test("the left column: three places, the projects the person can see, then (with
   const g = placeGroups({ labs: true, projects: [{ name: "Spring launch", path: "Projects/p1/files" }], agents: [{ name: "ads", path: "agents/agt_a" }, { name: "x", path: "" }], sites: [{ id: "s1", name: "juniper.studio", live: true }, { id: "s2", name: "Spring landing" }] });
   assert.deepEqual(g.map((x) => x.heading), [null, "Projects", "Agents", "Sites"]);
   assert.deepEqual([g[1].places[0], g[2].places.map((p) => p.label)], [{ id: "project:Projects/p1/files", label: "Spring launch", kind: "project", path: "Projects/p1/files" }, ["Ads"]], "an agent with no folder is not a place, and an agent is named as a person reads it");
-  assert.deepEqual(g[0].places.map((p) => p.label), ["All files", "Recent", "Your shared links"]);
+  assert.deepEqual(g[0].places.map((p) => p.label), ["All files", "Recent", "Your shared links", "Shared with me"]);
   assert.deepEqual(g[3].places.map((p) => [p.label, p.live ?? false, p.draft ?? false]), [["juniper.studio", true, false], ["Spring landing", false, true], ["New site", false, false]]);
   const none = placeGroups({ labs: true });
   assert.deepEqual(none.map((x) => x.heading), [null, "Sites"], "no Projects heading over nothing");

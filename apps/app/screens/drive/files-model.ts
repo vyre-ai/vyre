@@ -41,7 +41,7 @@ export function parsePlace(id: string): Place | null {
 }
 
 const EXT: Record<string, Kind> = {
-  pdf: "pdf", doc: "doc", docx: "doc", rtf: "doc", odt: "doc", pages: "doc", xls: "sheet", xlsx: "sheet", csv: "sheet", ods: "sheet", numbers: "sheet",
+  pdf: "pdf", doc: "doc", docx: "doc", pptx: "doc", rtf: "doc", odt: "doc", pages: "doc", xls: "sheet", xlsx: "sheet", csv: "sheet", ods: "sheet", numbers: "sheet",
   png: "image", jpg: "image", jpeg: "image", gif: "image", webp: "image", heic: "image", svg: "image", mp4: "video", mov: "video", webm: "video", mkv: "video",
   mp3: "audio", wav: "audio", m4a: "audio", flac: "audio", zip: "archive", gz: "archive", tar: "archive", "7z": "archive",
   txt: "text", md: "text", json: "text", xml: "text", yml: "text", yaml: "text", log: "text", html: "text", htm: "text",
@@ -108,12 +108,10 @@ export function parentPlace(id: string): string | null {
 }
 
 export type Abilities = { upload: boolean; versions: boolean; move: boolean; remove: boolean; download: boolean; share: boolean; edit: boolean };
-/** What each source offers, from the tools that exist: the Space's Drive has upload, versions, restore and links but no move or delete; a linked folder writes, renames and deletes at its source; box folders are read only. */
+/** What each source offers, from the tools that exist. The Space's Drive moves, renames and deletes (files.drive.space.*). A linked folder writes at its source. A server share is read only. */
 export function abilities(root: string): Abilities {
   const none: Abilities = { upload: false, versions: false, move: false, remove: false, download: false, share: false, edit: false };
-  // native-mount (work/rc4-native-mount) adds files.drive.space.move, .trash, a ranged read and chunked upload. When it lands: move and remove become true here, the Space's Move and Delete
-  // call those tools in FilesManager.web.tsx (MoveDelete), and Download reads in ranges. Nothing of those tools is built here.
-  if (root === "space") return { ...none, upload: true, versions: true, download: true, share: true };
+  if (root === "space") return { ...none, upload: true, versions: true, move: true, remove: true, download: true, share: true, edit: true };
   if (root === "linked") return { ...none, upload: true, versions: true, move: true, remove: true, download: true, edit: true };
   // A box share is read in chunks (files.drive.read) and there is no whole-file download yet, so none is offered.
   if (root === "box") return { ...none };
