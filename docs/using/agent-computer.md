@@ -14,25 +14,27 @@ Your Space has one computer server. Each agent on it gets a separate login of it
 
 ## Open it
 
-Open the agent, then its Computer tab. The tab says what state the computer is in:
+Open the agent, then its Computer tab. You see the screen, one line under it, and Reset.
 
-- Asleep: nothing is on screen. The agent's files and terminal jobs are still there.
-- Waking: the screen and Chrome are starting. This takes a few seconds.
-- Live: you see a small live picture of the screen. Open it to see it full size.
+- Asleep: the screen is dark. Press it. It reads **Press to wake**. The agent's files stay.
+- Waking: the screen and Chrome are starting.
+- Live: press the screen to open it full size.
 
-Opening the tab does not wake a sleeping agent. Pressing Open does.
+Asking the agent to open a site uses that agent's own Chrome, and starts the computer if it is not up yet.
 
-## Watch the screen
+## The full screen
 
-Open the screen to watch what the agent is doing in Chrome, as it does it. Watching changes nothing. The agent keeps working and you see every click and page. A watched computer is never put to sleep for being idle.
+The full screen shows the screen, **Take over**, **Sign in privately**, and close. While you hold the keyboard, Take over reads **Hand back**. Escape hands the keyboard back, then closes the full screen.
+
+Watching changes nothing. The agent keeps working and you see every click and page.
 
 ## Sign in to a site once yourself
 
 Some sites have no connection Vyre can use, such as an ads account. For those, you sign in once and the agent works from your session.
 
-1. Open the agent's screen and press Take control. The agent stops acting while you type.
+1. Open the full screen and press **Take over**, or **Sign in privately**. The agent stops acting while you type.
 2. Sign in to the site in the agent's Chrome, the same way you would on your own computer.
-3. Press Stop controlling, or leave it. Control goes back to the agent after a few minutes with no input (Settings, Devices, has the number of minutes).
+3. Press **Hand back**, or press Escape. Escape hands the keyboard back first.
 
 Typing a password here shows it to this agent. Save it in your Vault and let Vyre fill it instead. Anything you type on the agent's screen goes through the agent's own session of the computer, and the agent can see it.
 
@@ -72,7 +74,7 @@ A file the agent downloads goes into one fixed folder for that agent. Chrome doe
 
 ## The terminal
 
-Each agent has a terminal. Open it from the Computer tab to see its sessions by name and to watch a command run. Typing in a terminal is typing as the agent, so it needs more than watching.
+Each agent has a terminal on its computer. A command you ask for is typed into that desk Terminal. A file the agent makes lands in the agent's folder and shows in [Files](files.md). Typing in the terminal is typing as the agent, so it needs more than watching.
 
 ## Who can do what
 

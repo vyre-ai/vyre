@@ -89,5 +89,5 @@ A Playbook is a project template. It lists stages, the tasks of each stage and w
 
 - [Agents](./agents.md), [Chats](./chats.md), [Flows](./flows.md), [Gate](./gate.md), [Kernel](./kernel.md), [Records](./records.md)
 - [Map](../map.md), [Overview](../overview.md)
-- [Planner](../../using/planner.md), [Teammates](../../using/teammates.md), [Flows (using)](../../using/flows.md)
+- [Home](../../using/home.md), [Teammates](../../using/teammates.md), [Flows (using)](../../using/flows.md)
 - [Presence](../../concepts/presence.md), [Events reference](../../reference/events.md), [Tools reference](../../reference/tools.md)

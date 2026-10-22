@@ -26,7 +26,7 @@ Read the page for what you are about to do, not all of them. `docs.find` finds a
 | `flows-cheatsheet.md` | You are about to write or change a Flow and need the exact keys, an example of each step, and the limits. | 2171 |
 | `sessions-and-context.md` | You start or continue a session, need to know what was done before, or want to remember something for later. | 652 |
 | `connections.md` | You need to read from or act on an outside service such as mail, a calendar, a payment provider or any API, or a tool from an MCP server. | 672 |
-| `computers-and-files.md` | You need to read or write files, run something on a computer, use a browser, or hand a screen to a person. | 426 |
+| `computers-and-files.md` | You need to read or write files, run something on a computer, use a browser, or hand a screen to a person. | 457 |
 | `skills.md` | You are looking for a ready-made way to do a kind of task, need to find the right skill, or a skill is offered or refused. | 561 |
 | `errors.md` | A call failed with a code, or a refusal does not say why, or you are deciding whether to retry. | 1412 |
 | `behaviour.md` | You are unsure whether to act or ask, how much to say, or how to spend the fewest steps and tokens. | 498 |

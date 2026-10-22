@@ -14,7 +14,7 @@ The Publish module (`core/publish`) puts a folder of ready files, a built site, 
 
 ## What a person sees
 
-- **Sites** screen (`apps/app/screens/sites/`). Empty state: "Nothing published in this space" and "Put sites online". A site has tabs Pipeline, History, Domain, Secrets, Jobs and Logs (`RealSites.tsx`).
+- Sites is not a place in the sidebar. A project has a **Site** tab. The site screen (`apps/app/screens/sites/`) is where that site is managed, not a home of its own. Empty state: "Nothing published in this space" and "Put sites online". A site has tabs Pipeline, History, Domain, Secrets, Jobs and Logs (`RealSites.tsx`).
 - **Pipeline**: a preview built says "Preview built. Nothing is public." The buttons walk Draft, Preview, Approved, Production, with "Go back one version" for rollback. The yes is taken on the card, with Face ID on a phone ("Go live with Face ID", "Not now"), and a decline reads "Declined."
 - **From a chat**: a files preview's card has "Put it on the internet"; afterwards "It is live." with "Open it" and "Open the site page" (`apps/app/src/chat/PreviewPublish.tsx`).
 - **Domain**: "Connect a domain" or "Add a domain". It shows "Add this record at your domain provider" with a Copy button, then "Check again" and "Not connected yet. DNS can take up to an hour to update."

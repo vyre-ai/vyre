@@ -54,7 +54,7 @@ checksums before it runs. The app lives in the system tray. Alt+Space opens a sm
 anywhere in Windows; if another app already holds Alt+Space, Vyre uses Ctrl+Alt+Space and tells
 you once. The panel shows the same Vyre app your server
 serves, at its address, and the app shows a notification for what needs you. It can start at
-logon, and it updates itself. It signs in to your server with your Vyre's address, your username and your master password.
+logon, and it updates itself. It signs in with the Space, your username and your password, or **Continue with GitHub**.
 There is no Windows version of the Mac's screen context, computer use or voice yet.
 
 The Windows app is Authenticode signed only when the release was built with a Windows certificate
@@ -73,4 +73,4 @@ refuses files over 50 MB by default. Larger files fail to open until you raise t
 `FileSizeLimitInBytes` under `HKLM\SYSTEM\CurrentControlSet\Services\WebClient\Parameters` and
 restart the WebClient service (this needs an administrator, so Vyre does not do it for you).
 
-Connecting this PC asks for your Vyre's address, then your username and your master password. There is no pairing code to copy or scan.
+Connecting this PC asks for the Space, then your username and your password, or **Continue with GitHub**. There is no pairing code to copy or scan.

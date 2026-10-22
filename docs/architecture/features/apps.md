@@ -15,7 +15,7 @@ The server checks everything the app does. Every read and write goes to a server
 
 ## What a person sees
 
-- Sidebar (`apps/app/screens/shell`): Now, Chat, Projects, Files; an AI group with Agents and Flows; and Settings with groups Space (Space, People and roles, Connections, Rules, Tags, Memory, Sites and publishing), Security (Vault, Devices, Permissions, Privacy) and System (Servers, This computer). Labels come from `apps/app/screens/shell/settings-items.js`.
+- Sidebar (`lib/sidebar/model.js`): five places, Home (`/u/now`), Chats (`/u/chats`), Projects, Records (`/u/records/contact`) and Files (`/u/files`). Vault and Settings sit at the foot. There is no Apps grid, no Sites place, no Planner page and no All spaces list. You work in one Space at a time. The menu at the foot switches Space. The top of the sidebar is Search, New chat, and fold. Labels for settings come from `apps/app/screens/shell/settings-items.js`.
 - Routes live under /u/ (for example /u/now and /u/chats), with pair, join, onboard and devices as entry screens (the pair, join, onboard and devices files under `apps/app/app`).
 - A held action opens an approval sheet (`apps/app/screens/shell/ApprovalSheet.tsx`); the Needs you row can be swiped to approve with a 4 second undo.
 - The Engineer is opened from Playbooks, Objects, Flows and Agents pages (`apps/app/screens/engineer`).

@@ -1,6 +1,6 @@
 ---
 title: Projects and threads
-summary: How Vyre groups your Claude Code sessions into projects, what a new thread in a project is told, and how to pick, resume and start threads from each surface.
+summary: In the app, every chat with an agent is one of its threads. A project groups that work, and a terminal thread is still a session in a project folder.
 audience: users, agents
 owner: docs
 status: stable
@@ -8,7 +8,11 @@ status: stable
 
 # Projects and threads
 
-A **thread** is a Claude Code session. A **project** is a home folder, the other folders it owns,
+In the app, every chat with an agent is one of that agent's threads. The Threads tab lists them, and the sidebar keeps one row per agent. See [Chat](chat.md).
+
+A project is one place in the sidebar. Its tabs are Overview, Chats, Tasks, Files, Flows, Team, Memory, Site and Timeline. A Flow an agent writes from a project's chat takes that project's short name and shows under the project's Flows. The Site tab is where a site is published. Sites is not its own place in the sidebar.
+
+On a terminal, a **thread** is also a Claude Code session. A **project** is a home folder, the other folders it owns,
 the threads in it, its people, its watchers and its teammates. Vyre uses projects to decide what a thread is
 told when it starts (the project's **brief**) and which memory it may draw on. Nothing from one
 project's threads or memory reaches another project's brief, so two clients' work stays apart.

@@ -69,11 +69,11 @@ Pick another name. Service names such as `app`, `login` and `vault`, well-known 
 
 ### You did not save the recovery code
 
-It is shown once, so nothing can show it again. It is the only way back in if you forget the master password. If you remember the master password, you do not need it: sign in on the new device with your space address, your username and your master password.
+It is shown once, so nothing can show it again. It is the only way back in if you forget the password. If you remember the password, you do not need it: sign in on the new device with the Space, your username and your password.
 
 ### Signing in on a new device by your name
 
-On the new device, open the Vyre app and choose **Sign in**. Type your space address (like `juniper.vyre.run`), your username and your master password. Or press **Sign in with GitHub** and then type the master password, which still unlocks your vault. The password is stretched on the device; the server never sees it. If it says the settings are too weak or too heavy, check the space address: the app refuses a server that asks for that. If it says the password is wrong, try again or use your recovery key.
+On the new device, open the Vyre app and choose **Sign in**. Type the Space (like `juniper.vyre.run`), your username and your password. Or press **Continue with GitHub**. The password unlocks your vault. It is stretched on the device; the server never sees it. If it says the settings are too weak or too heavy, check the Space: the app refuses a server that asks for that. If it says the password is wrong, try again or use your recovery key.
 
 ## The box
 

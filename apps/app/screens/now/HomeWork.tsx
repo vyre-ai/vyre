@@ -20,7 +20,7 @@ type Act = (task: any, id: string, input?: string, extra?: unknown) => void | Pr
 function MoreRow({ label, onPress, up }: { label: string; onPress: () => void; up?: boolean }) {
   return (
     <PressableScale depth={0.985} accessibilityRole="button" accessibilityLabel={label} onPress={onPress} style={{ minHeight: 44, flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-start", paddingHorizontal: 4 }}>
-      <Text size="secondary" medium tone="muted">{label}</Text>
+      <Text medium tone="muted" size="headline">{label}</Text>
       <Icon name={up ? "chevron-up" : "chevron-down"} size={16} tone="text-2" />
     </PressableScale>
   );
@@ -74,7 +74,7 @@ export function HomeWork({ world, notice, onAction, onOpen, openDone = false }: 
           {m.doneToday.length ? (
             <View className="min-w-0 gap-s2">
               <PressableScale depth={0.985} accessibilityRole="button" accessibilityState={{ expanded: doneOpen }} onPress={() => setDoneOpen(!doneOpen)} style={{ minHeight: 44, flexDirection: "row", alignItems: "center", gap: 8, alignSelf: "flex-start", paddingHorizontal: 4 }}>
-                <Text size="secondary" tone="muted" medium>{`${m.doneToday.length} done today`}</Text>
+                <Text tone="muted" medium size="headline">{`${m.doneToday.length} done today`}</Text>
                 <Icon name={doneOpen ? "chevron-up" : "chevron-down"} size={16} tone="label" />
               </PressableScale>
               {doneOpen ? (

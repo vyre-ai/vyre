@@ -1,6 +1,6 @@
 ---
 title: Files
-summary: The Space's Drive with versions, links you share, folders linked live from Google Drive or Dropbox, and the box and computer folders an agent may reach.
+summary: Files is one place: All files, Recent, your shared links, Shared with me, then projects and each agent's folder, with Office previews and versions.
 audience: builders, agents
 owner: docs
 status: stable
@@ -13,11 +13,13 @@ Files is the Space's Drive plus three other ways to reach files: shared links to
 Every file has a fixed place under the files root, named by ids that never change (lib/files/layout.js).
 
 ## What a person sees
-The Files screen has five tabs (apps/app/screens/drive/tabs.js): **Space**, **Shared**, **Linked**, **On your server** and **On your computer**.
-- **Space**: the Drive, a file's versions with **Put back** (restore as a new version), and **Share a link**.
-- **Shared**: links the person made, each with **Copy** and **Stop**. The empty state reads "No shared links. Open a file and choose Share a link. You say yes before anything is made."
-- **Linked**: **Link a folder**, a picker that walks the source one level at a time, a **Name in Files** field ("It appears at Linked/<name>"), then **Sync**, **Sync now**, **Edit** for text files and **Unlink**. "You see inside it only what your own account allows."
-- **On your server** and **On your computer**: the box's shared folders and the Mac's, opened where they are over your private network, plus the `#` picker in chat that points at a file.
+Files is a sidebar place (`apps/app/screens/drive/files-places.js`). The places are **All files**, **Recent**, **Your shared links** and **Shared with me**, then groups for Projects and Agents. A Sites group shows only when Labs is on. Sites is not a sidebar place.
+- **All files** holds the Space and the agent folders. You can move or rename. An agent's folder can also be deleted on that agent's computer. Deleting a Space file is refused, including for an owner.
+- **Shared with me** lists files another person shared. You can read them. A file that is not shared says to ask the person who has it.
+- Word, Excel and PowerPoint open in the preview as a page of their text.
+- Earlier versions are listed and one can be restored (**Put back** writes a new version). A second writer waits up to 10 seconds, then is told who has the file. The first writer's bytes stay.
+- **Your shared links**: links the person made, each with **Copy** and **Stop**. The empty state reads "No shared links. Open a file and choose Share a link. You say yes before anything is made."
+- A linked Google Drive or Dropbox folder is still **Link a folder**, then **Sync**. "You see inside it only what your own account allows."
 - A phone and a computer can send each other a file, and the receiver gets it when it next connects.
 
 ## How it works

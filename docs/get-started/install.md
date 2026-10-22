@@ -1,12 +1,12 @@
 ---
-title: Install
-summary: Put the Vyre app on your Mac or Windows PC, create your identity, then join a space or create one, and add a phone.
+title: Install Vyre on a Mac or a Windows PC
+summary: Put the Vyre app on your Mac or Windows PC, sign in with a Space, a username and a password, then join a space or create one, and add a phone.
 audience: users, operators
 owner: integrator
 status: stable
 ---
 
-# Install
+# Install Vyre on a Mac or a Windows PC
 
 You set Vyre up from the Vyre app. There is no browser setup and no terminal on your own computer. The only
 terminal is on the server, and only for one line the app gives you.
@@ -15,21 +15,13 @@ terminal is on the server, and only for one line the app gives you.
 
 - [ ] A Mac or a Windows PC for the app. A phone alone cannot start: you reserve your name on a computer first.
 - [ ] A Claude account (the app offers to connect it during setup), and a ChatGPT (Codex) or Grok account if you want them.
-- [ ] If you will add a server: a Linux server (a cloud machine is fine) or a Mac that stays on, and a terminal on it.
-  See [What size of server](#what-size-of-server): 8 GB of memory is recommended, 4 GB is the least, and a small server can run
-  without Records on 2 GB.
+- [ ] If you will add a server: a Linux server (a cloud machine is fine) or a computer that stays on, and a terminal on it.
+  See [What size of server](#what-size-of-server): 8 GB of memory is recommended, and 4 GB is the least. Records are always on.
 - [ ] If you are joining a team: the invite your team sent you.
 
 ## What size of server
 
-Records is where your contacts, projects and tasks live. It is a full database, and by itself it uses about 2.2 GB of memory. Vyre needs room beside it.
-
-| Choice | Memory | Good for |
-| --- | --- | --- |
-| **With Records** | 8 GB recommended, 4 GB at the least | Contacts, projects, tasks, [Flows and Kits](../using/flows.md), a team. |
-| **Without Records** | 2 GB | A small server, or a first try. Vyre keeps your data in a smaller built-in store, so it runs on less. |
-
-On a server with 4 to 6 GB, Vyre uses a smaller Records setup and tells you, when it installs, how many spaces fit. If the server has less than Records needs, the installer says so and uses the small built-in store instead.
+Records is where your contacts, projects and tasks live. They are kept in Vyre's own store on the server. Records are always on. 8 GB of memory is recommended, and 4 GB is the least. That covers contacts, projects, tasks, [Flows and Kits](../using/flows.md), and a team. `vyre status` prints `records: Vyre store` and the number of records.
 
 ## 1. Reserve your name
 
@@ -52,10 +44,9 @@ The release lists a checksum for every file, and `SHA256SUMS` is signed, so you 
 
 ## 3. Create your identity
 
-Open the app. It asks for a username and a master password. The username is your page at `vyre.run/u/your-name`.
-The same password unlocks your vault. You can also choose **Continue with GitHub**. The address it opens is the one set for this computer. GitHub signs you in, and the account id is read from GitHub. The master password is still required.
+Open the app. Sign in with the Space, your username and your password, or choose **Continue with GitHub**. The username is your page at `vyre.run/u/your-name`. The same password unlocks your vault. GitHub signs you in and keeps the name and the photo GitHub already gave. A photo address that is not a GitHub avatar is not stored.
 
-On a Windows PC the key is made with Windows Hello when this PC has it, which asks for your face, fingerprint or PIN. If Windows Hello is not available, Vyre keeps the key on this PC with Windows data protection instead. The confirmation you read before a signature is the same summary the Mac app shows.
+On a Windows PC the key is made with Windows Hello when this PC has it, which asks for your face, fingerprint or PIN. If Windows Hello is not available, Vyre keeps the key on this PC with Windows data protection instead. The confirmation you read before a signature is the same summary the computer app shows.
 
 The app then shows one recovery key, once. It is the only way back in if you lose every device, so keep it
 somewhere only you can reach, then choose **I saved it**.
@@ -66,27 +57,30 @@ somewhere only you can reach, then choose **I saved it**.
 The app asks how you will use it. There are two choices:
 
 - **Join a space.** Paste the invite link you were sent (`vyre.run/i/...`). You are in. The link carries the route, so this path never asks you about a server.
-- **Create a space.** A Linux server, or a Mac that stays on. Go to step 5.
+- **Create a space.** A Linux server, or a computer that stays on. Go to step 5.
 
-A Mac, a Windows PC and the web app offer the same two choices. Vyre does not run only on this computer.
+The computer app and the web app offer the same two choices. Vyre does not run only on this computer.
 
 ## 5. Add a server
 
-1. Choose what the server is: **A Linux server or cloud machine**, or **A Mac that stays on**.
-2. Records, where your contacts, projects and tasks live, are kept in Vyre's own store on the server. The server needs 8 GB of memory (4 GB is the least).
+1. Choose what the server is: **A Linux server or cloud machine**, or **A computer that stays on**.
+2. Records, where your contacts, projects and tasks live, are kept in Vyre's own store on the server. The server needs 8 GB of memory (4 GB is the least). Records are always on.
 3. The app shows one line. Copy it, then paste it into a terminal on the server and run it as yourself, not as root.
    A Linux server and a computer that stays on use the same shape: `curl -fsSL vyre.run/i | VYRE_CODE=... sh`.
-   On a Mac it asks for the Mac's password once, to set Vyre up to start when the Mac starts, even with nobody signed in. On a Mac server, the Mac app's
+   On macOS it asks for that computer's password once, to set Vyre up to start when the computer starts, even with nobody signed in. On that server, the app's
    Touch ID key approves new devices.
 
    The line works once and expires in 30 minutes. It carries a one-time code the app made. Nothing else is typed in the terminal.
    You do not compare words and you do not type a code.
 4. The installer checks the release's signature before it installs anything. The server installs Vyre and adopts the person
-   who approved the line. The app waits on this screen until the server is online. You can also open the server's setup page
-   (`http://<the-server>/setup`). When the install line started the server, that page does not ask you to paste a code. The page locks after pairing.
-5. The app connects, and your space is ready.
+   who approved the line. The app waits on this screen until the server is online. There is no setup page to paste a code into.
+5. The app connects, and your space is ready. You work in one Space at a time.
 
-You can belong to more than one space with this same identity. From Ready, choose **Join another space** or **Create another space**. Each space has its own server. The space switcher at the top of the app lists them and moves between them. **Add a computer** signs that computer into every space you belong to, each at that space's own address. When the server adopts you, the app makes that space's vault. Adding a computer reaches each space's own server, and the computer is then live in each space. The web app, the Mac app, the Windows app and the phone use these same steps.
+You can belong to more than one space with this same identity. From Ready, choose **Join another space** or **Create another space**. Each space has its own server. The menu at the foot of the sidebar is the switcher: the Space address, your role, Cmd 1 to 9, Add a Space, Space settings, Invite, You, Appearance, Lock and Sign out. **Add a computer** signs that computer into every space you belong to, each at that space's own address. When the server adopts you, the app makes that space's vault.
+
+After a Space is online, the first run asks for your name, a photo from this computer, your assistant, a model and a first chat. On a GitHub sign-in the photo GitHub gave is offered as **Use my GitHub photo**. **Skip for now** goes on. There is no address field for the photo. Your profile stays under **Settings**, **Your profile**. See [Home](../using/home.md).
+
+The web app, the computer app and the phone use these same steps. Sign in is the Space, your username and your password, or **Continue with GitHub**.
 
 
 ## 6. Add your phone
@@ -145,7 +139,7 @@ Claude, Codex and Grok sign-ins (you sign in again after a restore). It opens on
 > [!SNAG] The app stays on Waiting
 > The line expires in 30 minutes and works once. In the app go back and show a new line, then run that line. Check that the server can reach the internet.
 
-> [!SNAG] The setup page will not take the code
-> The server is already paired, or that code was used. In the app go back for a new line, and run that line on this server.
+> [!SNAG] The server is already paired
+> That code was used, or this server already has an owner. In the app go back for a new line, and run that line on this server. There is no setup page to paste a code into.
 
 More failures, and the message each one prints, are in [Troubleshooting](troubleshooting.md).

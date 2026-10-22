@@ -151,14 +151,14 @@ Every surface talks to `vyred`'s API. None reads a store directly.
 
 | Surface | What it is | Code |
 | --- | --- | --- |
-| The Vyre app | One Expo app that runs as a web app at your server's `/app/`, on iPhone and on Android: Now, Chats, Projects, Records, Flows, Vault, Settings | `apps/app` |
-| Lumen | The Mac command bar (press Control twice), a Swift app | `local/capsule` |
+| The Vyre app | One Expo app that runs as a web app at your server's `/app/`, on iPhone and on Android: Home, Chats, Projects, Records, Files, with Vault and Settings at the foot | `apps/app` |
+| Lumen | The command bar (press Control twice), a Swift app | `local/capsule` |
 | The Windows app | A Rust and Tauri window around the same app, a tray and the device's keys in Windows Hello and DPAPI | `local/capsule/native-win` |
 | The command line | `vyre`, including `vyre call` for any tool and `vyre doctor` | `bin/vyre`, `core/cli` |
 | The status line | One line under every Claude Code session | `core/statusline`, `harness/statusline` |
-| Glass | An agent's screen, live, with take-over | `core/glass`, `core/computers` |
+| The agent's computer | An agent's screen. Press to wake, open full screen, Take over, Sign in privately | `core/computers` |
 
-The app is built once and served by `vyred` at `/app/` (`core/daemon/app.js`), but only files on the release's signed list. In the Mac and Windows apps the same build runs in a window with no server of its own and reaches the server over the relay. Phones are sideloaded for now: a Mac disk image, an Android file, an iPhone build from a script.
+The app is built once and served by `vyred` at `/app/` (`core/daemon/app.js`), but only files on the release's signed list. In the computer apps the same build runs in a window with no server of its own and reaches the server over the relay. Phones are sideloaded for now: a disk image, an Android file, an iPhone build from a script.
 
 A module can describe screens in its manifest (a list, board, summary, detail or form) and Vyre draws them in the app and in Lumen; the module's code never runs in the app (`core/views`, the engine in `lib/views`). Apps from the open-source world run as containers on a server through `core/appmods`, from a pinned catalog; Documents is first.
 
@@ -404,7 +404,7 @@ Lumen and the Mac's hands, screen and voice.
 | `chrome` | `local/hands-chrome-mac/` | local | Deep control of your own Chrome through the Vyre extension. |
 | `hands` | `local/hands-mac/` | local | Computer use on macOS through the accessibility tree. |
 | `screen` | `local/screen-mac/` | local | Screen context on macOS: front app, window, URL, visible text. |
-| `sideview` | `local/sideview/` | local | A session on the left and Chrome or Glass beside it, tiled. |
+| `sideview` | `local/sideview/` | local | A session on the left and Chrome beside it, tiled. |
 | `voice` | `local/voice/` | local | Push-to-talk for Lumen with a speech provider. |
 
 <!-- map:modules:end -->
