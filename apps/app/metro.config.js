@@ -38,8 +38,7 @@ const ALIASES = [
 // ui/views/logic reaches the shared expression rules (lib/expr, one copy for the kernel and the app).
 // The phone's sealed Personal records (src/personal) run memory's kernel/store/sealed.js as it is: it reaches kernel/core, lib (databox, keywrap) and core/memory/identity (the remote backend) by relative path.
 // ui/marks reaches the Deck's mark generators (lib/wink-code) and the seed rule (lib/avatar-seed) by relative path.
-// kernel/grants is watched so the roles a person sees (lib/roles/catalogue.js, which the sidebar model reads) are the app's own.
-const EXTRA_WATCH = [path.resolve(here, "../../kernel/identity"), path.resolve(here, "../../names/worker"), path.resolve(here, "../../kernel/contracts"), path.resolve(here, "../../kernel/grants"), path.resolve(here, "../../lib/theme"), path.resolve(here, "../../lib/avatar-seed"), path.resolve(here, "../../lib/wink-code"), path.resolve(here, "../../lib/expr"), path.resolve(here, "../../lib/time"), path.resolve(here, "../../lib"), path.resolve(here, "../../kernel/store"), path.resolve(here, "../../kernel/core"), path.resolve(here, "../../core/memory/identity"), path.resolve(here, "../../core/vault")];
+const EXTRA_WATCH = [path.resolve(here, "../../kernel/identity"), path.resolve(here, "../../names/worker"), path.resolve(here, "../../kernel/contracts"), path.resolve(here, "../../lib/theme"), path.resolve(here, "../../lib/avatar-seed"), path.resolve(here, "../../lib/wink-code"), path.resolve(here, "../../lib/expr"), path.resolve(here, "../../lib/time"), path.resolve(here, "../../lib"), path.resolve(here, "../../kernel/store"), path.resolve(here, "../../kernel/core"), path.resolve(here, "../../core/memory/identity"), path.resolve(here, "../../core/vault")];
 
 const config = getDefaultConfig(here);
 config.watchFolders = [...(config.watchFolders ?? []), ...ALIASES.map((a) => a.dir), ...EXTRA_WATCH];

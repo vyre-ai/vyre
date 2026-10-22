@@ -20,13 +20,16 @@
 
 import { isPerson } from "../../lib/caller.js";
 import { createSidebarService } from "./service.js";
-import { pinEntry, PIN_KINDS, builtinEntries, cleanList, merge, keyOf, find, add, remove, setHidden, move, moveBefore, setGroup, MAX_ENTRIES, PERSON_ROLES, SPACE_MODULE, SCREEN_ID } from "../../lib/sidebar/model.js";
+import { pinEntry, PIN_KINDS, builtinEntries, cleanList, merge, keyOf, find, add, remove, setHidden, move, moveBefore, setGroup, MAX_ENTRIES, SPACE_MODULE, SCREEN_ID, visibleTo, keepHidden, withStoredRoles } from "../../lib/sidebar/model.js";
+import { BUILTIN_VIEW, personRole } from "../../lib/roles/catalogue.js";
 
 const MIGRATIONS = [`CREATE TABLE sidebar_lists (k TEXT PRIMARY KEY, v TEXT NOT NULL)`];
 /** The caller the daemon's own sidebar service arrives as. */
 const DOOR = "module:vyred";
 const SPACE = /^(\*|spc_[a-z2-7]{12}|[a-z0-9][a-z0-9._-]{0,63})$/;
 const PERSON = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+/** The roles a person may hold, as a person sees them (the kernel's `temp` is the guest). */
+const PERSON_ROLE = new Set(BUILTIN_VIEW.map((r) => r.id));
 const str = { type: "string" };
 /** Who may call: the person's surfaces and devices, a module, and an assistant (a model session or the harness). What each may change is checked in the tool. */
 const WHO = ["cli", "local", "deck", "capsule", "tailnet", "device", "module", "mcp", "harness"];
@@ -111,37 +114,49 @@ export default {
       } catch { return ""; }
     };
 
-    /** The box's own reach in that Space: the role the kernel states, and whether this caller may set the Space's default (a person at their own surface). */
+    /**
+     * The box's own reach in that Space: the key the person sees (the kernel's role, as a person sees it: its `temp` is the guest), and whether this caller may set the Space's
+     * default. Only an owner or an admin may, on either path, and a Space the kernel cannot answer gives no key and no right.
+     */
     const reachOf = async (/** @type {any} */ meta, /** @type {any} */ i) => {
-      const role = await roleIn(spaceArg(i));
-      return { role, can: isPerson(meta) };
+      const held = await roleIn(spaceArg(i));
+      return { role: personRole(held), can: isPerson(meta) && roleSetsDefault(held) };
     };
 
-    /** The role the person has in this Space, as the kernel states it (a team member's comes from the Space's own kernel, through the service). */
+    /** What the caller sees: the Space's default, their own list and the two merged, each carrying only the entries they may see (the same rule the app draws with). */
     const doGet = async (/** @type {string} */ person, /** @type {boolean} */ can, /** @type {any} */ i, /** @type {string} */ role) => {
       const sp = spaceArg(i), def = defaultFor(sp), own = mineOf(person);
-      return { space: sp, default: def, mine: own, entries: merge(def || builtinEntries(), own), modules: await modules(), can_set_default: can, role };
+      const cat = { role };
+      return { space: sp, default: def ? visibleTo(def, cat) : null, mine: visibleTo(own, cat), entries: visibleTo(merge(def || builtinEntries(), own), cat), modules: await modules(), can_set_default: can, role };
     };
 
     /** The roles an entry names must be roles a person sees; anything else is refused with the ones that are. @param {any} e */
     const checkRoles = (e) => {
       if (!e || !Array.isArray(e.roles)) return;
-      if (e.roles.some((/** @type {any} */ r) => typeof r !== "string" || !PERSON_ROLES.includes(r))) throw refuse(`roles must name the roles a person sees: ${PERSON_ROLES.join(", ")}.`, "bad_input");
+      if (e.roles.some((/** @type {any} */ r) => typeof r !== "string" || !PERSON_ROLE.has(r))) throw refuse(`roles must name the roles a person sees: ${[...PERSON_ROLE].join(", ")}.`, "bad_input");
+    };
+
+    /** A person may not put an entry that names roles they do not hold in their OWN list: it is for other roles, and the same rule the app draws with. The Space's default is the owner's or admin's to arrange, and they may name any role there. @param {any} e @param {string} role */
+    const checkMayAdd = (e, role, mine) => {
+      if (!mine) return;
+      if (e && Array.isArray(e.roles) && e.roles.length && !visibleTo([e], { role }).length) throw refuse("That entry is for other roles, so you cannot put it in your own list. Ask an owner or an admin of this Space.", "denied");
     };
 
     /** The entries of a stored list, as they were written (a list or { entries }). @param {any} v */
     const rawEntries = (v) => (Array.isArray(v) ? v : v && typeof v === "object" && Array.isArray(v.entries) ? v.entries : []);
 
     /** One change to a list: `cur` is the list as it stands. */
-    const apply = async (/** @type {any} */ i, /** @type {any[]} */ cur, /** @type {string} */ sp, /** @type {string} */ person) => {
+    const apply = async (/** @type {any} */ i, /** @type {any[]} */ cur, /** @type {string} */ sp, /** @type {string} */ person, /** @type {string} */ role, /** @type {boolean} */ mine) => {
       const cat = { modules: await modules() };
+      const stored = [...(defaultFor(sp) || []), ...mineOf(person)];
       if (i.op === "set") {
-        for (const e of Array.isArray(i.entries) ? i.entries : []) checkRoles(e);
+        for (const e of Array.isArray(i.entries) ? i.entries : []) { checkRoles(e); checkMayAdd(e, role, mine); }
         const next = cleanList(i.entries);
         if (!next.length) throw refuse("A sidebar needs at least one entry.", "bad_input");
-        return { next, key: null };
+        // The entries this person may not see are for other roles: they stay where they were, so saving never loses them. What they removed stays removed.
+        return { next: keepHidden(cur, next, { role }), key: null };
       }
-      const views = [...(defaultFor(sp) || []), ...mineOf(person)].filter(e => e.kind === "view");
+      const views = stored.filter(e => e.kind === "view");
       // Which entry the person means: a key, an entry, or a name (the assistant's "Documents").
       let target = null;
       if (typeof i.key === "string") target = cur.find(e => keyOf(e) === i.key) || null;
@@ -152,8 +167,11 @@ export default {
         target = f.entry;
       }
       if (!target) throw refuse("Say which entry: its name, or its key.", "bad_input");
+      // An entry that names roles keeps them, however it was named: they come from the entry as it is stored.
+      target = withStoredRoles(stored, target);
       const key = keyOf(target);
       checkRoles(target);
+      checkMayAdd(target, role, mine);
       if (i.op === "add" && target.kind === "module" && !cat.modules.some(m => m.module === target.module && m.screens.some((/** @type {any} */ s) => s.id === target.screen))) throw refuse("That screen is not installed here. Pick another place or screen.", "not_found");
       if (i.op === "add" && target.kind === "screen" && !cat.modules.some(m => m.module === SPACE_MODULE && m.screens.some((/** @type {any} */ s) => s.id === target.id))) throw refuse("That screen is not in this Space. Pick another place or screen.", "not_found");
       let next;
@@ -174,7 +192,7 @@ export default {
       return { next, key };
     };
 
-    const doEdit = async (/** @type {string} */ person, /** @type {any} */ i) => {
+    const doEdit = async (/** @type {string} */ person, /** @type {any} */ i, /** @type {string} */ role) => {
       const sp = spaceArg(i);
       // reset: back to the team's order (or the built-in places) - the person's own list is dropped
       if (i && i.op === "reset") {
@@ -182,16 +200,16 @@ export default {
         ctx.events.emit("sidebar.changed", { scope: "mine", op: "reset" });
         return { ok: true, key: null, scope: "me", entries: defaultFor(sp) || builtinEntries() };
       }
-      const { next, key } = await apply(i, merge(defaultFor(sp) || builtinEntries(), mineOf(person)), sp, person);
+      const { next, key } = await apply(i, merge(defaultFor(sp) || builtinEntries(), mineOf(person)), sp, person, role, true);
       write(`mine:${person}`, next);
       ctx.events.emit("sidebar.changed", { scope: "mine", op: i.op, ...(key ? { key } : {}) });
       return { ok: true, key, scope: "me", entries: next };
     };
 
-    const doTeam = async (/** @type {string} */ person, /** @type {boolean} */ can, /** @type {any} */ i) => {
+    const doTeam = async (/** @type {string} */ person, /** @type {boolean} */ can, /** @type {any} */ i, /** @type {string} */ role) => {
       const sp = spaceArg(i);
       if (!can) throw refuse(NO_DEFAULT, "denied");
-      const { next, key } = await apply(i, defaultFor(sp) || builtinEntries(), sp, person);
+      const { next, key } = await apply(i, defaultFor(sp) || builtinEntries(), sp, person, role, false);
       const d = defaults(); d[sp] = next; write("default", d);
       ctx.events.emit("sidebar.changed", { scope: "default", op: i.op, ...(key ? { key } : {}) });
       return { ok: true, key, scope: "team", entries: next };
@@ -235,7 +253,10 @@ export default {
       effect: "write", callers: WHO,
       description: "Change the caller's own sidebar by one step, for example { op: \"add\", what: \"Documents\" }. The Space's default is sidebar.team.",
       input: { type: "object", required: ["op"], properties: EDIT_PROPS },
-      run: async (/** @type {any} */ i) => doEdit(await ownerId(), i),
+      run: async (/** @type {any} */ i, /** @type {any} */ meta = {}) => {
+        const { role } = await reachOf(meta, i);
+        return doEdit(await ownerId(), i, role);
+      },
     });
 
     // Pin anything (R031-48): a project, a Flow, a Connection's place, a records list or a saved view, by id, to the caller's OWN sidebar. An assistant may ("pin the Acme intake Flow").
@@ -243,20 +264,22 @@ export default {
       effect: "write", callers: WHO,
       description: "Pin a project, Flow, Connection, records list or saved view to the caller's own sidebar by id. Pinning twice pins once; unpin with sidebar.unpin.",
       input: { type: "object", required: ["what", "id"], properties: { what: { type: "string", enum: PIN_KINDS }, id: str, label: str, href: { type: "string", description: "a view's address under /u/" }, group: str, space: str } },
-      run: async (/** @type {any} */ i) => {
+      run: async (/** @type {any} */ i, /** @type {any} */ meta = {}) => {
         const entry = pinEntry(String(i.what), String(i.id), i.label, i.href);
         if (!entry) throw refuse(`I cannot pin that: what is ${PIN_KINDS.join(", ")}, id is a short name, and a view needs an address under /u/.`, "bad_input");
-        return doEdit(await ownerId(), { op: "add", entry, ...(i.group ? { group: String(i.group) } : {}), ...(i.space ? { space: i.space } : {}) });
+        const { role } = await reachOf(meta, i);
+        return doEdit(await ownerId(), { op: "add", entry, ...(i.group ? { group: String(i.group) } : {}), ...(i.space ? { space: i.space } : {}) }, role);
       },
     });
     ctx.tool("sidebar.unpin", {
       effect: "write", callers: WHO,
       description: "Take a pinned project, Flow, Connection, records list or view off the caller's OWN sidebar: { what, id }.",
       input: { type: "object", required: ["what", "id"], properties: { what: { type: "string", enum: PIN_KINDS }, id: str, space: str } },
-      run: async (/** @type {any} */ i) => {
+      run: async (/** @type {any} */ i, /** @type {any} */ meta = {}) => {
         const entry = pinEntry(String(i.what), String(i.id), undefined, i.what === "view" ? "/u/x" : undefined);
         if (!entry) throw refuse("I cannot find that to unpin.", "bad_input");
-        return doEdit(await ownerId(), { op: "remove", key: keyOf(entry), ...(i.space ? { space: i.space } : {}) });
+        const { role } = await reachOf(meta, i);
+        return doEdit(await ownerId(), { op: "remove", key: keyOf(entry), ...(i.space ? { space: i.space } : {}) }, role);
       },
     });
 
@@ -265,8 +288,8 @@ export default {
       description: "Change the Space's default sidebar by one step (same ops as sidebar.edit). Owner or admin only; an assistant's request is held for their yes.",
       input: { type: "object", required: ["op"], properties: EDIT_PROPS },
       run: async (/** @type {any} */ i, /** @type {any} */ meta = {}) => {
-        const { can } = await reachOf(meta, i);
-        return doTeam(await ownerId(), can, i);
+        const { role, can } = await reachOf(meta, i);
+        return doTeam(await ownerId(), can, i, role);
       },
     });
 
@@ -282,11 +305,12 @@ export default {
         const person = String(i.person);
         if (!PERSON.test(person)) throw refuse("That is not a person.", "bad_input");
         const input = { ...(i.input || {}), space: i.space };
+        // The role is the kernel's, never the request's: it says who the person is in this Space. The key a person sees comes from it (its `temp` is the guest).
         const can = roleSetsDefault(i.role);
-        // The role is the kernel's, never the request's: it says who the person is in this Space.
-        if (i.call === "get") return doGet(person, can, input, String(i.role));
-        if (i.call === "edit") return doEdit(person, input);
-        if (i.call === "team") return doTeam(person, can, input);
+        const role = personRole(String(i.role));
+        if (i.call === "get") return doGet(person, can, input, role);
+        if (i.call === "edit") return doEdit(person, input, role);
+        if (i.call === "team") return doTeam(person, can, input, role);
         throw refuse("call is get, edit or team", "bad_input");
       },
     });

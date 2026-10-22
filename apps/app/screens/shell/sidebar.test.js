@@ -32,5 +32,7 @@ test("what a person may not see is not offered in a panel nor listed in the edit
   ];
   assert.deepEqual(visibleTo(list, { role: "member" }).map((e) => e.id), ["now"], "a member is offered the entries for everyone");
   assert.deepEqual(visibleTo(list, { role: "admin" }).map((e) => e.id), ["now", "vault"], "an admin is offered the admin's entry");
-  assert.deepEqual(keepHidden(list, [{ kind: "place", id: "now" }]).map((e) => e.id), ["now", "vault"], "saving keeps the entry the person may not see");
+  // saving: what the person removed stays removed, and the entry they may not see is still there
+  assert.deepEqual(keepHidden(list, [{ kind: "place", id: "now" }], { role: "admin" }).map((e) => e.id), ["now"], "the removed entry is not put back");
+  assert.deepEqual(keepHidden(list, [{ kind: "place", id: "now" }], { role: "member" }).map((e) => e.id), ["now", "vault"], "the entry for other roles is put back, not lost");
 });

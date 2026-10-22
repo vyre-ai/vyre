@@ -99,7 +99,7 @@ export function usePanel(onNavigate: (href: string) => void): { panel: PanelDef 
   const all = effective(base, mine) as any[];
   // What this person may see: an entry that names the roles it is for is for those roles only, so it is not offered in a panel.
   const shown = visibleTo(all, { role }) as any[];
-  const edit = async (list: any[]) => { await saveList("me", space, keepHidden(all, list) as any[]); await load(space); };
+  const edit = async (list: any[]) => { await saveList("me", space, keepHidden(all, list, { role }) as any[]); await load(space); };
   const views = id === "records" ? (effective(base, mine) as any[]).filter((e) => e.kind === "view" && !e.hidden && String(e.href).startsWith("/u/records/")) : [];
   return {
     id,

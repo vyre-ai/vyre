@@ -3,7 +3,7 @@ import { Platform, View } from "react-native";
 import { Banner, Button, Card, Divider, Field, Menu, Row, Segmented, Text } from "@vyre/ui";
 import { Frame, Sec } from "../places/Frame";
 import { MOCK, said } from "../../src/real/box";
-import { add, builtinEntries, keyOf, keepHidden, moveBefore, move, remove, resolve, screenEntry, setGroup, setHidden, visibleTo, REGIONS } from "../../../../lib/sidebar/model.js";
+import { add, builtinEntries, keyOf, keepHidden, moveBefore, move, remove, resolve, screenEntry, setGroup, setHidden, visibleTo, withStoredRoles, REGIONS } from "../../../../lib/sidebar/model.js";
 import { catalogOf, effective, saveList, sidebarCall, useSidebar, type Entry } from "./sidebar";
 import { useSpaces } from "./state";
 
@@ -40,21 +40,27 @@ export function SidebarEditor() {
 
   const apply = async (next: Entry[]) => {
     setBusy(true); setError("");
-    // The entries this person may not see are for other roles: they are put back as they were, so saving never loses them.
-    try { await saveList(scope, space, keepHidden(all, next) as Entry[]); await load(space); } catch (e) { setError(said(e)); } finally { setBusy(false); }
+    // The entries this person may not see are for other roles: they are put back as they were, so saving never loses them. What they removed stays removed.
+    try { await saveList(scope, space, keepHidden(all, next, { role }) as Entry[]); await load(space); } catch (e) { setError(said(e)); } finally { setBusy(false); }
   };
   const key = (e: Entry) => keyOf(e as never);
   const nextTo = (k: string, d: number) => { const i = list.findIndex((e) => key(e) === k); return i < 0 ? list : (move(list as never, k, i + d) as Entry[]); };
 
   // What can still be added: built-in places not in the list or hidden, and installed module screens not in it. A screen of the Space's own is added as a screen, not as a module's.
+  // An entry that names roles keeps them, so one for other roles is not offered to a person who may not have it.
   const addable: { entry: Entry; label: string }[] = useMemo(() => {
     const have = new Set(list.filter((e) => !e.hidden).map(key));
     const out: { entry: Entry; label: string }[] = [];
-    for (const e of builtinEntries() as Entry[]) if (!have.has(key(e)) && resolve(e as never, cat)) out.push({ entry: { kind: "place", id: (e as { id: string }).id }, label: labelOf(e) });
-    for (const m of modules) for (const s of m.screens) { const e = screenEntry(m.module, s.id) as never; if (!have.has(key(e))) out.push({ entry: e, label: s.label }); }
+    const offer = (entry: Entry, label: string) => {
+      const e = withStoredRoles(all as never[], entry as never) as Entry;
+      if (have.has(key(e)) || !visibleTo([e], { role }).length) return;
+      out.push({ entry: e, label });
+    };
+    for (const e of builtinEntries() as Entry[]) if (resolve(e as never, cat)) offer({ kind: "place", id: (e as { id: string }).id }, labelOf(e));
+    for (const m of modules) for (const s of m.screens) offer(screenEntry(m.module, s.id) as never, s.label);
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [list, modules, cat]);
+  }, [list, modules, cat, all, role]);
 
   return (
     <Frame title="Sidebar" sub="Arrange the places you open from the side or the tab bar.">

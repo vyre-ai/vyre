@@ -83,11 +83,15 @@ test("the role that comes back is the kernel's, and a member sees only the entri
   assert.equal(ana.role, "member", "the role is the kernel's, never the request's");
   assert.ok(shown(ana).includes("records"), "a member sees the member entry");
   assert.ok(!shown(ana).includes("vault"), "an admin's entry is not drawn for a member");
+  // and the answer itself carries only what the member may see: no restricted entry and no restricted label
+  assert.deepEqual(ana.default.map((/** @type {any} */ e) => keyOf(e)), ["place:now", "place:records"], "the admin's entry is not in the answer the member gets");
+  assert.ok(!JSON.stringify(ana).includes("vault"), "not even its label is in it");
   const admin = await as("per_admin", "get");
   assert.equal(admin.role, "admin");
   assert.ok(shown(admin).includes("vault"), "an admin sees the admin entry");
+  assert.ok(admin.default.some((/** @type {any} */ e) => keyOf(e) === "place:vault"), "and it is in the admin's answer");
   const guest = await as("per_temp", "get");
-  assert.equal(guest.role, "temp", "the kernel's temp is the guest a person sees");
+  assert.equal(guest.role, "guest", "the key a person sees: the kernel's temp is the guest");
   assert.ok(!shown(guest).includes("vault"), "and it is not an admin's entry");
 });
 

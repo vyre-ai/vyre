@@ -11,6 +11,7 @@ import { call } from "../daemon/client.js";
 import { validate } from "../modules/index.js";
 import { tempHome } from "../../test/helpers.js";
 import { keyOf, layout } from "../../lib/sidebar/model.js";
+import { personRole } from "../../lib/roles/catalogue.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const manifest = JSON.parse(fs.readFileSync(path.join(HERE, "module.json"), "utf8"));
@@ -78,13 +79,14 @@ test("sidebar: hide, show, move, group and remove", async t => {
 });
 
 test("sidebar: the team's default is sidebar.team: the person sets it, and a person's own list sits on top of it", async t => {
-  const { c } = await world(t);
+  const { c, d } = await world(t);
   const r = await c("sidebar.team", { op: "add", what: "Documents", group: "more" });
   assert.equal(r.error, undefined, JSON.stringify(r.error));
   assert.equal(r.data.scope, "team");
-  let g = (await c("sidebar.get", { space: "spc_aaaaaaaaaaaa" })).data;
+  // the Space this box owns: the box's own person may set its default
+  let g = (await c("sidebar.get", { space: d.kernel.id.space })).data;
   assert.ok(g.default && g.default.some((/** @type {any} */ e) => keyOf(e) === "module:docuseal/documents"), "a default for the all-Spaces key reaches a Space with none of its own");
-  assert.equal(g.can_set_default, true);
+  assert.equal(g.can_set_default, true, "the box's own person owns the Space they are on");
   g = (await c("sidebar.get", {})).data;
   assert.ok(g.default && g.default.some((/** @type {any} */ e) => keyOf(e) === "module:docuseal/documents"));
   // an assistant may arrange the person's OWN list at once
@@ -207,12 +209,39 @@ test("sidebar: the caller's role is the kernel's own answer for that person in t
   const { c, d } = await world(t);
   const g = (await c("sidebar.get", {})).data;
   const k = d.kernel;
-  assert.equal(g.role, k.gateway.members.roleOf({ kind: "person", id: k.id.owner, space: k.id.space }), "the kernel holds the membership, and it is the one that says");
+  const held = k.gateway.members.roleOf({ kind: "person", id: k.id.owner, space: k.id.space });
+  assert.equal(g.role, personRole(held), "the kernel holds the membership, and it is the one that says; the key it sends is the one a person sees");
   assert.equal(g.role, "owner", "the box's own person owns the Space they are on");
   assert.equal(g.can_set_default, true, "an owner may set the default");
   assert.equal((await c("sidebar.get", {}, "mcp")).data.can_set_default, false, "an assistant is told it may not set the default itself");
   const drawn = layout(g.entries, { modules: g.modules, role: g.role });
   assert.ok([...drawn.items, ...drawn.more, ...drawn.bottom].some((i) => i.id === "now"), "the built-in places are drawn");
+});
+
+test("sidebar: the answer carries only what the viewer may see: no restricted entry and no restricted label leaves the server", async t => {
+  const { c } = await world(t);
+  const set = await c("sidebar.team", { op: "set", entries: [{ kind: "place", id: "now" }, { kind: "place", id: "vault", roles: ["admin"] }] });
+  assert.equal(set.error, undefined, JSON.stringify(set.error));
+  const g = (await c("sidebar.get", {})).data;
+  assert.deepEqual(g.default.map((/** @type {any} */ e) => keyOf(e)), ["place:now"], "the entry for other roles is not in the answer");
+  assert.deepEqual(g.entries.map((/** @type {any} */ e) => keyOf(e)), ["place:now"], "nor in the merged list");
+  assert.ok(!JSON.stringify(g).includes("vault"), "not even its label is in the answer");
+});
+
+test("sidebar: an entry that names roles keeps its roles however it is added, and a person may not add one that is for other roles", async t => {
+  const { c } = await world(t);
+  const set = await c("sidebar.team", { op: "set", entries: [{ kind: "place", id: "now" }, { kind: "place", id: "vault", roles: ["admin"] }] });
+  assert.equal(set.error, undefined, JSON.stringify(set.error));
+  // the assistant's add-by-name: the entry keeps the roles it has, so it stays for the admins
+  const added = await c("sidebar.edit", { op: "add", what: "Vault" });
+  assert.ok(added.error, JSON.stringify(added));
+  assert.match(String(added.error.message), /for other roles/);
+  assert.ok(!(await c("sidebar.get", {})).data.mine.some((/** @type {any} */ e) => keyOf(e) === "place:vault"), "and it is not in the person's own list");
+  // by hand, the same: an entry that names roles they do not hold is refused
+  const byHand = await c("sidebar.edit", { op: "add", entry: { kind: "place", id: "vault", roles: ["admin"] } });
+  assert.ok(byHand.error, JSON.stringify(byHand));
+  // an entry with no roles is still theirs
+  assert.equal((await c("sidebar.edit", { op: "add", what: "Memory" })).error, undefined);
 });
 
 test("sidebar: a screen of the Space's own opens: the entry's href is the route the app draws, and the screen is served through the views path", async t => {
