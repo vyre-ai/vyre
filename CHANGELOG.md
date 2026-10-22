@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6.9
 
+- fix(records): search opened from a record type stays on that type.
 - fix(files): Quick Look reads the next and previous file ahead in a linked folder, the same way it does for a Space file.
 - fix(planner): a reminder added as a title and a due in words ("in 2 minutes") keeps that time. A note that is given a due says so, instead of dropping the time.
 - fix(artifacts): a list, a search and the gallery leave out an artifact that is still being written.

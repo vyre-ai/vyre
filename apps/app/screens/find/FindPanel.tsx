@@ -17,7 +17,7 @@ import { PlaceTag, usePlaceText } from "../../src/real/PlaceTag";
 
 const ICON: Record<string, IconName> = { chat: "chat", project: "projects", agent: "assistants", person: "contacts", record: "file", file: "file", memory: "memory", message: "chat", skill: "kits", place: "chevron" as IconName, setting: "cfg", action: "bolt" };
 
-export default function FindPanel({ onDone, initial = "", initialScope = "all" }: { onDone?: () => void; initial?: string; initialScope?: Scope }) {
+export default function FindPanel({ onDone, initial = "", initialScope = "all", recordType = "", recordLabel = "" }: { onDone?: () => void; initial?: string; initialScope?: Scope; recordType?: string; recordLabel?: string }) {
   const findTag = usePlaceText("home");   // the search is over her own computer
   const router = useRouter();
   const { data: world } = useRecordsWorld();
@@ -70,7 +70,7 @@ export default function FindPanel({ onDone, initial = "", initialScope = "all" }
   const line = q.trim();
   // Messages in the chats this app has opened, searched on this device (memory only, nothing sent).
   const messages = useMemo(() => { const f = queryOf(line, scope); return f.q.length >= MIN ? messageIndex.search(f.q, { limit: 20, ...(f.from ? { from: f.from } : {}) }) : []; }, [line, scope, loaded]);
-  const secs = useMemo(() => sections(all, line, scope, { ...fetched, messages }), [all, line, scope, fetched, messages]);
+  const secs = useMemo(() => sections(all, line, scope, { ...fetched, messages }, { recordType, recordLabel }), [all, line, scope, fetched, messages, recordType, recordLabel]);
   const { cmd, chosen: target } = useMemo(() => readCommand(line, all, chosen), [line, all, chosen]);
   const cands: any[] = "candidates" in cmd ? cmd.candidates : [];
   const idleNow = useMemo(() => idle(all, recents), [all, recents]);
