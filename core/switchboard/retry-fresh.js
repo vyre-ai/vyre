@@ -22,14 +22,36 @@ export async function retryOrFresh(sb, id, message, o) {
 }
 
 /**
+ * The last turn this thread recorded, when the transcript has no person line to read (a session
+ * whose file is not on this computer). The text is the turn's own, cut as the event stores it.
+ * @param {any} sb @param {string} id
+ * @returns {{ uuid: string, text: string } | null}
+ */
+function rememberedTurn(sb, id) {
+  if (!sb.deps || typeof sb.deps.ofThread !== "function") return null;
+  const rows = sb.deps.ofThread(id, { types: ["thread.turn"] }) || [];
+  for (let i = rows.length - 1; i >= 0; i--) {
+    const p = rows[i] && rows[i].payload;
+    const text = p && String(p.text || "").trim();
+    if (text) return { uuid: p.uuid ? String(p.uuid) : "", text };
+  }
+  return null;
+}
+
+/**
  * The last words the person typed, sent again without a rewind.
  * @param {any} sb @param {string} id @param {any} o
  */
 async function fresh(sb, id, o) {
   const surface = o.surface || "deck";
-  const line = sb.lastUserLine(id);
-  const words = line ? sb.lineText(line) : "";
-  if (!line || !String(words).trim()) throw Object.assign(new Error("there is no message here to retry"), { code: "bad_input" });
+  let line = sb.lastUserLine(id);
+  let words = line ? sb.lineText(line) : "";
+  if (!line || !String(words).trim()) {
+    const remembered = rememberedTurn(sb, id);
+    if (!remembered) throw Object.assign(new Error("there is no message here to retry"), { code: "bad_input" });
+    line = { uuid: remembered.uuid };
+    words = remembered.text;
+  }
   // Only one's own words. A message that names no author (the chat's send records none) is left as it was.
   const wrote = sb.authorOf(id, String(line.uuid));
   if (wrote && o.author && wrote !== o.author && !o.admin) throw Object.assign(new Error("that message is someone else's: you can edit and retry only your own"), { code: "denied" });
