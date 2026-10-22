@@ -203,7 +203,9 @@ export function createFolder() {
         if (prev && prev.done) break;
         const text = (prev?.text ?? "") + String(d.text ?? "");
         open.add(String(mid));
-        const it = { key, kind: "text", text, done: false, ...(d.via ? { via: String(d.via) } : prev?.via ? { via: prev.via } : {}), settled: Math.max(0, text.length - HOLDBACK), ...(prev ? { author: prev.author, actsFor: prev.actsFor, parent: prev.parent } : { ...who(f), ...(d.parent ? { parent: d.parent } : {}) }), ...(groupOf.has(mid) ? { group: groupOf.get(mid) } : {}), ...(d.provider ? { provider: String(d.provider), model: d.model ?? null } : prev?.provider ? { provider: prev.provider, model: prev.model ?? null } : {}) };
+        // The day caption reads this. Later words of the same reply keep the first word's time.
+        const at = typeof prev?.at === "number" ? prev.at : (typeof f.time === "number" && f.time > 0 ? f.time : undefined);
+        const it = { key, kind: "text", text, done: false, ...(at !== undefined ? { at } : {}), ...(d.via ? { via: String(d.via) } : prev?.via ? { via: prev.via } : {}), settled: Math.max(0, text.length - HOLDBACK), ...(prev ? { author: prev.author, actsFor: prev.actsFor, parent: prev.parent } : { ...who(f), ...(d.parent ? { parent: d.parent } : {}) }), ...(groupOf.has(mid) ? { group: groupOf.get(mid) } : {}), ...(d.provider ? { provider: String(d.provider), model: d.model ?? null } : prev?.provider ? { provider: prev.provider, model: prev.model ?? null } : {}) };
         if (put(key, "text", it)) out.layout = true;
         else items.set(key, it);
         out.appended = { key, length: text.length };

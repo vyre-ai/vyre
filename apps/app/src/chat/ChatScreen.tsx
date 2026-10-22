@@ -23,6 +23,8 @@ import { GroupApprovals } from "../../screens/shell/GroupApprovals";
 import { ChatRow, SkeletonThread, useMessageKeys } from "./ChatRows";
 import { FlowDraftNote, useFlowDraft } from "./FlowDraftNote";
 import { groupToolRuns } from "./tool-runs.js";
+import { withDayRows } from "./day-rows.js";
+import { longDateOf, sameDay } from "../time/show.js";
 import type { BlockCtx } from "./Blocks";
 import { createFollow, follow, pillLabel } from "./follow.js";
 import type { StreamSource } from "./mock-stream";
@@ -169,7 +171,10 @@ export function ChatScreen(p: ChatScreenProps) {
     const t = setTimeout(() => setWaited("long"), 8000);
     return () => clearTimeout(t);
   }, [loading]);
-  const rows = useMemo(() => groupToolRuns(layoutRows, (k) => store.item(k)) as unknown as typeof layoutRows, [layoutRows, store]);
+  const rows = useMemo(() => withDayRows(groupToolRuns(layoutRows, (k) => store.item(k)), (r) => {
+    const at = store.item(r.key)?.at;
+    return typeof at === "number" && at > 0 ? at : undefined;
+  }, longDateOf, sameDay) as unknown as typeof layoutRows, [layoutRows, store]);
   const viewer = store.group.viewer;
   // Who is in this chat before the stream says, and the run's thread for the per-run controls (both from work.chat.get).
   const here = useChatMembers(p.sessionId, meta.busy);
