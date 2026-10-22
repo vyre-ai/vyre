@@ -1,19 +1,19 @@
 ---
-title: Install
+title: Install Vyre on a Mac or a Windows PC
 summary: Put the Vyre app on your Mac or Windows PC, sign in with a Space, a username and a password, then join a space or create one, and add a phone.
 audience: users, operators
 owner: integrator
 status: stable
 ---
 
-# Install
+# Install Vyre on a Mac or a Windows PC
 
 You set Vyre up from the Vyre app. There is no browser setup and no terminal on your own computer. The only
 terminal is on the server, and only for one line the app gives you.
 
 ## Before you start
 
-- [ ] A computer for the app. A phone alone cannot start: you reserve your name on a computer first.
+- [ ] A Mac or a Windows PC for the app. A phone alone cannot start: you reserve your name on a computer first.
 - [ ] A Claude account (the app offers to connect it during setup), and a ChatGPT (Codex) or Grok account if you want them.
 - [ ] If you will add a server: a Linux server (a cloud machine is fine) or a computer that stays on, and a terminal on it.
   See [What size of server](#what-size-of-server): 8 GB of memory is recommended, and 4 GB is the least. Records are always on.
@@ -31,8 +31,8 @@ If you already reserved a name at <https://vyre.run/setup>, keep that code. The 
 
 ## 2. Install the Vyre app
 
-- **macOS.** Download the dmg from the [latest release](https://github.com/vyre-ai/vyre/releases/latest):
-  `Vyre-aarch64.dmg` for Apple silicon, `Vyre-x86_64.dmg` for Intel. Open it and drag
+- **Mac.** Download the dmg for your Mac from the [latest release](https://github.com/vyre-ai/vyre/releases/latest):
+  `Vyre-aarch64.dmg` for Apple silicon, `Vyre-x86_64.dmg` for an Intel Mac. Open it and drag
   Vyre Lumen to Applications. The app is not yet signed with an Apple Developer ID, so you sideload it:
   open it once, and if macOS says it cannot check the app, go to System Settings, Privacy and Security,
   and choose **Open Anyway**.
