@@ -15,7 +15,7 @@ import { MIGRATIONS as SOURCE_MIGRATIONS, rememberSource, forgetSource, sourcesF
 const str = { type: "string" };
 const open = { type: "object", additionalProperties: true, properties: { space: str } };
 /** A Kit proposal takes the Kit itself and, optionally, where it came from (a file path or an https address). */
-const proposeInput = { type: "object", additionalProperties: true, properties: { space: str, kit: { type: "object" }, source: { type: "string" } } };
+const proposeInput = { type: "object", additionalProperties: true, properties: { space: str, source: { type: "string" } } };
 const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
 
 /** @type {Record<string, string>} */
