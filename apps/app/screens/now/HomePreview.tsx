@@ -14,7 +14,7 @@ const NOW = Date.UTC(2026, 9, 18, 15, 0, 0);
 
 /** The assistant, then agents the person made, plus the Engineer so a picture can show that chip is absent. */
 const SAMPLE = agentCards([
-  { name: "alex", kind: "assistant", doing: "idle" },
+  { name: "mira", kind: "assistant", doing: "idle" },
   { name: "engineer", doing: "working" },
   { name: "kit", doing: "idle" },
   { name: "juno", doing: "idle" },
