@@ -6,7 +6,7 @@ const NAMED = /^(email|phone|url|website)$/i;
 const ID_NAME = /(^|_)(id|ref)$/i;
 const ID_VALUE = /^[A-Z]{2,6}-\d{3,}$/;
 
-/** @param {unknown} value */
+/** @param {unknown} value @returns {string} */
 function textOf(value) {
   if (typeof value === "string") return value.trim();
   if (typeof value === "number" && Number.isFinite(value)) return String(value);
