@@ -33,6 +33,8 @@ test("who did it: You for the person looking, the name for anyone else", () => {
 test("the filter row and the quick actions", () => {
   assert.equal(HISTORY_FILTERS[0][0], "all");
   assert.deepEqual(QUICK.map((q) => q.key), ["call", "meeting", "note"]);
+  assert.deepEqual(QUICK.map((q) => q.label), ["Call", "Meeting", "Note"]);
+  assert.deepEqual(QUICK.map((q) => q.sheet), ["Log a call", "Log a meeting", "Add a note"]);
 });
 
 test("only the filters that have something are offered", () => {

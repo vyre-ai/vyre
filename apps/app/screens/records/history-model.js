@@ -14,11 +14,11 @@ export function filterHistory(items, key) {
 /** Who did it, as the row says it: "You", or the name; an agent keeps its name and is tagged by the screen. @param {Item["actor"]} actor @param {string | undefined} me */
 export const actorWords = (actor, me) => (actor && me && actor.id === me ? "You" : actor?.name || "Someone");
 
-/** The quick actions a record offers under its name, in order. */
-export const QUICK = /** @type {{ key: "call" | "meeting" | "note", label: string, ask: string }[]} */ ([
-  { key: "call", label: "Log a call", ask: "What was said?" },
-  { key: "meeting", label: "Log a meeting", ask: "What came out of it?" },
-  { key: "note", label: "Add a note", ask: "Write the note" },
+/** The quick actions a record offers under its name, in order. The button says the short word; the sheet keeps the longer title. */
+export const QUICK = /** @type {{ key: "call" | "meeting" | "note", label: string, ask: string, sheet: string, icon: "phone" | "cal" | "edit" }[]} */ ([
+  { key: "call", label: "Call", ask: "What was said?", sheet: "Log a call", icon: "phone" },
+  { key: "meeting", label: "Meeting", ask: "What came out of it?", sheet: "Log a meeting", icon: "cal" },
+  { key: "note", label: "Note", ask: "Write the note", sheet: "Add a note", icon: "edit" },
 ]);
 
 /** The filters worth showing for these items: All, and each kind that has something. Agent actions and Notes and calls show only when there is one. Tasks, Flow runs and Files are not in records.history, so they show only if a box ever sends them. @param {Item[]} items */
