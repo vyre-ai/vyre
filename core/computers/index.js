@@ -28,6 +28,7 @@ import { makeAgentEndpoint } from "./agent-endpoint.js";
 import { makeAgentRun } from "./agent-run.js";
 import { makeAgentFiles } from "./agent-files.js";
 import { registerDeskAsk } from "./desk-ask.js";
+import { asModule } from "./module-call.js";
 import { createCdpAdapter } from "./cdp-adapter.js";
 import { Keyboard, isSurface, idleMsOf, IDLE_CHOICES, IDLE_WARN_MS } from "./keyboard.js";
 import { FakeDriver } from "./driver/fake.js";
@@ -60,11 +61,10 @@ const PEOPLE = ["cli", "local", "deck", "capsule", "tailnet", "device"];
 /** An agent's own hands (mcp:agent:<name>, a model session) and the harness; only the tools that act on the caller's OWN computer list them. */
 const OWN = [...PEOPLE, "module", "mcp", "harness"];
 
-/** The vault item a shared computer's member tokens are derived from (pool.js's memberToken()) --
- * declared in module.json's needs.vault, the same shape as any vault item a module needs. Never
- * generated here: like every other vault item, a person puts it in (vault.put, HUMAN_ONLY)
- * before the first computers.member.add that needs it; fetched fresh each time, never cached, so
- * a person rotating it in the vault directly takes effect on the very next add/rotate/reseed. */
+/** The vault item a shared computer's member tokens and the agents' screen passwords are derived from
+ * (pool.js memberToken). Declared in module.json needs.vault. The first ask creates it, as this module
+ * and only when it is absent, without the asking agent's origin (module-call.js). A later read is fresh,
+ * so a person who replaces the item is picked up on the next screen. */
 const MEMBER_TOKEN_ITEM = "vyre-shared-computer-member-key";
 
 /** The default path for the docker-api bearer, in a volume box/compose.yml shares between the
@@ -98,14 +98,14 @@ export default {
     const driver = pickDriver(cfg, ctx.paths ? ctx.paths.root : "default");
     const emit = (type, payload, where) => ctx.events.emit(type, payload, where);
     // The key every shared-computer member token and every agent's VNC password is derived from: a Space vault item only this module reads. Nothing else provisions it, so the first use makes it (random, 32 bytes),
-    // once even when calls race, and reads it back through the same declared-needs check as any later use. If it cannot be made (the vault is locked) the caller gets the vault's own refusal.
+    // as this module (asModule drops the asking agent's origin; the vault refuses a module acting for an agent), once even when calls race, and reads it back through the same declared-needs check as any later use. If it cannot be made (the vault is locked) the caller gets the vault's own refusal.
     const memberKey = createMemberKey({
       fetch: () => ctx.vault.fetch(MEMBER_TOKEN_ITEM),
-      put: async value => {
+      put: value => asModule(async () => {
         const r = await ctx.call("vault.put", { name: MEMBER_TOKEN_ITEM, kind: "secret", description: "Derives the shared computers' member tokens and the agents' screen passwords (created automatically).", fields: { value, made_by: "computers" }, grants: ["computers"], onlyIfAbsent: true });
         if (r && r.error) throw new Error(r.error.message);
         return r && r.data;
-      } });
+      }) });
     const pool = new Pool({ db: ctx.store.db, driver, call: ctx.call, emit, log: ctx.log, config: cfg,
       memberTokenKey: () => memberKey() });
     const dataRoot = (ctx.paths && ctx.paths.data) || (ctx.paths && ctx.paths.root ? `${ctx.paths.root}/data` : "data");

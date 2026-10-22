@@ -34,6 +34,7 @@ const EXEMPT = {
   "files.linked.read": "person reach: `path` is a path inside a folder the caller linked, fetched from its source as the caller; it is not a project folder of the Space",
   "files.linked.versions": "person reach: `path` is a path inside a folder the caller linked, read as the caller; it is not a project folder of the Space",
   "files.drive.space.read": "`path` is a path in the Space's Drive, not a project folder: a model reads it only in a team chat's turn, as the member who spoke, and the Space's own `drive.read` decides per path",
+  "computers.agent.file.make": "`path` is a relative path inside the agent's own folder on its computer, not a project of the Space; the body checks the caller is that agent (or a person who may edit it)",
 };
 /** Input names that can point at a project's files or its name, besides project, projects and cwd. A tool with one and no declaration is named in UNJUDGED until someone decides whether an agent's grant must cover it. */
 const FOLDERISH = ["repo", "folder", "folders", "workspace", "slug", "dir", "path", "paths"];

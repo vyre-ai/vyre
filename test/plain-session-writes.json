@@ -93,6 +93,14 @@
    "class": "refused",
    "why": "refused in the body for a session that names no agent; a named agent works on its own computer, and a Mac only for a class the person allowed there"
   },
+  "computers.agent.file.make": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: an agent writes only its own folder; a person names the agent and needs edit"
+  },
+  "computers.agent.terminal.run": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: an agent types only into its own Terminal; a person names the agent and needs edit"
+  },
   "computers.checkout": {
    "class": "refused",
    "why": "refused in the body for a plain session: a model session may only act on its own agent's computer; it names no agent"

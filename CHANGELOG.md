@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6.9
 
+- fix(computers): the first ask creates the screen key as the computers module, so an agent's own Chrome can start the computer. A plain session cannot type into a Terminal or write a file there.
 - fix(computers): asking an agent to open a site uses that agent's own Chrome on its computer, and starts the computer when it is not up yet. The live screen is that Chrome.
 - fix(computers): asking an agent to run a command types it into the desk Terminal. Asking it to make a file writes the file in the agent's folder, and Vyre Files shows it there. A harness session still runs on the server.
 - fix(update): `vyre update` pulls the computer image the computers module will start. When that image is a digest and the pull does not land, the update stops and the previous files are put back.

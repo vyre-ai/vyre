@@ -6,6 +6,7 @@
 // An agent may ask only for its own computer. A person needs the right to edit the agent.
 // Harness sessions still run on the server; this file does not move them.
 
+import { isPerson } from "../../lib/caller.js";
 import { agentClaim } from "../modules/index.js";
 import { userNameOf } from "./agent-users.js";
 import { homeOf } from "./image/agentd.js";
@@ -35,11 +36,15 @@ export function registerDeskAsk(d) {
   /** @param {any} i @param {string} caller */
   const who = (i, caller) => {
     const agent = named(i) || agentClaim(caller) || "";
-    if (!AGENT.test(agent)) throw Object.assign(new Error("name the agent"), { code: "bad_input" });
+    if (!AGENT.test(agent)) {
+      // A plain model session names no agent. bad_input would count as the tool running; the body refuses it. A person who forgot the name is told to name it.
+      if (!isPerson(caller)) throw Object.assign(new Error("an agent runs this on its own computer; a person names the agent"), { code: "denied" });
+      throw Object.assign(new Error("name the agent"), { code: "bad_input" });
+    }
     return agent;
   };
 
-  d.tool("computers.agent.terminal.run", "Type one command into the agent's Terminal, the desk session, and press Enter. The session is the one the dock opens, so the person sees it on the agent's computer. One line. An agent may run it on its own computer; a person needs the right to edit the agent.",
+  d.tool("computers.agent.terminal.run", "Type one command into the agent's desk Terminal and press Enter. An agent uses its own computer. A person needs edit.",
     obj({ agent: str, command: str }, ["command"]), async (i, { caller }) => {
       const agent = who(i, String(caller || ""));
       await allow(agent, String(caller || ""));
@@ -54,7 +59,7 @@ export function registerDeskAsk(d) {
       return { agent, session: DESK, command };
     }, { callers: d.callers });
 
-  d.tool("computers.agent.file.make", "Make a file in the agent's Files, in the agent's own folder on its computer. The same bytes show in Vyre Files under the agent's folder. An agent may write its own folder; a person needs the right to edit the agent.",
+  d.tool("computers.agent.file.make", "Write a text file in the agent's folder on its computer. It shows in Vyre Files. An agent writes its own. A person needs edit.",
     obj({ agent: str, path: str, text: str }, ["path", "text"]), async (i, { caller }) => {
       const agent = who(i, String(caller || ""));
       await allow(agent, String(caller || ""));
