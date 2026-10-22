@@ -219,7 +219,7 @@
         "reach": "modules"
       },
       {
-        "name": "sessions.accounts.nextSigned",
+        "name": "sessions.accounts.next",
         "reach": "modules"
       },
       {

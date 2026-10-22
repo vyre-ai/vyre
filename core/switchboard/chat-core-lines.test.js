@@ -34,7 +34,7 @@ test("chat core: a send sits on your side at once, two paired servers follow the
   const realCall = w.d.registry.call.bind(w.d.registry);
   w.d.registry.call = async (tool, input, caller, meta) => (tool === "memory.prompt" ? { data: { text: "", blocks: [] } } : realCall(tool, input, caller, meta));
   assert.equal(w.d.registry.tools.has("stream.search"), true);
-  assert.equal(w.d.registry.tools.has("sessions.accounts.nextSigned"), true);
+  assert.equal(w.d.registry.tools.has("sessions.accounts.next"), true);
   const db = w.d.registry.deps.db;
 
   // Someone else's signed-in account is not the next one.

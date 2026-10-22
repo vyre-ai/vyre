@@ -25,7 +25,7 @@ export async function routeFallback(sb, id, st) {
     let fromNext = false;
     if (!hit) {
       const asker = sb.turnAsker.get(id) || null;
-      const n = await sb.deps.call("sessions.accounts.nextSigned", { provider, ...(account ? { account } : {}), ...(asker ? { person: asker } : {}), tried }).catch(() => ({}));
+      const n = await sb.deps.call("sessions.accounts.next", { provider, ...(account ? { account } : {}), ...(asker ? { person: asker } : {}), tried }).catch(() => ({}));
       hit = n.data && n.data.entry;
       fromNext = Boolean(hit);
     }

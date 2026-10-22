@@ -414,7 +414,7 @@ export default {
       input: { type: "object", required: ["provider"], properties: { provider: str, account: str, agent: str, project: str, tried: { type: "array", items: str } } },
       run: async i => routes.next(i, usable),
     });
-    ctx.tool("sessions.accounts.nextSigned", {
+    ctx.tool("sessions.accounts.next", {
       description: "The asker's next signed-in account on another provider, after a limit. Not a public name.", internal: true,
       input: { type: "object", required: ["provider"], properties: { provider: str, account: str, person: str, tried: { type: "array", items: str } } },
       run: async i => {
