@@ -147,6 +147,8 @@ export async function makeServerSpace(slug: string, displayName: string, server?
   const { keepRootPublic } = await import("../state/space-roots");
   const made = await nameServerOwnSpace({ name: slug, displayName, ...(server ? { server } : {}), ...(identity ? { identity } : {}) });
   await keepRootPublic(made.space, made.rootPublic);
+  const { noteListing } = await import("../state/space-listing");
+  if (typeof (made as { listed?: boolean }).listed === "boolean") noteListing(made.space, (made as { listed: boolean }).listed, String((made as { listError?: string }).listError || ""));
   return made.space;
 }
 
