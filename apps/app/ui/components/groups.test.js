@@ -3,7 +3,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { sectionsOf, addGroup, renameGroup, moveGroup, removeGroup, toggleGroup } from "./groups.js";
+import { sectionsOf, viewSections, addGroup, renameGroup, moveGroup, removeGroup, toggleGroup } from "./groups.js";
 
 const G = [{ name: "Client details" }, { name: "Assets", collapsed: true }];
 const I = [{ id: 1, group: "Assets" }, { id: 2 }, { id: 3, group: "Client details" }, { id: 4, group: "Gone" }, { id: 5, group: "Assets" }];
@@ -22,6 +22,13 @@ test("no groups at all is one flat section with no header", () => {
 test("an empty group still shows, an empty default does not", () => {
   const s = sectionsOf(G, []);
   assert.deepEqual(s.map((x) => x.name), ["Client details", "Assets"]);
+});
+
+test("a reader does not see a named group that has no items she can read", () => {
+  const groups = [{ name: "Private" }, { name: "Open" }];
+  const items = [{ id: 1, group: "Open" }];
+  assert.deepEqual(viewSections(groups, items).map((s) => s.name), ["Open"]);
+  assert.deepEqual(sectionsOf(groups, items).map((s) => s.name), ["Private", "Open"]);
 });
 
 test("add: trimmed, never blank, never twice (any case)", () => {

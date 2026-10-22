@@ -16,6 +16,11 @@ export function sectionsOf(groups, items) {
   ];
 }
 
+/** What a reader sees: a named group with nothing she can read is left out, so its name is not shown. An editor keeps every group (sectionsOf). @template {{ group?: string }} T @param {Group[]} groups @param {T[]} items */
+export function viewSections(groups, items) {
+  return sectionsOf(groups, items).filter((s) => s.flat || !s.name || s.items.length > 0);
+}
+
 /** @param {Group[]} groups @param {string} name */
 export const addGroup = (groups, name) => (!name.trim() || groups.some((g) => same(g.name, name)) ? groups : [...groups, { name: name.trim() }]);
 

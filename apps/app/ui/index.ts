@@ -202,7 +202,7 @@ export { TagRow } from "./components/TagRow";
 export { isTagsField, tagsOf, withTag, withoutTag, tally as tallyTags, suggest as suggestTags, tagChip, tagOfChip } from "./tags/model.js";
 export { flowSentence, fromDefinition as flowFromDefinition, toDefinition as flowDefinition, draftProblems as flowProblems, triggerPhrase, stepSummary as flowStepSummary } from "./flows/logic.js";
 export type { Draft as FlowDraft, DraftStep as FlowDraftStep, Options as FlowOptions } from "./flows/logic.js";
-export { sectionsOf, addGroup, renameGroup, moveGroup, removeGroup, toggleGroup } from "./components/groups.js";
+export { sectionsOf, viewSections, addGroup, renameGroup, moveGroup, removeGroup, toggleGroup } from "./components/groups.js";
 export { draftOf, applyDraft } from "./setup/logic.js";
 export { putField, moveField, regroup, parseRule } from "./setup/typeedit.js";
 export { SealEditor, SEAL_CLASSES } from "./setup/SealEditor";

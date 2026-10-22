@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6.9
 
+- fix(records): a field group with nothing you can read is left out of the record, so its name is not shown. An editor still sees an empty group.
 - fix(artifacts): the check that a half-written artifact stays out of the list stores that row's text and time.
 - fix(records): search on a record type stays in that type's list. The top hit is no longer lifted out as a Best match.
 - fix(github): making a repo from a folder with a long history sends the files that are there now, as one commit. The folder's own history stays on the computer.
