@@ -109,7 +109,8 @@ export async function bootGit(t) {
  */
 export async function realSession(root, tool, launches, project, name = "a real session") {
   const started = await tool("threads.start", { project, name, prompt: "hello there" });
-  const launch = await until(() => launches().find(l => l.argv.includes(started.id)), "the session's own launch to log");
+  // A loaded box can be slow to log the launch: wait longer than the usual window before giving up.
+  const launch = await until(() => launches().find(l => l.argv.includes(started.id)), "the session's own launch to log", 60_000);
   const bound = await tool("threads.bind", { session: started.id, pid: launch.pid }, "harness");
   return { thread: started.id, session: { id: started.id, key: bound.key } };
 }

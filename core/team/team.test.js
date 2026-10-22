@@ -432,6 +432,7 @@ test("P1: with the project's default off, team.ask to a role that does not exist
     to: [`team.add:${project.record}/researcher`], what: "set up a researcher teammate" }, "module:sessions");
   const ask = await d.registry.call("team.ask", { to: "researcher", project: project.record, text: "look into the intake form" }, "mcp", { ...await ownerToken(d), thread: session.id });
   assert.equal(ask.error && ask.error.code, "not_found", JSON.stringify(ask.error));
+  assert.match(String(ask.error.message), /default is off/, "the refusal says the default is off, not that the role is unknown");
   assert.equal(d.registry.deps.db.prepare("SELECT COUNT(*) n FROM team_teammates").get().n, 0, "no teammate was made");
 });
 
