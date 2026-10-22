@@ -17177,6 +17177,7 @@ Add or replace an item. Values come from `vyre vault put`'s hidden prompt or a m
     - `rp` string
     - `scope` list of string
     - `ssid` string
+    - `title` string
   - `fields` object
   - `grants` list of string
   - `hosts` list of string
@@ -17696,6 +17697,7 @@ Add or change an item by merging fields: only the fields given are replaced, `re
     - `rp` string
     - `scope` list of string
     - `ssid` string
+    - `title` string
   - `fields` object
   - `generate` object
     - `field` string
