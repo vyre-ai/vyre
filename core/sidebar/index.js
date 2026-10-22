@@ -100,13 +100,13 @@ export default {
     const roleIn = async (space) => {
       try {
         const k = ctx.kernel;
-        if (!k || !k.id || !k.id.owner) return "";
-        const home = String(k.id.space || "");
+        if (!k || !k.owner || !k.space) return "";
+        const home = String(k.space);
         const key = space && space !== "*" ? space : home;
         if (!key) return "";
-        const h = key === home ? k : (typeof k.for === "function" ? k.for(key) : null);
+        const h = typeof k.for === "function" ? k.for(key) : null;
         const gw = h && h.gateway;
-        const r = gw && gw.members && typeof gw.members.roleOf === "function" ? gw.members.roleOf({ kind: "person", id: String(k.id.owner), space: key }) : null;
+        const r = gw && gw.members && typeof gw.members.roleOf === "function" ? gw.members.roleOf({ kind: "person", id: String(k.owner), space: key }) : null;
         return typeof r === "string" ? r : "";
       } catch { return ""; }
     };

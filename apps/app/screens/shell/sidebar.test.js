@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { moduleHref, SPACE_MODULE, visibleTo, keepHidden } from "../../../../lib/sidebar/model.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const APP = path.join(HERE, "..", "..", "..");
+const APP = path.join(HERE, "..", "..");
 
 test("a screen of the Space's own opens at the app's route: /u/module/<module>/<screen>", () => {
   const route = path.join(APP, "app", "u", "module", "[module]", "[view].tsx");
