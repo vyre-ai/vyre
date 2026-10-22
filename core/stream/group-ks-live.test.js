@@ -917,3 +917,77 @@ test("RD1: stream.read gives a member in the chat the other person's message and
   assert.ok(!JSON.stringify(late.data.frames).includes("R1-hello"), "ada reads none of what was said before she joined");
   assert.ok(late.data.frames.some((/** @type {any} */ f) => f.type === "chat.hidden"), "she gets cursor-only placeholders for it");
 });
+
+// The switchboard's own clock, the same shape its lease tests use: advance() fires what came due, and never waits out the 30 s grace.
+function fakeClock() {
+  let now = 1_000_000;
+  /** @type {{ at: number, fn: () => void, dead: boolean }[]} */
+  const q = [];
+  return {
+    now: () => now,
+    later(/** @type {() => void} */ fn, /** @type {number} */ ms) { const t = { at: now + ms, fn, dead: false }; q.push(t); return t; },
+    cancel(/** @type {any} */ t) { if (t) t.dead = true; },
+    advance(/** @type {number} */ ms) {
+      const dest = now + ms;
+      for (let n = 0; n < 50; n++) {
+        let next = /** @type {any} */ (null);
+        for (const t of q) if (!t.dead && t.at <= dest && (!next || t.at < next.at)) next = t;
+        if (!next) break;
+        now = next.at; next.dead = true; next.fn();
+      }
+      now = dest;
+    },
+  };
+}
+const resumed = (/** @type {any[]} */ frames) => frames.some(f => f.type === "chat.status" && f.data && /couldn't resume/.test(String(f.data.note || "")));
+
+test("a result is not the end of the turn: a fetch and more text 40 s later still reach the chat", async t => {
+  const clock = fakeClock();
+  const w = await world(t, { clock });
+  const b = await world0(w, t);
+  const chat = await w.C.create(w.chains.bob, { people: [CAROL], assistants: ["assistant"] });
+  const bob = await b.watch("bob", chat.id);
+  const sent = await b.as("bob")("stream.send", { chat: chat.id, text: "research the pine site", to: ["assistant:assistant"], cwd: w.work });
+  assert.ok(!sent.error, sent.error && sent.error.message);
+  await until(() => b.stream().groups.member(chat.id, "assistant:assistant")?.thread, "the thread");
+  const kit = kitThread(b, chat.id);
+  await until(() => textOf(bob.frames).includes("echo: research the pine site"), "the first reply", 20_000);
+  await until(async () => (await b.reg.call("threads.get", { thread: kit, limit: 200 }, "cli")).data.events.some((/** @type {any} */ e) => e.type === "thread.finished"), "the result", 20_000);
+  const opened = w.asked.length;
+  assert.ok(opened >= 1, "the turn opened a kernel session");
+  assert.equal(b.ks.list().length, 1, "the session is still open when the result lands");
+  clock.advance(40_000);
+  await until(() => b.ks.list().length === 0, "the session to end 30 s after its last event");
+  fs.writeFileSync(path.join(w.work, ".vyre-tail"), "go");
+  await until(() => textOf(bob.frames).includes("pineanswer"), "the late reply", 20_000);
+  assert.ok(w.asked.length > opened, "the late frame reopened the kernel session");
+  assert.ok(!resumed(bob.frames), "the late reply was delivered");
+  await b.stop();
+});
+
+test("Try again after a dropped reply resends the last message on a fresh session", async t => {
+  const clock = fakeClock();
+  const w = await world(t, { clock });
+  const b = await world0(w, t);
+  const chat = await w.C.create(w.chains.bob, { people: [CAROL], assistants: ["assistant"] });
+  const bob = await b.watch("bob", chat.id);
+  const sent = await b.as("bob")("stream.send", { chat: chat.id, text: "research the cedar site", to: ["assistant:assistant"], cwd: w.work });
+  assert.ok(!sent.error, sent.error && `${sent.error.code} ${sent.error.message}`);
+  await until(() => b.stream().groups.member(chat.id, "assistant:assistant")?.thread, "the thread");
+  const kit = kitThread(b, chat.id);
+  await until(() => textOf(bob.frames).includes("echo: research the cedar site"), "the first reply", 20_000);
+  await until(async () => (await b.reg.call("threads.get", { thread: kit, limit: 200 }, "cli")).data.events.some((/** @type {any} */ e) => e.type === "thread.finished"), "the result", 20_000);
+  clock.advance(40_000);
+  await until(() => b.ks.list().length === 0, "the session to end");
+  clock.advance(121_000);
+  fs.writeFileSync(path.join(w.work, ".vyre-tail"), "go");
+  await until(() => resumed(bob.frames), "the dropped reply", 20_000);
+  await until(async () => (await b.reg.call("threads.get", { thread: kit, limit: 500 }, "cli")).data.events.filter((/** @type {any} */ e) => e.type === "thread.finished").length >= 2, "the late turn to finish on the thread", 20_000);
+  assert.ok(!textOf(bob.frames).includes("cedaranswer"), "the late words were dropped");
+  const again = await b.as("bob")("threads.retry", { thread: kit, message: sent.data.message, surface: "web" });
+  assert.ok(!again.error, again.error && `${again.error.code} ${again.error.message}`);
+  assert.equal(again.data.fresh, true, "the chat message id could not be rewound, so the last message was sent again");
+  assert.equal(again.data.text, "research the cedar site");
+  await until(() => textOf(bob.frames).split("echo: research the cedar site").length >= 3, "Try again to produce the answer", 20_000);
+  await b.stop();
+});

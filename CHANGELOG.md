@@ -2,6 +2,12 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## 0.6.9
+
+- fix(switchboard): a chat turn's kernel session stays open while Claude Code is still producing events. It ends 30 s after the last event of the process, not 30 s after the first result. A frame that arrives for a session ended moments ago reopens that session for the same person and is delivered (core/switchboard/turn-tail.js).
+- fix(switchboard): Try again after a dropped reply resends the last message the person typed, on a fresh kernel session, when the chat's message id is not a transcript uuid or that message is the first of the session (core/switchboard/retry-fresh.js).
+- fix(stream): a new working turn clears a reply that was dropped for want of a session, so Try again can show the answer (core/stream/group.js).
+
 ## 0.6.8
 
 - fix(computers): a computers test starts kit's thread only when that test needs the thread. The default-config endpoint does, because its thread field is a string. Starting a session in every boot held a process and a watcher, and the file was still inside its last boot when its time limit ended (core/computers/computers.test.js).
