@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6.9
 
+- fix(records): search on a record type stays in that type's list. The top hit is no longer lifted out as a Best match.
 - fix(github): making a repo from a folder with a long history sends the files that are there now, as one commit. The folder's own history stays on the computer.
 - fix(install): an older release over one already accepted says how to clear it (vyre updater remove and remove the update folder, or vyre uninstall --delete-data; a running server asks the owner with vyre update --rollback).
 - fix(relay): one invitation can hold two channels open, so it cannot fill every slot. The person still sees "try again in a minute" when the cap is reached.
