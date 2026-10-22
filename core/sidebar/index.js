@@ -20,17 +20,13 @@
 
 import { isPerson } from "../../lib/caller.js";
 import { createSidebarService } from "./service.js";
-import { pinEntry, PIN_KINDS, builtinEntries, cleanList, merge, keyOf, find, add, remove, setHidden, move, moveBefore, setGroup, MAX_ENTRIES, PERSON_ROLES, SPACE_MODULE } from "../../lib/sidebar/model.js";
+import { pinEntry, PIN_KINDS, builtinEntries, cleanList, merge, keyOf, find, add, remove, setHidden, move, moveBefore, setGroup, MAX_ENTRIES, PERSON_ROLES, SPACE_MODULE, SCREEN_ID } from "../../lib/sidebar/model.js";
 
 const MIGRATIONS = [`CREATE TABLE sidebar_lists (k TEXT PRIMARY KEY, v TEXT NOT NULL)`];
 /** The caller the daemon's own sidebar service arrives as. */
 const DOOR = "module:vyred";
 const SPACE = /^(\*|spc_[a-z2-7]{12}|[a-z0-9][a-z0-9._-]{0,63})$/;
 const PERSON = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
-/** The shape of a screen of the Space's own (core/design): lowercase letters, digits and dashes. */
-const SCREEN = /^[a-z][a-z0-9-]{0,30}$/;
-/** The role of the box's own person in the Space they are on: they own it. A team member's role comes from the kernel instead. */
-const BOX_ROLE = "owner";
 const str = { type: "string" };
 /** Who may call: the person's surfaces and devices, a module, and an assistant (a model session or the harness). What each may change is checked in the tool. */
 const WHO = ["cli", "local", "deck", "capsule", "tailnet", "device", "module", "mcp", "harness"];
@@ -68,7 +64,7 @@ export default {
       try {
         const r = await ctx.call("design.screens", {});
         const screens = r && !r.error && r.data && Array.isArray(r.data.screens) ? r.data.screens : [];
-        return screens.filter((/** @type {any} */ s) => s && typeof s.id === "string" && SCREEN.test(s.id)).slice(0, 60)
+        return screens.filter((/** @type {any} */ s) => s && typeof s.id === "string" && SCREEN_ID.test(s.id)).slice(0, 60)
           .map((/** @type {any} */ s) => ({ id: s.id, label: String(s.title || s.id).slice(0, 40), view: true }));
       } catch { return []; }
     };
@@ -95,7 +91,33 @@ export default {
 
     // ---- what each call does, for a given person and whether they may set the default -----------------------------------------------------------------------------------
 
-    /** The role the person has in this Space, as the kernel states it (the box's own person owns the Space they are on). */
+    /**
+     * The role the box's own person holds in that Space, from the kernel that decides it: the home Space's own gateway, or the Space's own when this box hosts it.
+     * Never a constant and never the request: the kernel holds the membership, so it is the only one that may say. "" when it cannot say (no kernel, no membership), and then
+     * no entry that names roles is drawn for this person.
+     * @param {string} space
+     */
+    const roleIn = async (space) => {
+      try {
+        const k = ctx.kernel;
+        if (!k || !k.id || !k.id.owner) return "";
+        const home = String(k.id.space || "");
+        const key = space && space !== "*" ? space : home;
+        if (!key) return "";
+        const h = key === home ? k : (typeof k.for === "function" ? k.for(key) : null);
+        const gw = h && h.gateway;
+        const r = gw && gw.members && typeof gw.members.roleOf === "function" ? gw.members.roleOf({ kind: "person", id: String(k.id.owner), space: key }) : null;
+        return typeof r === "string" ? r : "";
+      } catch { return ""; }
+    };
+
+    /** The box's own reach in that Space: the role the kernel states, and whether this caller may set the Space's default (an owner or an admin, at their own surface). */
+    const reachOf = async (/** @type {any} */ meta, /** @type {any} */ i) => {
+      const role = await roleIn(spaceArg(i));
+      return { role, can: isPerson(meta) && roleSetsDefault(role) };
+    };
+
+    /** The role the person has in this Space, as the kernel states it (a team member's comes from the Space's own kernel, through the service). */
     const doGet = async (/** @type {string} */ person, /** @type {boolean} */ can, /** @type {any} */ i, /** @type {string} */ role) => {
       const sp = spaceArg(i), def = defaultFor(sp), own = mineOf(person);
       return { space: sp, default: def, mine: own, entries: merge(def || builtinEntries(), own), modules: await modules(), can_set_default: can, role };
@@ -201,9 +223,12 @@ export default {
 
     ctx.tool("sidebar.get", {
       effect: "read", callers: WHO,
-      description: "The Space's default sidebar, the caller's own list, the merged result, the caller's role, whether they may set the default, and addable module screens.",
+      description: "The Space's default sidebar, the caller's own list, the merged result, whether the caller may set the default, the caller's role, and addable module screens.",
       input: { type: "object", properties: { space: str } },
-      run: async (/** @type {any} */ i, /** @type {any} */ meta = {}) => doGet(await ownerId(), isPerson(meta), i, BOX_ROLE),
+      run: async (/** @type {any} */ i, /** @type {any} */ meta = {}) => {
+        const { role, can } = await reachOf(meta, i);
+        return doGet(await ownerId(), can, i, role);
+      },
     });
 
     ctx.tool("sidebar.edit", {
@@ -239,7 +264,10 @@ export default {
       effect: "write", callers: WHO,
       description: "Change the Space's default sidebar by one step (same ops as sidebar.edit). Owner or admin only; an assistant's request is held for their yes.",
       input: { type: "object", required: ["op"], properties: EDIT_PROPS },
-      run: async (/** @type {any} */ i, /** @type {any} */ meta = {}) => doTeam(await ownerId(), isPerson(meta), i),
+      run: async (/** @type {any} */ i, /** @type {any} */ meta = {}) => {
+        const { can } = await reachOf(meta, i);
+        return doTeam(await ownerId(), can, i);
+      },
     });
 
     // ---- a team member's calls, from the Space's kernel (core/sidebar/service.js) --------------------------------------------------------------------------------------

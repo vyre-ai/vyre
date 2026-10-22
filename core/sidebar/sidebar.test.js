@@ -203,10 +203,31 @@ test("sidebar: an entry may name the roles it is for; a role no person has is re
   assert.deepEqual((await c("sidebar.get", {})).data.mine.map((/** @type {any} */ e) => [keyOf(e), e.roles]), [["place:records", ["admin"]]]);
 });
 
-test("sidebar: the caller's role comes back with the list, so an entry for other roles is not drawn", async t => {
-  const { c } = await world(t);
-  assert.equal((await c("sidebar.get", {})).data.role, "owner", "the box's own person owns the Space they are on");
+test("sidebar: the caller's role is the kernel's own answer for that person in that Space, never a constant", async t => {
+  const { c, d } = await world(t);
   const g = (await c("sidebar.get", {})).data;
+  const k = d.kernel;
+  assert.equal(g.role, k.gateway.members.roleOf({ kind: "person", id: k.id.owner, space: k.id.space }), "the kernel holds the membership, and it is the one that says");
+  assert.equal(g.role, "owner", "the box's own person owns the Space they are on");
+  assert.equal(g.can_set_default, true, "an owner may set the default");
+  assert.equal((await c("sidebar.get", {}, "mcp")).data.can_set_default, false, "an assistant is told it may not set the default itself");
   const drawn = layout(g.entries, { modules: g.modules, role: g.role });
   assert.ok([...drawn.items, ...drawn.more, ...drawn.bottom].some((i) => i.id === "now"), "the built-in places are drawn");
+});
+
+test("sidebar: a screen of the Space's own opens: the entry's href is the route the app draws, and the screen is served through the views path", async t => {
+  const { c } = await world(t);
+  const p = (await c("design.propose", { id: "overview", title: "Overview", screen: SCREEN, why: "A page for the team" }, "mcp")).data.proposal;
+  await c("design.decide", { id: p.id, yes: true });
+  // the views path serves the Space's own screen, as a view of the module "space"
+  const frame = (await c("views.get", { module: "space", command: "overview", surface: "app" })).data;
+  assert.equal(frame.v, 2, JSON.stringify(frame));
+  // the sidebar's entry opens at the route the app draws a screen of the Space's own
+  await c("sidebar.edit", { op: "add", what: "Overview" });
+  const g = (await c("sidebar.get", {})).data;
+  assert.ok(g.mine.map(keyOf).includes("screen:overview"), "the screen is in the person's own list");
+  const drawn = layout(g.entries, { modules: g.modules, role: g.role });
+  const item = [...drawn.items, ...drawn.more, ...drawn.bottom].find((i) => i.id === "s-overview");
+  assert.ok(item, "the screen is drawn");
+  assert.equal(item.href, "/u/module/space/overview", "the route the app opens for a screen of the Space's own");
 });

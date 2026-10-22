@@ -3,7 +3,7 @@ import { Platform, View } from "react-native";
 import { Banner, Button, Card, Divider, Field, Menu, Row, Segmented, Text } from "@vyre/ui";
 import { Frame, Sec } from "../places/Frame";
 import { MOCK, said } from "../../src/real/box";
-import { add, builtinEntries, keyOf, moveBefore, move, remove, resolve, screenEntry, setGroup, setHidden, REGIONS } from "../../../../lib/sidebar/model.js";
+import { add, builtinEntries, keyOf, keepHidden, moveBefore, move, remove, resolve, screenEntry, setGroup, setHidden, visibleTo, REGIONS } from "../../../../lib/sidebar/model.js";
 import { catalogOf, effective, saveList, sidebarCall, useSidebar, type Entry } from "./sidebar";
 import { useSpaces } from "./state";
 
@@ -32,13 +32,16 @@ export function SidebarEditor() {
   const [groupName, setGroupName] = useState("");
   useEffect(() => { void load(space); }, [load, space]);
   const cat = useMemo(() => catalogOf(modules, false, role), [modules, role]);
-  const list: Entry[] = useMemo(() => (scope === "team" ? (base ?? (builtinEntries() as Entry[])) : effective(base, mine)), [scope, base, mine]);
+  const all: Entry[] = useMemo(() => (scope === "team" ? (base ?? (builtinEntries() as Entry[])) : effective(base, mine)), [scope, base, mine]);
+  // What this person may see: an entry that names the roles it is for is for those roles only, so it is not listed here and cannot be rearranged here.
+  const list: Entry[] = useMemo(() => visibleTo(all, { role }) as Entry[], [all, role]);
   const labelOf = (e: Entry) => (resolve(e as never, cat) as { label: string } | null)?.label ?? keyOf(e as never);
   const present = (e: Entry) => resolve(e as never, cat) !== null;
 
   const apply = async (next: Entry[]) => {
     setBusy(true); setError("");
-    try { await saveList(scope, space, next); await load(space); } catch (e) { setError(said(e)); } finally { setBusy(false); }
+    // The entries this person may not see are for other roles: they are put back as they were, so saving never loses them.
+    try { await saveList(scope, space, keepHidden(all, next) as Entry[]); await load(space); } catch (e) { setError(said(e)); } finally { setBusy(false); }
   };
   const key = (e: Entry) => keyOf(e as never);
   const nextTo = (k: string, d: number) => { const i = list.findIndex((e) => key(e) === k); return i < 0 ? list : (move(list as never, k, i + d) as Entry[]); };

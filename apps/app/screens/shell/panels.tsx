@@ -8,6 +8,7 @@ import { recordTitle } from "../../ui/tasks/model";
 import { ChatsPlusButton, ChatsSidebar } from "../chats/ChatsSidebar";
 import { openFind } from "../find/FindHost";
 import { effective, saveList, useSidebar } from "./sidebar";
+import { keepHidden, visibleTo } from "../../../../lib/sidebar/model.js";
 import { useSpaces } from "./state";
 import { useNewView } from "../records/NewViewHost";
 import { MOCK, tool } from "../../src/real/box";
@@ -84,7 +85,7 @@ export function usePanel(onNavigate: (href: string) => void): { panel: PanelDef 
   const path = usePathname();
   const params = useGlobalSearchParams();
   const router = useRouter();
-  const { base, mine, load } = useSidebar();
+  const { base, mine, load, role } = useSidebar();
   const space = useSpaces((s) => s.space);
   const loaded = useLoaded((s) => s.items);
   const labs = useLabs((s) => s.on);
@@ -96,7 +97,9 @@ export function usePanel(onNavigate: (href: string) => void): { panel: PanelDef 
   if (!id || !meta) return { panel: null, id: null };
   const goBack = () => { const to = backTo(path, search); if (to) router.push(to as never); };
   const all = effective(base, mine) as any[];
-  const edit = async (list: any[]) => { await saveList("me", space, list); await load(space); };
+  // What this person may see: an entry that names the roles it is for is for those roles only, so it is not offered in a panel.
+  const shown = visibleTo(all, { role }) as any[];
+  const edit = async (list: any[]) => { await saveList("me", space, keepHidden(all, list) as any[]); await load(space); };
   const views = id === "records" ? (effective(base, mine) as any[]).filter((e) => e.kind === "view" && !e.hidden && String(e.href).startsWith("/u/records/")) : [];
   return {
     id,
@@ -104,8 +107,8 @@ export function usePanel(onNavigate: (href: string) => void): { panel: PanelDef 
       id, title: meta.title, icon: meta.icon, search: meta.search, ...(meta.search ? { onSearch: () => openFind(SEARCH_SCOPE[id] ?? "all") } : {}), ...(id === "chats" ? { plus: <ChatsPlusButton /> } : {}), empty: meta.empty, onBack: goBack, currentHref: path,
       items: id === "settings" ? SETTINGS(labs) : id === "build" ? BUILD : id === "records" ? [] : loaded[id] ?? [],
       before: id === "chats" ? <ChatsSidebar /> : id === "drive" ? <FilesTreePanel /> : id === "vault" ? <VaultPanel /> : id === "records" ? <><SidebarRow label="People" icon="contacts" on={path === "/u/records/contact"} onPress={() => onNavigate("/u/records/contact")} />
-        <PinnedViews entries={all} onOpen={onNavigate}
-          onMove={(i, before) => void edit(reorderPinned(all, i, before))} onRename={(i, label) => void edit(renameView(all, i, label))} onUnpin={(i) => void edit(unpinList(all, i))} /></> : undefined,
+        <PinnedViews entries={shown} onOpen={onNavigate}
+          onMove={(i, before) => void edit(reorderPinned(shown, i, before))} onRename={(i, label) => void edit(renameView(shown, i, label))} onUnpin={(i) => void edit(unpinList(shown, i))} /></> : undefined,
       after: id === "records" ? <><SidebarRow label="All types" icon="records" tone="label" onPress={() => onNavigate("/u/settings/customize")} /><SidebarRow label="New view" icon="plus" tone="label" onPress={() => useNewView.getState().set(true)} /></> : undefined,
     },
   };

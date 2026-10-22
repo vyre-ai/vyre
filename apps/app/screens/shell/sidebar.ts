@@ -30,17 +30,6 @@ type S = {
 /** The id the box keeps a Space's default under: a real Space's id, else "*" (the sample world, "all"). */
 export const spaceKey = (space: string) => (/^spc_[a-z2-7]{12}$/.test(space) ? space : "*");
 
-/** The person's role in a Space, from the box's list of Spaces (each row says the role they hold there). "" when the box does not say. */
-async function roleIn(space: string): Promise<string> {
-  try {
-    const rows = await tool<{ id?: string; role?: string }[]>("spaces.list");
-    const row = (Array.isArray(rows) ? rows : []).find((r) => r && r.id === space);
-    return row && typeof row.role === "string" ? row.role : "";
-  } catch {
-    return "";
-  }
-}
-
 /** One sidebar call for a Space: through the team's server when this device joined it as a member, else through the box this app talks to. */
 export async function sidebarCall<T = unknown>(space: string, name: "sidebar.get" | "sidebar.edit" | "sidebar.team", input: Record<string, unknown> = {}): Promise<T> {
   const key = spaceKey(space);
@@ -55,8 +44,8 @@ export const useSidebar = create<S>((set) => ({
     if (MOCK) { set({ loaded: true }); return; }
     try {
       const r = await sidebarCall<{ default: Entry[] | null; mine: Entry[]; modules: ModuleScreens[]; can_set_default?: boolean; role?: string }>(space, "sidebar.get");
-      // The role the box states for this person in this Space; the list of Spaces says it too when the box does not.
-      const role = typeof r.role === "string" && r.role ? r.role : await roleIn(space);
+      // The role the box states for this person in this Space, from the kernel that holds the membership. No role means no entry that names roles is drawn.
+      const role = typeof r.role === "string" ? r.role : "";
       set({ loaded: true, space: spaceKey(space), base: r.default, mine: Array.isArray(r.mine) ? r.mine : [], modules: Array.isArray(r.modules) ? r.modules : [], role, canSetDefault: r.can_set_default === true });
     } catch { set({ loaded: true, space: spaceKey(space), base: null, mine: [], modules: [], role: "", canSetDefault: false }); }   // no sidebar tools there: the built-in places
   },
