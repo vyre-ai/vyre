@@ -9,7 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { testHooks } from "../../lib/http.js";
-import { readKit, tokenRef, vaultToken } from "./kit-source.js";
+import { readKit, tokenRef, vaultToken, vaultCall, hostOf } from "./kit-source.js";
 
 const KIT = { format: 1, id: "demo-kit", version: 1, name: "Demo Kit", includes: {} };
 
@@ -123,6 +123,43 @@ test("a token comes from the Vault, and a reference that is not one is refused",
   assert.equal(bad.ok, false);
   assert.equal(bad.code, "bad_input");
   assert.ok(!JSON.stringify(bad).includes("s3cret"), "a refusal never repeats the value");
+});
+
+test("the reference the person typed is what the Vault is asked for, and the request carries the value, not the reference", async () => {
+  const asked = /** @type {string[]} */ ([]);
+  const seen = /** @type {any[]} */ ([]);
+  const got = await readKit("https://example.com/kit.json", {
+    token: async (/** @type {string} */ url) => vaultToken("vault://kit-download/token", { host: hostOf(url), resolve: async (/** @type {string} */ ref) => { asked.push(ref); return { data: { values: { [ref]: "s3cret" } } }; } }),
+    fetch: async (/** @type {string} */ url, /** @type {any} */ init) => { seen.push(init); return { ok: true, status: 200, text: async () => JSON.stringify(KIT) }; },
+  });
+  assert.equal(got.ok, true, JSON.stringify(got));
+  assert.deepEqual(asked, ["vault://kit-download/token"], "the Vault is asked for the reference the person typed");
+  assert.equal(seen[0].headers.authorization, "Bearer s3cret", "the request carries the value");
+  assert.doesNotMatch(String(seen[0].headers.authorization), /vault:/, "and not the reference");
+});
+
+test("the card names the host the request goes to, and the Vault is asked for the reference", () => {
+  assert.deepEqual(vaultCall("vault://kit-download/token", "example.com"), {
+    tool: "vault.resolve",
+    input: { refs: ["vault://kit-download/token"], destination: "the Kit download from example.com" },
+  });
+  assert.equal(hostOf("https://example.com/kit.json"), "example.com");
+  assert.equal(hostOf("https://example.com:8443/kit.json"), "example.com:8443");
+  assert.equal(hostOf("not an address"), "");
+});
+
+test("an address that wants a token is refused as denied, not as missing", async () => {
+  const got = await readKit("https://example.com/kit.json", { fetch: async () => ({ ok: false, status: 401, text: async () => "" }) });
+  assert.equal(got.ok, false);
+  assert.equal(got.code, "denied");
+  assert.match(got.why, /token/);
+});
+
+test("a throw from the Vault is answered in plain words, not as a raw error", async () => {
+  const got = await readKit("https://example.com/kit.json", { token: async () => { throw new Error("the vault is locked"); } });
+  assert.equal(got.ok, false);
+  assert.equal(got.code, "failed");
+  assert.match(got.why, /could not be read from the Vault/);
 });
 
 test("a reference is named as vault://item/field, and nothing else", () => {

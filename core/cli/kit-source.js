@@ -21,9 +21,10 @@ export const MAX_KIT_BYTES = 1024 * 1024;
 /**
  * Read the Kit a source names.
  * @param {string} text the file path or the https address
- * @param {{ fetch?: (url: string, init?: any) => Promise<any>, token?: () => Promise<any> }} [opts]
- *   `token` is asked for only when the source is an address: it hands back { ok: true, value } or
- *   { ok: false, why, code }. The value is used for that one request and is never kept.
+ * @param {{ fetch?: (url: string, init?: any) => Promise<any>, token?: (url: string) => Promise<any> }} [opts]
+ *   `token` is asked for only when the source is an address, and it is given the address the
+ *   request goes to: it hands back { ok: true, value } or { ok: false, why, code }. The value is
+ *   used for that one request and is never kept.
  * @returns {Promise<{ ok: true, kit: any, source: string, kind: "file" | "url" } | { ok: false, why: string, code?: string }>}
  */
 export async function readKit(text, { fetch = userHostFetch, token } = {}) {
@@ -63,7 +64,10 @@ async function readFromUrl(url, { fetch, token }) {
   /** @type {Record<string, string>} */
   const headers = {};
   if (token) {
-    const v = await token();
+    /** @type {any} */
+    let v;
+    try { v = await token(url); }
+    catch (e) { return { ok: false, why: `the token could not be read from the Vault: ${/** @type {Error} */ (e).message}`, code: "failed" }; }
     if (!v || v.ok !== true) return { ok: false, why: String((v && v.why) || "the token could not be read"), code: String((v && v.code) || "failed") };
     // The token goes in the request's own header, for this one request: it is not printed, not stored and never written into the Kit.
     headers.authorization = `Bearer ${v.value}`;
@@ -79,7 +83,8 @@ async function readFromUrl(url, { fetch, token }) {
   const good = Boolean(res) && (res.ok !== undefined ? Boolean(res.ok) : Number(res.status) >= 200 && Number(res.status) < 300);
   if (!good) {
     const status = res && res.status ? Number(res.status) : 0;
-    if (status === 401 || status === 403) return { ok: false, why: `${url} answered ${status}: it wants a token. Give one with --token vault://item/field`, code: "not_found" };
+    // A refused answer is not a missing one: the address is there and wants a token.
+    if (status === 401 || status === 403) return { ok: false, why: `${url} answered ${status}: it wants a token. Give one with --token vault://item/field`, code: "denied" };
     return { ok: false, why: `${url} answered ${status || "with nothing"}: give an address that serves the Kit`, code: "not_found" };
   }
   let text2 = "";
@@ -115,16 +120,35 @@ export function tokenRef(text) {
 }
 
 /**
+ * The Vault call the CLI makes for a token: the reference the person typed, and where the value
+ * goes. The person sees these words on the card before the value moves, so the host has to be
+ * named: the one the request actually goes to.
+ * @param {string} ref
+ * @param {string} host
+ */
+export function vaultCall(ref, host) {
+  return { tool: "vault.resolve", input: { refs: [ref], destination: host ? `the Kit download from ${host}` : "the Kit download" } };
+}
+
+/**
+ * The host a request to this address goes to: what the presence card names.
+ * @param {string} url
+ */
+export function hostOf(url) {
+  try { return new URL(url).host; } catch { return ""; }
+}
+
+/**
  * The value of a vault reference, for one request. It is never printed, never stored and never
  * written into the Kit.
  * @param {string} ref a vault://item/field reference
- * @param {{ resolve?: (ref: string) => Promise<any> }} [opts]
+ * @param {{ resolve?: (ref: string, host: string) => Promise<any>, host?: string }} [opts]
  * @returns {Promise<{ ok: true, value: string } | { ok: false, why: string, code?: string }>}
  */
-export async function vaultToken(ref, { resolve = defaultResolve } = {}) {
+export async function vaultToken(ref, { resolve = defaultResolve, host = "" } = {}) {
   const parsed = tokenRef(ref);
   if (!parsed.ok) return { ok: false, why: parsed.why, code: "bad_input" };
-  const r = await resolve(parsed.ref);
+  const r = await resolve(parsed.ref, host);
   if (!r || r.error) {
     const error = (r && r.error) || {};
     return { ok: false, why: String(error.message || error.code || "the vault did not answer"), code: String(error.code || "failed") };
@@ -136,9 +160,11 @@ export async function vaultToken(ref, { resolve = defaultResolve } = {}) {
 }
 
 /**
- * The Vault's own way to hand a value over: through vyred, with the person's yes.
- * @param {string} ref
+ * The Vault's own way to hand a value over: through vyred, with the person's yes, and with the
+ * host named on the card.
+ * @param {string} ref @param {string} host
  */
-async function defaultResolve(ref) {
-  return await callAsPerson("vault.resolve", { refs: [ref], destination: "the Kit download" });
+async function defaultResolve(ref, host) {
+  const call = vaultCall(ref, host);
+  return await callAsPerson(call.tool, call.input);
 }

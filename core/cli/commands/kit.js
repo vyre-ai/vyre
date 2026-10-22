@@ -14,7 +14,7 @@ import { ensureUp } from "../daemonctl.js";
 import { out, dim, beacon, signal } from "../style.js";
 import { json, emit, failTool, UsageError, parse, fail, usage, exitFor, nextFor, EXIT } from "../kit.js";
 import { checkSource, looksLikeSource } from "../../../lib/kit-source.js";
-import { readKit, tokenRef, vaultToken } from "../kit-source.js";
+import { readKit, tokenRef, vaultToken, hostOf } from "../kit-source.js";
 
 export default {
   name: "kit", order: 70, usage: "vyre kit [deploy <kit|file|https-address>] [--token vault://item/field] [--json]", summary: "the Kits Vyre ships, and putting one on this Space",
@@ -110,8 +110,9 @@ async function deployFrom(what, token) {
   // A token is for an address. A file needs none, and saying so is better than silence.
   const checked = checkSource(what);
   const note = ref && checked.ok && checked.kind === "file" ? "a token is only used for an address: this Kit is in a file" : "";
-  // The token is asked for only when the source is an address: a file needs no key.
-  const got = await readKit(what, { token: ref ? async () => vaultToken(ref) : undefined });
+  // The token is asked for only when the source is an address: a file needs no key. The card names
+  // the host the request goes to, so the person sees where the value goes before it moves.
+  const got = await readKit(what, { token: ref ? async (/** @type {string} */ url) => vaultToken(ref, { host: hostOf(url) }) : undefined });
   if (!got.ok) return notRead(got);
   const r = await call("flows.kit.propose", { kit: got.kit, source: got.source });
   if (r.error) return failTool(r.error);
@@ -136,7 +137,8 @@ async function deployFrom(what, token) {
 function notRead(got) {
   if (got.code === "bad_input") return usage(got.why, "vyre kit deploy <file-or-https-address>");
   if (got.code === "too_large") return fail(got.why, { code: "too_large", exit: EXIT.FAILED, next: "give a Kit that is smaller" });
+  if (got.code === "denied") return fail(got.why, { code: "denied", exit: EXIT.FAILED, next: "give a token with --token vault://item/field" });
   if (got.code === "unreachable") return fail(got.why, { code: "unreachable", exit: EXIT.UNREACHABLE, next: "check the address and try again" });
   if (got.code === "locked") return fail(got.why, { code: "locked", exit: exitFor({ code: "locked" }), next: nextFor({ code: "locked" }) });
-  return fail(got.why, { code: got.code || "failed", exit: EXIT.FAILED });
+  return fail(got.why, { code: got.code || "failed", exit: EXIT.FAILED, next: "check the file or the address and try again" });
 }

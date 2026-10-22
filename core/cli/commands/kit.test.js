@@ -107,6 +107,22 @@ test("vyre kit deploy <file> proposes a card, the Space keeps where it came from
   assert.equal(same.code, 1, same.out + " :: " + daemonSaid(lines));
   assert.match(same.out, /already installed/);
 
+  // the same version from another file: refused, and the Space still says where the installed one came from
+  const other = path.join(root, "other-kit.json");
+  fs.writeFileSync(other, JSON.stringify(kit(1)));
+  const otherSame = /** @type {any} */ (await run(root, ["kit", "deploy", other, "--json"]));
+  assert.equal(otherSame.code, 1, otherSame.out + " :: " + daemonSaid(lines));
+  const stillMine = (JSON.parse((await run(root, ["kit", "--json"])).out).space_kits || []).find((/** @type {any} */ r) => r.id === "demo-kit");
+  assert.equal(stillMine.source, file, "the installed Kit still says where it came from");
+
+  // a higher version from another file: proposed, but the installed Kit still says where it came from
+  fs.writeFileSync(other, JSON.stringify(kit(2)));
+  const otherHigher = /** @type {any} */ (await run(root, ["kit", "deploy", other, "--json"]));
+  assert.equal(otherHigher.code, 0, otherHigher.out + " :: " + daemonSaid(lines));
+  const unchanged = (JSON.parse((await run(root, ["kit", "--json"])).out).space_kits || []).find((/** @type {any} */ r) => r.id === "demo-kit");
+  assert.equal(Number(unchanged.version), 1, "the installed version is still 1");
+  assert.equal(unchanged.source, file, "and it still says where it came from");
+
   // a higher version: proposed again, for the owner's yes
   fs.writeFileSync(file, JSON.stringify(kit(2)));
   const higher = /** @type {any} */ (await run(root, ["kit", "deploy", file, "--json"]));
@@ -152,6 +168,10 @@ test("a source that carries a name or a password is refused, in the terminal and
   assert.ok(r.error, "a source with a name and a password is refused: " + JSON.stringify(r));
   assert.equal(r.error.code, "bad_input");
   assert.match(String(r.error.message), /password/);
+
+  // a source that is nothing at all is no source, not a refusal
+  const none = await d.registry.call("flows.kit.propose", { kit: kit(1), source: null }, "cli", meta);
+  assert.ok(!none.error, "an absent source is not a refusal: " + JSON.stringify(none));
 });
 
 test("a file that is not there, or a token that is not a reference, is said in plain words", { timeout: 120_000 }, async t => {

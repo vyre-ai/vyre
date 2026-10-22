@@ -10,12 +10,12 @@ import { serveMember, mayInspectFlow, hideFor, notYours, CALLS as MEMBER_CALLS }
 import { kitLibrary, kitFromLibrary } from "../../records/kits/library.js";
 import { kernelKit, moduleKitProblems } from "../../records/kit-adapter.js";
 import { checkSource } from "../../lib/kit-source.js";
-import { MIGRATIONS as SOURCE_MIGRATIONS, rememberSource, forgetSource, sourcesFor } from "./sources.js";
+import { MIGRATIONS as SOURCE_MIGRATIONS, rememberSource, forgetVersion, forgetSource, sourcesFor, sourceKey } from "./sources.js";
 
 const str = { type: "string" };
 const open = { type: "object", additionalProperties: true, properties: { space: str } };
-/** A Kit proposal takes the Kit itself and, optionally, where it came from (a file path or an https address). */
-const proposeInput = { type: "object", additionalProperties: true, properties: { space: str, source: { type: "string" } } };
+/** A Kit proposal takes the Kit itself and, optionally, where it came from (a file path or an https address; nothing at all is no source). */
+const proposeInput = { type: "object", additionalProperties: true, properties: { space: str, source: { type: ["string", "null"] } } };
 const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
 
 /** @type {Record<string, string>} */
@@ -93,7 +93,8 @@ const sourceOf = (value) => {
 };
 
 /**
- * The Kits of a Space, each with where it came from (and none when it came from nowhere the Space knows).
+ * The Kits of a Space, each with where the version that is installed came from (and none when it
+ * came from nowhere the Space knows).
  * @param {any} store the module's store
  * @param {any} rows the kernel's rows
  */
@@ -101,7 +102,7 @@ const withSources = (store, rows) => {
   const sources = sourcesFor(store);
   const list = Array.isArray(rows) ? rows : [];
   return list.map((/** @type {any} */ row) => {
-    const hit = sources.get(String((row && (row.id ?? row.kit_id)) ?? ""));
+    const hit = sources.get(sourceKey(row && (row.id ?? row.kit_id), row && row.version));
     return { ...row, source: hit ? hit.source : null };
   });
 };
@@ -159,7 +160,7 @@ export default {
           if (PERSONAL.has(name) && !(chain.hops.length === 1 && chain.hops[0].actor.kind === "person")) throw refuse(`${name} is a person's own`, "denied");
           const { space: _space, module: fromModule, ...rest } = input || {};
           // A Kit proposed from a file or an address keeps where it came from (core/flows/sources.js). The source is a pointer, never a secret: a path or an https address with nothing in it.
-          const source = name === "flows.kit.propose" && rest.source !== undefined ? sourceOf(rest.source) : null;
+          const source = name === "flows.kit.propose" && rest.source != null ? sourceOf(rest.source) : null;
           if (name === "flows.kit.propose") delete rest.source;
           // A Kit may be given in the language's stored form as well as the kernel's. One that ships with an added module (`module` names it) is held to what a module may add.
           if (rest.kit && typeof rest.kit === "object" && /^flows\.kit\.(propose|card|diff)$/.test(name)) {
@@ -191,9 +192,12 @@ export default {
             return f.flows.tools[INNER(name)](chain, { ...own, ...(hf ? { hide_for: hf } : {}) });
           }
           const out = await f.flows.tools[INNER(name)](chain, rest);
-          // A proposal made: where the Kit came from is kept with it, so the Space can show it. A proposal with no source (one of the Kits this build ships) says nowhere, and the pointer it had stays.
-          if (name === "flows.kit.propose" && out && out.ok && out.card && out.card.kit && out.card.kit.id && source) {
-            rememberSource(ctx.store, String(out.card.kit.id), Number(out.card.kit.version) || 0, source, ctx.log);
+          // A proposal made: where that version of the Kit came from is kept with it, so the Space can show it. A proposal with no source (one of the Kits this build ships) says that version came from nowhere, and its pointer goes.
+          if (name === "flows.kit.propose" && out && out.ok && out.card && out.card.kit && out.card.kit.id) {
+            const kitId = String(out.card.kit.id);
+            const version = Number(out.card.kit.version) || 0;
+            if (source) rememberSource(ctx.store, kitId, version, source, ctx.log);
+            else forgetVersion(ctx.store, kitId, version);
           }
           // A Kit that is gone takes its source with it.
           if (name === "flows.kit.remove" && out && out.removed) forgetSource(ctx.store, String(out.removed));
