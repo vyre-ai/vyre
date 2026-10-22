@@ -13,7 +13,7 @@ import { refresh } from "../../src/state/live";
 const START: NewAgentValues = { name: "", shape: 0, color: 0, job: "", projects: [], runsOn: "subscription", budget: "", model: "", effort: "", computer: false, personal: false };
 
 /** New agent, opened from the + menu: a dialog over the Chat list. Create makes the agent and opens a chat with it. The look (shape and colour) goes with it as `look`, which the agents module keeps. */
-export function NewAgentFlow({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function NewAgentFlow({ open, onClose, project = "" }: { open: boolean; onClose: () => void; /** The project the person is in, already on. */ project?: string }) {
   const router = useRouter();
   const [v, setV] = useState<NewAgentValues>(START);
   const [projects, setProjects] = useState<{ slug: string; name: string }[] | null>(null);
@@ -24,6 +24,7 @@ export function NewAgentFlow({ open, onClose }: { open: boolean; onClose: () => 
   const showing = useSpaces((s) => s.space);
   const owner = members.spaces.find((x) => x.id === showing)?.role === "owner";
   useEffect(() => { if (open && projects === null) agent.projects().then(setProjects).catch(() => setProjects([])); }, [open, projects]);
+  useEffect(() => { if (open && project) setV((x) => (x.projects.includes(project) ? x : { ...x, projects: [project, ...x.projects] })); }, [open, project]);
   const create = () => {
     const r = createInput({ ...NEW_FORM, name: v.name, instructions: v.job, projects: v.projects, runsOn: v.runsOn, budget: v.budget, hasProjects: (projects ?? []).length > 0, computer: owner && v.computer });
     if ("problem" in r) { setProblem(r.problem); return; }

@@ -1025,8 +1025,9 @@ test("a second person joins a space that lives on a server: the record carries t
   assert.equal((await kitDev.call("spaces.invites.preview", { link: made.link }, "cli", { token: kitToken })).error?.code, "server_not_proven");
   // the home's door refusing this person (not their invite, spent, not admitted) is its own plain answer, not "cannot be reached"; a real outage stays unreachable (JE-1)
   { const keep = hooks.inviteeSessionFor;
-    for (const [code, want, text] of [["denied", "not_for_you", /^This invite cannot be used\.$/], ["unreachable", "unreachable", /reach|connect|server/i]]) {
-      hooks.inviteeSessionFor = async () => ({ call: async () => { throw Object.assign(new Error("closed"), { code }); } });
+    for (const [code, want, text] of [["denied", "not_for_you", /^This invite cannot be used\.$/], ["not_found", "not_for_you", /^This invite cannot be used\.$/], ["unreachable", "unreachable", /reach|connect|server/i]]) {
+      // A missing invite is the home's answer on the open stream. A closed stream throws, and only a door refusal (denied) stays a refusal; any other throw is an outage.
+      hooks.inviteeSessionFor = async () => ({ call: async (_tool, request) => (code === "not_found" ? { v: request.v, id: request.id, ok: false, error: { code, message: "no such invite" } } : Promise.reject(Object.assign(new Error("closed"), { code }))) });
       const r = await kitDev.call("spaces.invites.preview", { link: made.link }, "cli", { token: kitToken });
       assert.equal(r.error && r.error.code, want, `${code}: ${JSON.stringify(r).slice(0, 200)}`);
       assert.match(r.error.message, text);

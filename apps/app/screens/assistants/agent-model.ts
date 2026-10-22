@@ -65,6 +65,16 @@ export const VAULT_KEY = "anthropic-api-key";
 export type NewAgentForm = { name: string; instructions: string; projects: string[]; hasProjects: boolean; runsOn: "subscription" | "key"; budget: string; computer: boolean };
 export const NEW_FORM: NewAgentForm = { name: "", instructions: "", projects: [], hasProjects: true, runsOn: "subscription", budget: "10", computer: false };
 
+/** Projects a new agent starts in. Personal is on only when it is the only project. */
+export function initialProjects(list: { slug: string; name: string }[]): string[] {
+  if (list.length !== 1) return [];
+  const p = list[0];
+  const name = p.name.trim().toLowerCase();
+  const slug = p.slug.trim().toLowerCase();
+  if (name === "personal" || slug === "personal") return [p.slug];
+  return [];
+}
+
 /** What agents.create takes from the form, or the one line to show. Same rules as the Deck: lowercase slug, at least one project, a budget above zero. */
 export function createInput(f: NewAgentForm): { input: Record<string, unknown> } | { problem: string } {
   const name = f.name.trim();

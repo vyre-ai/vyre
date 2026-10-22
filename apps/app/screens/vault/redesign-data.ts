@@ -12,7 +12,7 @@ import { SAMPLE_EVENTS, SAMPLE_ITEMS, SAMPLE_NEEDS, type Event } from "./sample-
 import type { Directory, Level, Share, Who } from "./ShareSheet";
 import { AGENTS, GROUPS0, ME, PEOPLE } from "./share-sample";
 import type { Need, Saved } from "./add-model.js";
-import { shownName } from "./env-model.js";
+import { readTitle, shownName } from "./env-model.js";
 
 export type Scope = "mine" | "shared";
 export type Loaded = { items: VItem[]; locked: boolean; /** Mine only: the member has not made a vault yet. */ noAccount?: boolean; /** Who is looking: the owner, or a member. */ owner?: boolean };
@@ -28,6 +28,8 @@ export interface VaultData {
   load(scope: Scope): Promise<Loaded>;
   /** One field's value, at the person's click. */
   read(scope: Scope, item: VItem, field: string): Promise<string>;
+  /** The current one-time code for an item that has one (vault.totp). The secret stays on the item. */
+  code?(item: VItem): Promise<{ code: string; period: number; remaining: number }>;
   /** Mine only, for a member: open her own vault, or make it (the Secret Key stays on this device). */
   unlock(password: string): Promise<void>;
   create(password: string): Promise<void>;
@@ -71,6 +73,7 @@ export function sampleData(): VaultData {
     real: false,
     load: async (scope) => ({ items: items.filter((v) => (scope === "mine") === (v.sp === "mine")), locked: false, owner: true }),
     read: async (_s, v, field) => v.values?.[field] ?? "",
+    code: async () => ({ code: "492039", period: 30, remaining: 20 }),
     rules: async (v) => ({ plain: Object.fromEntries((v.fields ?? []).filter((f) => f.plain).map((f) => [f.name, v.values?.[f.name] ?? ""])), scripts: false, usedWith: [] }),
     scripts: { load: async () => false, set: async () => {} },
     usedWith: { set: async () => {} },
@@ -104,7 +107,7 @@ export function sampleData(): VaultData {
 const day = (ms: number) => Math.floor((Date.now() - ms) / 86_400_000);
 const when = (ms: number) => new Date(ms).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
-type OwnerRow = ListRow & { details?: { expires?: string | number; provider?: string; plain?: string[] }; folder?: string };
+type OwnerRow = ListRow & { details?: { expires?: string | number; provider?: string; plain?: string[]; title?: string }; folder?: string };
 
 /** The real tools, over a `call` (the app's box connection). A locked Mine vault says so; the screen then shows the locked card. */
 export function realData(call: Call): VaultData {
@@ -130,7 +133,7 @@ export function realData(call: Call): VaultData {
     const plain = r.kind === "login" ? ["username"] : [];
     const slash = r.name.indexOf("/");
     return {
-      id: r.name, sp, kind: r.kind, group: groupOf(r.kind, r.name, r.details?.provider), provider: r.details?.provider, sharedWithMe: slash > 0, name: shownName(slash > 0 ? r.name.slice(slash + 1) : r.name),
+      id: r.name, sp, kind: r.kind, group: groupOf(r.kind, r.name, r.details?.provider), provider: r.details?.provider, sharedWithMe: slash > 0, name: readTitle(slash > 0 ? r.name.slice(slash + 1) : r.name, r.details),
       detail: r.fields.join(", ") || r.description || r.kind, secret: "", url: r.url, hosts: r.hosts,
       fields: r.fields.map((n) => ({ name: n, plain: plain.includes(n) })),
       folder: r.folder ? { id: r.folder, name: names[r.folder] ?? "Folder" } : slash > 0 ? { id: r.name.slice(0, slash), name: shownName(r.name.slice(0, slash)) } : null,
@@ -184,6 +187,12 @@ export function realData(call: Call): VaultData {
       if (scope === "shared") return String((await ask<{ value?: string }>("vault.me.shared.reveal", { item: item.id, field })).value ?? "");
       const r = await ask<{ fields: Record<string, string> }>("vault.me.get", { name: item.id });
       return r.fields[field] ?? "";
+    },
+    async code(item) {
+      const r = await ask<{ code?: string; period?: number; remaining?: number }>("vault.totp", { name: item.id });
+      const period = Number(r.period);
+      const remaining = Number(r.remaining);
+      return { code: String(r.code ?? ""), period: Number.isFinite(period) && period > 0 ? period : 30, remaining: Number.isFinite(remaining) && remaining >= 0 ? remaining : 0 };
     },
     // The Secret Key is held by this device (src/state/member-key.js), saved when the vault is made and sent with the password at each unlock.
     async unlock(password) { await unlockMine(ask, deviceKeys, password); },

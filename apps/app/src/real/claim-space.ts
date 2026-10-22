@@ -63,5 +63,13 @@ export async function nameServerOwnSpace(o: { name: string; displayName?: string
     host: ({ name }) => tool<{ space: string; rootPublic?: string }>("spaces.name-here", { name }, o.server ? { server: o.server.key } : {}),
   });
   await tool("spaces.name-here", { name: claimed.label, done: true }, o.server ? { server: o.server.key } : {});
+  // Remember this server so My Cloud does not offer Set up on it. Its own Space is the team's, and a later create is refused.
+  const serverId = (o.server && o.server.key) || route.box;
+  if (serverId) {
+    try {
+      const { rememberTeamServer } = await import("../state/team-servers");
+      await rememberTeamServer(serverId);
+    } catch { /* a missed note only hides the offer until the next naming */ }
+  }
   return claimed;
 }

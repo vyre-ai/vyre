@@ -23,6 +23,8 @@ import { GroupApprovals } from "../../screens/shell/GroupApprovals";
 import { ChatRow, SkeletonThread, useMessageKeys } from "./ChatRows";
 import { FlowDraftNote, useFlowDraft } from "./FlowDraftNote";
 import { groupToolRuns } from "./tool-runs.js";
+import { withDayRows } from "./day-rows.js";
+import { longDateOf, sameDay } from "../time/show.js";
 import type { BlockCtx } from "./Blocks";
 import { createFollow, follow, pillLabel } from "./follow.js";
 import type { StreamSource } from "./mock-stream";
@@ -170,10 +172,15 @@ export function ChatScreen(p: ChatScreenProps) {
     const t = setTimeout(() => setWaited("long"), 8000);
     return () => clearTimeout(t);
   }, [loading]);
-  const rows = useMemo(() => groupToolRuns(layoutRows, (k) => store.item(k)) as unknown as typeof layoutRows, [layoutRows, store]);
+  const rows = useMemo(() => withDayRows(groupToolRuns(layoutRows, (k) => store.item(k)), (r) => {
+    const at = store.item(r.key)?.at;
+    return typeof at === "number" && at > 0 ? at : undefined;
+  }, longDateOf, sameDay) as unknown as typeof layoutRows, [layoutRows, store]);
   const viewer = store.group.viewer;
   // Who is in this chat before the stream says, and the run's thread for the per-run controls (both from work.chat.get).
   const here = useChatMembers(p.sessionId, meta.busy);
+  // A removal that never arrives as a leave frame still takes this chat out of search, and a read that lists you puts it back.
+  useEffect(() => { if (here.read) store.noteChatRead(here.read); }, [store, here.read]);
   const placed = usePlacement(here.thread ?? p.sessionId, !allowsMock());
   const flowDraft = useFlowDraft();
   // Files added to the next message: picked, pasted or dropped, uploaded at once, and sent with the words.
@@ -714,7 +721,7 @@ export function ChatScreen(p: ChatScreenProps) {
             if (name === "fresh") { void onSend("/roll"); return true; }
             if (name === "where") { setPanel("more"); return true; }
             if (name === "flow") { router.push("/u/flows" as never); return true; }
-            if (name === "agent") { openNewAgent(router); return true; }
+            if (name === "agent") { openNewAgent(router, chatProject.current?.slug); return true; }
             if (name === "move") { setPanel("project"); return true; }
             if (name === "rewind") { caps.api.openRewind(); return true; }
             if (name === "find") { setFindOpen(true); return true; }

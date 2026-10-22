@@ -38,6 +38,30 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - feat(files): Shared with me lists a file another person shared with you, and you can read that file (core/files/with-me.js, apps/app/screens/drive).
 - feat(files): a Word, Excel or PowerPoint file opens in the preview as a page of its text (core/previews/office.js, apps/app/ui/files).
 - feat(files): a second writer of the same file waits up to 10 seconds, then is told who has it. The first writer's bytes stay (core/files/write-lock.js).
+- fix(chat): the open chat records that you were removed from it, so it leaves search (apps/app/src/chat/store.ts).
+- fix(chat): the confirm card still names the Claude account from the login file on this computer (core/sessions/identity.js).
+- fix(sign-in): an invite the home answers as missing says it cannot be used, the same as a door that will not admit you (core/spaces/spaces.test.js).
+- chore(docs): Terms is in the site footer, and a vault item's title is in the tool reference (site/, docs/reference/tools.md).
+- chore(design): picture references match the screens as drawn now (design-refs).
+- fix(settings): the vault yes and the outward yes stay on the Privacy page. Each one is a presence setting, so Settings can show it, and turning it off still lets only your own request through (core/presence/module.json).
+- fix(sign-in): a name that is not listed yet does not stop the first run. The page stays online and says the name is not reachable yet, and Vyre tries the listing again on the next unlock (apps/app/src/identity/claim-space.js, apps/app/screens/first-run/FirstRun.tsx).
+- fix(settings): What my agents can see sits on What agents may do, with Outside, Spend and Permissions. The old page opens that one (apps/app/screens/assistants/AssistantAccess.tsx).
+- fix(sidebar): Design changes is in the sidebar for an owner. Anyone else does not see it (lib/sidebar/model.js).
+- fix(vault): an item shows the name you typed. The stored name stays a slug, and the list uses your words (lib/vault-kinds/kinds.js, apps/app/screens/vault/env-model.js).
+- fix(chat): the transcript shows the day when the date changes. A reply keeps the time of its first words, so the day is named before that message (apps/app/src/chat/day-rows.js, frames.js).
+- fix(sign-in): an invite that is not for you says so, instead of saying the space cannot be reached (relay/client/peerclient.js, core/spaces/index.js).
+- fix(settings): My Cloud no longer offers Set up on a server whose own Space is already the team's. That server is remembered when the Space is named, and it stays hidden after a reload (apps/app/screens/settings/my-cloud.js).
+- fix(vault): a login with a one-time code shows the current code, and the count runs down until the next one. The secret stays on the item (apps/app/screens/vault/LiveCode.tsx).
+- fix(settings): Privacy has switches for the vault yes and the outward yes. Each is on until you turn it off, and an agent is never let through by either one (core/presence/module.json).
+- fix(chat): the confirm card names the Grok account, and a Claude account signed in on this computer, instead of "account not identified". Only the email and name are read. The token stays put (core/sessions/identity.js).
+- fix(chat): a chat you were removed from leaves search while it is still open. The words go when the chat says you are not in it, even if no leave notice arrived, and they come back when you are in it again (apps/app/src/chat/store.ts).
+- fix(agents): New agent from a project starts in that project. The + menu and /agent pass the project you are in (apps/app/screens/chats/ChatsSidebar.tsx, screens/engineer/model.js).
+- fix(sign-in): pairing a second server in the browser keeps its own sign-in. The first server's token stays put (apps/app/src/auth/paired-key.ts, token-origin.ts).
+- fix(settings): Fast mode and Keep file checkpoints are gone from Settings. Nothing read them, so a change did nothing. File rewind still keeps its own checkpoints.
+- fix(vault): Watchtower's known-breach check turns on and off. It was labelled coming in this release. Each check still asks you, and Off sends nothing (core/vault/module.json, apps/app/screens/vault/RealVaultMore.tsx).
+- fix(site): vyre.run/terms is a page, the one the welcome screen already links to. It says Vyre is free under Apache 2.0, you run it yourself, and you pay your own AI providers (scripts/gen-site.mjs, site/terms/).
+- fix(settings): the Star button is gone once the project is starred (apps/app/screens/settings/StarOnGithub.tsx).
+- fix(agents): a new agent starts in Personal when that is the only project (apps/app/screens/assistants/agent-model.ts, NewAgent.tsx).
 - fix(records): switching Spaces shows the new Space's records. The shared records world was kept by its filters alone, so Records kept drawing the last Space's rows after a switch; it is now kept per Space (apps/app/ui/views/data.ts, world-space.js, screens/shell/state.ts).
 - fix(chat): the Computer tab is the screen, one line under it, and Reset. Pressing an asleep screen wakes it. Pressing a live screen opens the computer full screen. Open, Sleep, the Chrome / Files / Terminal rows, and the files row are gone (apps/app/ui/chat/AgentComputerPane.tsx, apps/app/src/chat/ComputerTab.tsx).
 - fix(glass): a live computer opens over the whole window: the screen, Take over (Hand back while you hold the keyboard), Sign in privately, and close. Escape hands the keyboard back, then closes. The old page chrome (title, Screen/Files, Activity, and the paused card while the window is visible) is gone (apps/app/screens/glass/ComputerOverlay.tsx).

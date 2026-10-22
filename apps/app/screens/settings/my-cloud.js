@@ -111,5 +111,8 @@ export function offerFor(s, hasServer) {
 /** What My Cloud reads when spaces.list could not be asked: a device with no pairing and no box of its own has no spaces yet (the card then offers to add a server); one that is paired is quiet (its server is only down). @param {boolean} paired @returns {any[] | null} */
 export const rowsOnFailure = (paired) => (paired ? null : []);
 
-/** The person's paired servers from spaces.servers ({ servers: [{ id, name, online }] }): the ones My Cloud can be made on. An empty list means none is paired, and the card stays away. @param {any} data @returns {{ id: string, name: string }[]} */
-export const serversOf = (data) => (Array.isArray(data?.servers) ? data.servers : []).filter((/** @type {any} */ d) => d && typeof d.id === "string" && d.id && typeof d.name === "string").map((/** @type {any} */ d) => ({ id: d.id, name: d.name }));
+/** The person's paired servers from spaces.servers ({ servers: [{ id, name, online }] }): the ones My Cloud can be made on. A server whose own Space is already the team's is left out (`teamIds`, remembered when that Space was named). An empty list means none is paired, and the card stays away. @param {any} data @param {readonly string[]} [teamIds] @returns {{ id: string, name: string }[]} */
+export const serversOf = (data, teamIds = []) => {
+  const hide = new Set((Array.isArray(teamIds) ? teamIds : []).filter((/** @type {unknown} */ id) => typeof id === "string" && id));
+  return (Array.isArray(data?.servers) ? data.servers : []).filter((/** @type {any} */ d) => d && typeof d.id === "string" && d.id && typeof d.name === "string" && !hide.has(d.id)).map((/** @type {any} */ d) => ({ id: d.id, name: d.name }));
+};

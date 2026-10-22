@@ -2219,7 +2219,7 @@ export default {
         try { got = await h.gateway.grants.invites.get(null, invId, { attest: nonce }); }
         catch (e) { remoteHandles.delete(`${r.payload.id}/${invId}`); const c = String(/** @type {any} */ (e).code || "");
           // The home's door refusing this person (an invite made for someone else, spent, or not admitted) is not an outage: it gets its own plain answer and no reason (JE-1); the words also fit a spent or expired invite.
-          if (/^(denied|not_a_member|forbidden|not_allowed)$/.test(c)) throw refuse("This invite cannot be used.", "not_for_you");
+          if (/^(denied|not_a_member|forbidden|not_allowed|not_found)$/.test(c)) throw refuse("This invite cannot be used.", "not_for_you");
           if (/^(unavailable|unreachable|failed)$/.test(c) || !c) throw gone(); throw plainKernelError(e); }
         const { attest, ...bare } = got && typeof got === "object" ? got : /** @type {any} */ ({});
         let proven = false;

@@ -8,6 +8,7 @@ import { View } from "react-native";
 import { Avatar, Banner, Button, Card, Chip, Divider, EmptyState, PasswordField, Row, Segmented, Text, markRef, showToast, ErrorState, LoadingState } from "@vyre/ui";
 import { AboutCard } from "./AboutCard";
 import { Group, Page } from "../places/Frame";
+import { EmbedPage } from "./embed";
 import { GithubCard } from "./GithubCard";
 import { contacts, codeOf, devices, entryLine, entryTitle, hasCode, READ_ONLY_LINE, removable, sealedFields, approvalsLine, type Entry, type Identity, type TypeDef } from "./account-model";
 import { worksLine, type Agent } from "./agents-model";
@@ -101,17 +102,17 @@ export function RealAccount() {
   );
 }
 
-export function RealSeeing() {
+export function RealSeeing({ embedded = false }: { embedded?: boolean } = {}) {
   const k = useKept<Agent[]>("agents", agentsList as () => Promise<Agent[]>, "Agents did not answer.");
   const list = k.data;
   const err = k.err;
   return (
-    <Page title="What my agents can see" back="/u/settings">
+    <EmbedPage embedded={embedded} title="What my agents can see" back="/u/settings">
       {err ? <Card flush><ErrorState title="Agents did not load" reason={err} retry={k.reload} /></Card> : null}
       {list && !list.length ? <Card><EmptyState title="No agents yet" body="Your agent and any agents you make appear here, with the projects each works in." /></Card> : null}
       {list && list.length ? <Card flush>{list.map((a, i) => <View key={a.name}>{i ? <Divider /> : null}<Row lead={<Avatar of={markRef("agent", a.name, undefined, (a as { look?: string }).look || undefined)} />} title={a.name} sub={`Works in: ${worksLine(a.projects)}`} /></View>)}</Card> : null}
       <Banner>Sealed fields stay hidden from every agent. That includes yours and anyone acting for you. A space's admins decide what is sealed.</Banner>
-    </Page>
+    </EmbedPage>
   );
 }
 

@@ -17,6 +17,18 @@ export const slugOf = (typed) => String(typed).trim().replace(/\s+/g, "-").repla
 /** An item's stored name as people read it. @param {string} stored */
 export const shownName = (stored) => String(stored).replace(/[-_]+/g, " ").trim();
 
+/** The words the person typed, when the stored slug is not those words. Empty when they match, or when a title cannot hold them. @param {string} typed @param {string} slug */
+export function titleOf(typed, slug) {
+  const t = String(typed).trim();
+  return t && t !== slug && t.length <= 80 ? t : "";
+}
+
+/** What the list shows: the title they typed, else the slug with dashes and underscores as spaces. @param {string} stored @param {{ title?: unknown } | null | undefined} [details] */
+export function readTitle(stored, details) {
+  const t = details && typeof details.title === "string" ? details.title.trim() : "";
+  return t || shownName(stored);
+}
+
 /**
  * @typedef {{ id: string, key: string, value: string, secret: boolean, on: boolean, help?: string, label?: string, optional?: boolean }} DField
  *   one field being added: `key` is what the person typed (shown live in its one form), `value` exactly as given
@@ -115,7 +127,10 @@ export function itemCall(d, { member = false } = {}) {
   /** @type {Record<string, string>} */ const fields = {};
   for (const f of on) fields[canonical(f.key)] = f.value;
   const plain = on.filter((f) => !f.secret).map((f) => canonical(f.key));
-  return member ? { tool: "vault.me.put", input: { name, kind: "env-set", fields }, plain: [] } : { tool: "vault.put", input: { name, kind: "env-set", fields }, plain };
+  // A member's own vault has no details field. The owner's item keeps the typed words as its title.
+  const title = member ? "" : titleOf(d.name, name);
+  const input = { name, kind: "env-set", fields, ...(title ? { details: { title } } : {}) };
+  return member ? { tool: "vault.me.put", input, plain: [] } : { tool: "vault.put", input, plain };
 }
 
 /**

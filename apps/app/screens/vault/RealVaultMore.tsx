@@ -517,6 +517,7 @@ export function WatchtowerPage({ openItem }: Props) {
   const [caps, setCaps] = useState<{ breach: "ask" | "off" } | null>(null);
   const [breach, setBreach] = useState<{ line: string; names: string[] } | null>(null);
   const [checking, setChecking] = useState(false);
+  const [saving, setSaving] = useState(false);
   const load = useCallback(() => { vaultMore.health().then((x) => { setH(x); setProblem(""); }).catch((e) => setProblem(say(e, "loaded"))); vaultMore.caps().then(setCaps).catch(() => {}); }, []);
   useEffect(load, [load]);
   if (problem && !h) return <ErrorState title="Health did not load" reason={problem} retry={load} />;
@@ -525,6 +526,10 @@ export function WatchtowerPage({ openItem }: Props) {
   const check = () => {
     setChecking(true); setBreach(null);
     vaultMore.breachCheck().then((b) => setBreach({ line: breachLine(b), names: b.breached })).catch((e) => setBreach({ line: say(e, "checked"), names: [] })).finally(() => setChecking(false));
+  };
+  const turn = (on: boolean) => {
+    setSaving(true);
+    vaultMore.setBreach(on).then(() => { setCaps({ breach: on ? "ask" : "off" }); if (!on) setBreach(null); }).catch((e) => showToast(say(e, "saved"))).finally(() => setSaving(false));
   };
   return (
     <View className="gap-s3 pt-s2">
@@ -540,8 +545,8 @@ export function WatchtowerPage({ openItem }: Props) {
         <Text strong size="secondary">Known breaches</Text>
         <Text size="secondary" tone="muted">Compares your passwords with public lists of leaked ones. Only a short fingerprint of each leaves your server, never a password, and the match is made here.</Text>
         {caps && caps.breach !== "ask"
-          ? <View className="gap-s2 self-start"><Text size="caption" tone="label">Not turned on. It makes a call to the outside, so it asks you each time once it is.</Text><View className="self-start"><Button kind="secondary" size="sm" label="Turn on" onPress={comingSoon} /></View></View>
-          : <View className="self-start"><Button kind="primary" size="sm" label={checking ? "Checking" : "Check now"} disabled={checking} onPress={check} /></View>}
+          ? <View className="gap-s2 self-start"><Text size="caption" tone="label">Not turned on. It makes a call to the outside, so it asks you each time once it is.</Text><View className="self-start"><Button kind="secondary" size="sm" label={saving ? "Turning on" : "Turn on"} disabled={saving} onPress={() => turn(true)} /></View></View>
+          : <View className="flex-row gap-s2 self-start"><Button kind="primary" size="sm" label={checking ? "Checking" : "Check now"} disabled={checking || saving} onPress={check} />{caps ? <Button kind="secondary" size="sm" label={saving ? "Turning off" : "Turn off"} disabled={saving} onPress={() => turn(false)} /> : null}</View>}
         {breach ? <><Text>{breach.line}</Text>{breach.names.map((n) => <Row key={n} dense title={n} onPress={() => openItem(n)} />)}</> : null}
       </View>
     </View>

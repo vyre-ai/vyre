@@ -5,6 +5,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { start } from "../daemon/index.js";
 import { tempHome, absent } from "../../test/helpers.js";
 
@@ -40,4 +41,11 @@ test("confirm.vault: on by default (a reveal asks), and off lets the person's ow
   // Another moment's switch stays on: with only the pairing switch off, a reveal still asks.
   const pairOff = await world(t, { pairing: false });
   assert.equal((await reveal(pairOff, "local")).error?.code, "presence_required");
+});
+
+test("the vault yes and the outward yes are presence settings, stored on confirm.vault and confirm.outward", () => {
+  const decls = JSON.parse(fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "module.json"), "utf8")).settings;
+  const byStore = Object.fromEntries(decls.map((/** @type {any} */ d) => [d.store && d.store.config, d.key]));
+  assert.equal(byStore["confirm.vault"], "presence.confirm_vault");
+  assert.equal(byStore["confirm.outward"], "presence.confirm_outward");
 });

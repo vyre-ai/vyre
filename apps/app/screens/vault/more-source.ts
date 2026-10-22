@@ -74,6 +74,8 @@ export function vaultMoreSource(call: Call) {
     revokeDevice: (id: string) => ask("vault.device.revoke", { id }),
     async health() { return pickHealth(await ask("vault.health")); },
     async breachCheck() { return pickBreach(await ask("vault.breach.check", {})); },
+    /** Turn the known-breach check on or off. The check itself still asks each time. */
+    setBreach: (on: boolean) => ask("settings.set", { key: "vault.breach", value: on ? "ask" : "off", level: "account" }),
     /** An item's version history; a box without it, or with none, answers null. */
     async history(name: string) { const r = await maybe("vault.history", { name }); return r ? pickHistory(r) : null; },
     /** Replace values or make a new one on the box. Nothing typed is kept by this source. */

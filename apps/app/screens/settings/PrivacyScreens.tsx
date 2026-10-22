@@ -2,6 +2,7 @@ import { View } from "react-native";
 import { useRouter } from "expo-router";
 import { Avatar, Banner, Button, Card, Chip, Divider, EmptyState, Row, Segmented, Switch, Text, markRef , allowsMock} from "@vyre/ui";
 import { Group, Page } from "../places/Frame";
+import { EmbedPage } from "./embed";
 import { useTypes } from "../customize/state";
 import { PRIVACY_ROWS, RETENTION } from "./logic.js";
 import { RECORD_COUNTS, SEEING } from "./data";
@@ -9,16 +10,16 @@ import { useSettings } from "./state";
 import { RealPrivacy, RealSeeing } from "./RealAccount";
 
 /** What my assistants can see, per assistant. */
-function SampleSeeingScreen() {
+function SampleSeeingScreen({ embedded = false }: { embedded?: boolean }) {
   const router = useRouter();
   return (
-    <Page title="What my agents can see" back="/u/settings">
+    <EmbedPage embedded={embedded} title="What my agents can see" back="/u/settings">
       <Card flush>
         {SEEING.map((a, i) => <View key={a.id}>{i ? <Divider /> : null}<Row lead={<Avatar of={markRef(a.family, a.name)} />} title={a.name} sub={`Works in ${a.works}`} end={<Button kind="ghost" size="sm" label="Memory" onPress={() => router.push("/u/memory" as never)} />} /></View>)}
       </Card>
       <Banner>Sealed fields stay hidden from every agent. That includes yours and anyone acting for you. A space's admins decide what is sealed.</Banner>
       <View className="flex-row"><Button size="sm" label="Privacy and sealing" onPress={() => router.push("/u/settings/privacy" as never)} /></View>
-    </Page>
+    </EmbedPage>
   );
 }
 
@@ -47,5 +48,7 @@ function SamplePrivacyScreen() {
   );
 }
 
-export const SeeingScreen = () => (allowsMock() ? <SampleSeeingScreen /> : <RealSeeing />);
+export function SeeingScreen({ embedded = false }: { embedded?: boolean } = {}) {
+  return allowsMock() ? <SampleSeeingScreen embedded={embedded} /> : <RealSeeing embedded={embedded} />;
+}
 export const PrivacyScreen = () => (allowsMock() ? <SamplePrivacyScreen /> : <RealPrivacy />);

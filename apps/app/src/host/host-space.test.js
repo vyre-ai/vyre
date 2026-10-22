@@ -56,6 +56,7 @@ function ports() {
       if (fail) throw Object.assign(new Error("That name is taken. Pick another."), { code: fail });
       return "spc_abcdefghijkl";
     },
+    listing: async () => seen.listing,
     call: async (name, input, box) => { seen.calls.push({ name, input, box }); return {}; },
     join: async (link, who) => {
       seen.joins.push({ link, who: { id: who.id, name: who.name, hasKey: typeof who.key.sign === "function" } });
@@ -140,6 +141,26 @@ test("create a space from a page: the line carries a code the server's own check
   await host.call("onboard.space.poll", { id: open.id });
   assert.equal((await host.call("onboard.space.list")).spaces.length, 1);
   assert.deepEqual(Object.keys(store.peek().spaces[0].paired).sort(), ["box", "name", "relay", "route"]);
+});
+
+test("a listing that did not land never stops the first run: the page is online, says the name is not reachable yet, and nothing is kept as listed; one that landed is kept as listed", async (t) => {
+  const { store, pp, host } = await ready(t);
+  pp.seen.listing = { listed: false, why: "Failed to fetch" };
+  const open = await host.call("onboard.space.open", { kind: "linux", name: "alex-space" });
+  pp.seen.resolveAs = "one";
+  const done = await until(host, open.id, (r) => r.online);
+  assert.equal(done.notReachableYet, "alex-space.vyre.run", "online, with the line to show");
+  assert.equal(done.failed, undefined);
+  assert.equal(store.peek().spaces[0].name, "alex-space", "the space is kept");
+  assert.equal((store.peek().listed || {})["alex-space"], undefined, "not marked as listed, so the next unlock tries again");
+
+  const ok = await ready(t);
+  ok.pp.seen.listing = { listed: true, why: "" };
+  const o2 = await ok.host.call("onboard.space.open", { kind: "linux", name: "alex-space" });
+  ok.pp.seen.resolveAs = "one";
+  const d2 = await until(ok.host, o2.id, (r) => r.online);
+  assert.equal(d2.notReachableYet, undefined, "listed: no line");
+  assert.equal(typeof ok.store.peek().listed["alex-space"], "string", "kept as listed, so it is not posted again");
 });
 
 test("the last step of Make a new Space keeps the row with its pairing, selects it, and signs the server listing at once (not at the next repair); a copy of the record from before the claim is never written back over what was kept meanwhile", async (t) => {

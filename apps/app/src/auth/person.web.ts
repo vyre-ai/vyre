@@ -10,7 +10,7 @@
 // Where IndexedDB is refused (a private window), both live in memory for the page: the person
 // signs in again on the next load, and nothing weaker is written anywhere.
 
-import { tokenOrigin } from "./token-origin";
+import { tokenOrigin, tokenSlots } from "./token-origin";
 import { noteStorageRefused } from "./notice.js";
 import { memorySlot, newKey, personSession, pkce, type PersonSession, type Slot } from "./person.ts";
 
@@ -157,12 +157,27 @@ export async function personKey(): Promise<CryptoKeyPair> {
   return made;
 }
 
-/** The person session for `box` in this browser. `onSignIn` hears every request for one. */
-export function webPerson(box: string, onSignIn?: () => void): PersonSession {
+/** A token store that reads the route slot, then the page slot, and writes only the route slot. */
+function tokenStore(keys: string[]): Slot<string> {
+  const slots = keys.map((k) => idbSlot<string>("token:" + k));
+  return {
+    async load() {
+      for (const s of slots) { const v = await s.load(); if (v) return v; }
+      return null;
+    },
+    async save(v) {
+      await slots[0].save(v);
+      if (v === null) for (const s of slots.slice(1)) await s.save(null);
+    },
+  };
+}
+
+/** The person session for `box` in this browser. `route` is the paired server, so two servers do not share one token. `onSignIn` hears every request for one. */
+export function webPerson(box: string, onSignIn?: () => void, route?: string): PersonSession {
   const origin = tokenOrigin(box);
   return personSession({
     box: origin,
-    stores: { key: keySlot(), token: idbSlot<string>("token:" + origin) },
+    stores: { key: keySlot(), token: tokenStore(tokenSlots(route, origin)) },
     signIn: () => {
       onSignIn?.();
       void startSignIn(origin);

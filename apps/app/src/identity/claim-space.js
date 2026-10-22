@@ -68,8 +68,10 @@ export async function claimServerSpace(o) {
     try { json = await res.json(); } catch { /* not JSON */ }
     if (!res.ok || !json || json.error || !json.data) { const e = (json && json.error) || {}; throw refuse(plain(e), String(e.code || "directory")); }
     // The Space says this server serves its name (POST /v1/ids/server, signed by this person's own entry; the first server needs no older sign-in). Without it the directory refuses the server's
-    // certificate and address ("that name is not served by this server"). The name is claimed by now, so a failure here keeps it and says what to run.
+    // certificate and address ("that name is not served by this server"). The name is claimed by now and the listing is never allowed to stop a first run: a failure is returned (`listed: false`, `listError`)
+    // and the app tries again on every unlock (host-core.js ensureServers).
     const serverRoute = o.route && o.route.route ? String(o.route.route) : "";
+    let listed = false, listError = "";
     if (serverRoute) {
       const act = { by: me.id, via: me.eid, ts: now() };
       try {
@@ -77,13 +79,11 @@ export async function claimServerSpace(o) {
           body: JSON.stringify({ name: label, route: serverRoute, act: { ...act, sig: C.b64u(await me.key.sign(actMessage({ action: "server-add", name: label, domain: serverRoute, ts: act.ts }))) } }) });
         /** @type {any} */ let lj = null; try { lj = await lr.json(); } catch { /* not JSON */ }
         if (!lr.ok || !lj || lj.error) throw new Error(String((lj && lj.error && lj.error.message) || `the directory answered ${lr.status}`));
-      } catch (e) {
-        throw refuse(`${label} is named, but the directory was not told this server serves it (${/** @type {Error} */ (e).message}). Run spaces.server.list for ${label} from your computer, or name it again.`, "server_not_listed");
-      }
+        listed = true;
+      } catch (e) { listError = String(/** @type {Error} */ (e).message || e).slice(0, 200); }
     }
-    return { space, name: `${label}.vyre.run`, label, chain: [genesis], pin: C.pinOf(state), rootPublic, claimed: json.data, listed: Boolean(serverRoute) };
+    return { space, name: `${label}.vyre.run`, label, chain: [genesis], pin: C.pinOf(state), rootPublic, claimed: json.data, listed, ...(listError ? { listError } : {}) };
   } catch (e) {
-    if (/** @type {any} */ (e) && /** @type {any} */ (e).code === "server_not_listed") throw e;
     if (o.retire) { try { await o.retire(space); } catch { /* the server keeps an empty space; the person can retire it later */ } }
     throw e;
   }

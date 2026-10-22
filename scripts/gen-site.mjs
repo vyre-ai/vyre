@@ -107,7 +107,7 @@ const FOOT = `<footer class="foot">
       </div>
       <div><p class="fh">Devices</p><ul><li><a href="/mac/">Mac</a></li><li><a href="/windows/">Windows</a></li><li><a href="/linux/">Linux server</a></li><li><a href="/phone/">Phone</a></li><li><a href="/downloads/">Downloads</a></li></ul></div>
       <div><p class="fh">Product</p><ul><li><a href="/records/">Records</a></li><li><a href="/flows/">Flows</a></li><li><a href="/agents/">Agents</a></li><li><a href="/vault/">Vault</a></li><li><a href="/computer/">Computer</a></li></ul></div>
-      <div><p class="fh">Learn</p><ul><li><a href="/for/">Industries</a></li><li><a href="/compare/">Compare</a></li><li><a href="/architecture/">Architecture</a></li><li><a href="/direction/">Direction</a></li><li><a href="/docs/roadmap/README">Roadmap</a></li><li><a href="/start/">Get started</a></li><li><a href="/updates/">Weekly update</a></li><li><a href="/privacy/">Privacy</a></li></ul></div>
+      <div><p class="fh">Learn</p><ul><li><a href="/for/">Industries</a></li><li><a href="/compare/">Compare</a></li><li><a href="/architecture/">Architecture</a></li><li><a href="/direction/">Direction</a></li><li><a href="/docs/roadmap/README">Roadmap</a></li><li><a href="/start/">Get started</a></li><li><a href="/updates/">Weekly update</a></li><li><a href="/privacy/">Privacy</a></li><li><a href="/terms/">Terms</a></li></ul></div>
       <div><p class="fh">Open source</p><ul><li><a href="https://github.com/vyre-ai/vyre">GitHub</a></li><li><a class="star-link" href="https://github.com/vyre-ai/vyre">${STAR}Star on GitHub</a></li><li><a href="https://github.com/vyre-ai/vyre/releases">Releases</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/LICENSE">License</a></li><li><a href="/docs/">Docs</a></li></ul></div>
       <div><p class="fh">For machines</p><ul><li><a href="/llms.txt">llms.txt</a></li><li><a href="/llms-full.txt">llms-full.txt</a></li><li><a href="/agents.md">agents.md</a></li><li><a href="/sitemap.xml">Sitemap</a></li></ul></div>
     </div>
@@ -1057,6 +1057,47 @@ page({
   body: PRIV, ld: [crumbs([['Vyre', `${SITE}/`], ['Privacy', `${SITE}/privacy/`]])],
 });
 
+// ---------- terms ----------
+// The welcome screen links to /terms. Same shape as privacy: short claims, the licence is the legal text.
+const TERMS = `
+<section class="phead">
+  <div class="wrap">
+    <p class="crumbs"><a href="/">Vyre</a> / Terms</p>
+    ${eyebrow('Terms.')}
+    <h1 class="display">The terms for <b>using Vyre.</b></h1>
+    <p class="lead">Vyre is free and open source. You run it yourself. This page says what that means, in short. The Apache 2.0 licence is the legal text for the software. Last updated 22 October 2026.</p>
+  </div>
+</section>
+<section class="sec" style="padding-top:24px"><div class="wrap">
+${part('01', 'short', 'The short version', ul([
+  '<b>Vyre is free</b>, under the Apache Licence 2.0. You do not pay the project to use it.',
+  '<b>You run it.</b> Your chats, records, files and vault stay on the server you or your team operate, and on your devices.',
+  '<b>You pay your own AI providers</b> (Claude, Codex, Grok or OpenRouter) on your own accounts.',
+  '<b>The project runs three small services:</b> a relay, a name directory, and this website. The <a href="/privacy/">privacy page</a> says what each one sees.',
+  '<b>These are not a support contract.</b> The software is provided as it is. Section 06 says so in the words of the licence.',
+]))}
+${part('02', 'software', 'The software', `<p>The source is at <a href="https://github.com/vyre-ai/vyre">github.com/vyre-ai/vyre</a>. The <a href="https://github.com/vyre-ai/vyre/blob/main/LICENSE">Apache Licence 2.0</a> is what lets you use, copy and change Vyre, and it is the legal terms for the software. This page does not replace it.</p>
+<p>The same project is the server and the Vyre app on a computer, on Windows and on a phone.</p>`)}
+${part('03', 'server', 'Your server and your data', `<p>You, or your team, operate the server. The project does not host your chats, records, files or vault, and it does not keep a copy of them.</p>
+<p>You decide who joins your Space and which approvals you give. An agent can ask. Only a person approves something that leaves the server.</p>
+<p>How to delete what is on your server and on a device is on the <a href="/privacy/#delete">privacy page</a>.</p>`)}
+${part('04', 'providers', 'AI providers and other services', `<p>When an agent works, your server sends the prompt to the provider you picked, under your own account. That provider's terms and privacy policy apply to that part.</p>
+<p>Anything else you connect, such as GitHub or Google, is your own account under that service's terms.</p>`)}
+${part('05', 'services', 'The name, the relay and this website', `<p>Choosing a name publishes <code>yourname.vyre.run</code>. DNS is public, so anyone can look the name up. The relay carries encrypted traffic between your devices and your server and cannot read it. This website has no account and no analytics.</p>
+<p>What each of those services stores is on the <a href="/privacy/">privacy page</a>. A name that was ever live stays reserved, as that page describes.</p>`)}
+${part('06', 'warranty', 'No warranty', `<p>The software is provided as it is, without warranty, as the Apache licence says. The project does not promise that a release, the relay, the name directory or this website will be available, or that they will fit a particular purpose.</p>
+<p>The weekly update is optional. Nothing is sent until you confirm, and the <a href="/privacy/#updates">privacy page</a> names what the list keeps and the sending service before the first email.</p>`)}
+${part('07', 'changes', 'Changes and contact', `<p>This page can change. The date at the top is the last update, and the history is in the repository.</p>
+<p>Questions: email <!--email_off--><a href="mailto:privacy@vyre.run">privacy@vyre.run</a><!--/email_off-->, or open an issue at <a href="https://github.com/vyre-ai/vyre/issues">github.com/vyre-ai/vyre/issues</a>. A security problem goes to a private advisory at <a href="https://github.com/vyre-ai/vyre/security/advisories/new">github.com/vyre-ai/vyre/security</a>, not a public issue.</p>`)}
+</div></section>`;
+page({
+  slug: 'terms', path: '/terms/',
+  title: 'Terms: using Vyre',
+  desc: 'Vyre is free and open source under Apache 2.0. You run it on your own server and pay your own AI providers. This page says what that means.',
+  ogTitle: 'The terms for using Vyre.', ogSub: 'Free, open source, run on your own server. The Apache 2.0 licence is the legal text.',
+  body: TERMS, ld: [crumbs([['Vyre', `${SITE}/`], ['Terms', `${SITE}/terms/`]])],
+});
+
 // ---------- Downloads and 404 (scripts/site/pages.mjs) ----------
 const PAGES_CTX = { vmark, nav, FOOT, FONT_PRELOAD, CSS_V, JS_V, REPO, SITE, STAR, VERSION, term, eyebrow };
 writeFileSync(join(site, '404.html'), page404(PAGES_CTX));
@@ -1086,6 +1127,7 @@ ${PILLAR_LLMS(SITE).join('\n')}
 ${IND.llms}
 - [Weekly update](${SITE}/updates/): one email a week at most with what changed in Vyre; sign up or leave in one click
 - [Privacy](${SITE}/privacy/): what Vyre knows about you, which is almost nothing
+- [Terms](${SITE}/terms/): Vyre is free under Apache 2.0, you run it yourself, and you pay your own AI providers
 
 ${COMPARE.llmsBlock}
 ## Devices
@@ -1242,7 +1284,7 @@ Allow: /
 
 Sitemap: ${SITE}/sitemap.xml
 `);
-const SM = [['/', '1.0'], ['/mac/', '0.8'], ['/windows/', '0.8'], ['/linux/', '0.8'], ['/phone/', '0.8'], ['/downloads/', '0.8'], ['/architecture/', '0.8'], ['/vault/', '0.8'], ['/records/', '0.8'], ['/flows/', '0.8'], ['/agents/', '0.8'], ['/direction/', '0.7'], ['/start/', '0.7'], ['/privacy/', '0.5'], ['/computer/', '0.8'], ['/computer/chrome/', '0.7'], ['/computer/architecture/', '0.7'], ['/map/', '0.7'], ['/agenthome/', '0.8'], ['/updates/', '0.5'], ...IND.sitemap, ...COMPARE.sitemap];
+const SM = [['/', '1.0'], ['/mac/', '0.8'], ['/windows/', '0.8'], ['/linux/', '0.8'], ['/phone/', '0.8'], ['/downloads/', '0.8'], ['/architecture/', '0.8'], ['/vault/', '0.8'], ['/records/', '0.8'], ['/flows/', '0.8'], ['/agents/', '0.8'], ['/direction/', '0.7'], ['/start/', '0.7'], ['/privacy/', '0.5'], ['/terms/', '0.5'], ['/computer/', '0.8'], ['/computer/chrome/', '0.7'], ['/computer/architecture/', '0.7'], ['/map/', '0.7'], ['/agenthome/', '0.8'], ['/updates/', '0.5'], ...IND.sitemap, ...COMPARE.sitemap];
 write('sitemap.xml', `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 ${[...SM, ...(await docsPaths(resolve(here, '..'))).map((p) => [p, '0.4'])].map(([p, pr]) => `  <url>\n    <loc>${SITE}${p}</loc>\n    <lastmod>${MODIFIED}</lastmod>\n    <priority>${pr}</priority>\n  </url>`).join('\n')}

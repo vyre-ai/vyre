@@ -32,6 +32,15 @@ test("create: the form needs a lowercase name, a project and a real budget, and 
   assert.deepEqual("input" in k && k.input.auth, { fallback: "anthropic-api-key", budget_usd: 25 }, "an API key is the fallback, so its spend is counted against the budget");
 });
 
+test("create: Personal is already on when it is the only project", { skip: !strip }, async () => {
+  const m = await import("./agent-model.ts");
+  assert.deepEqual(m.initialProjects([{ slug: "personal", name: "Personal" }]), ["personal"]);
+  assert.deepEqual(m.initialProjects([{ slug: "home", name: "Personal" }]), ["home"]);
+  assert.deepEqual(m.initialProjects([{ slug: "juniper", name: "Juniper" }]), []);
+  assert.deepEqual(m.initialProjects([{ slug: "personal", name: "Personal" }, { slug: "juniper", name: "Juniper" }]), []);
+  assert.deepEqual(m.initialProjects([]), []);
+});
+
 test("create: when the box drops the computer on create, the same update the page's button sends follows; a refusal is said, the agent stays", { skip: !strip }, async () => {
   const { agentSource } = await import("./agent-source.ts");
   const a = box({ "agents.create": { data: { name: "rex" } } });

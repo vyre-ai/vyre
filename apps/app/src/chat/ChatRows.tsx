@@ -571,8 +571,9 @@ function ToolRun({ store, keys, wide }: { store: ChatStore; keys: string[]; wide
 
 export const ChatRow = memo(
   function ChatRow({ store, row, ctx }: { store: ChatStore; row: LayoutRow; ctx: BlockCtx }) {
+    if (row.kind === "day") return <Frame wide={ctx.wide}><Text size="caption" tone="label" style={{ textAlign: "center" }}>{String((row as { text?: string }).text ?? "")}</Text></Frame>;
     if (row.kind === "toolrun") return <ToolRun store={store} keys={(row as unknown as { keys: string[] }).keys} wide={ctx.wide} />;
     return <ItemBody store={store} k={row.key} ctx={ctx} />;
   },
-  (a, b) => a.store === b.store && a.row.key === b.row.key && a.row.kind === b.row.kind && a.ctx === b.ctx && (a.row as unknown as { keys?: string[] }).keys?.length === (b.row as unknown as { keys?: string[] }).keys?.length,
+  (a, b) => a.store === b.store && a.row.key === b.row.key && a.row.kind === b.row.kind && (a.row as { text?: string }).text === (b.row as { text?: string }).text && a.ctx === b.ctx && (a.row as unknown as { keys?: string[] }).keys?.length === (b.row as unknown as { keys?: string[] }).keys?.length,
 );

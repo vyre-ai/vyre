@@ -5,8 +5,8 @@
 
 /** @typedef {"playbook"|"object"|"flow"|"agent"} Source */
 /** @typedef {"create"|"change"|"explain"} Intent */
-/** @typedef {{ source: Source, ref?: string, words?: string, intent?: Intent }} Handoff */
-/** @typedef {{ source: Source, label: string, ref: string, name: string, intent: Intent, words: string, shape: string[] }} Card */
+/** @typedef {{ source: Source, ref?: string, words?: string, intent?: Intent, project?: string }} Handoff */
+/** @typedef {{ source: Source, label: string, ref: string, name: string, intent: Intent, words: string, shape: string[], project: string }} Card */
 
 /** Where a request can come from, in the words the card uses. */
 export const SOURCES = /** @type {Record<Source, { label: string, thing: string }>} */ ({
@@ -57,7 +57,7 @@ export function agentShape(a) {
 
 /** The card: everything the Engineer needs to start in the right place. @param {Handoff} h @param {{ name?: string, shape?: string[] }} [found] @returns {Card} */
 export function contextCard(h, found = {}) {
-  return { source: h.source, label: SOURCES[h.source]?.label ?? "Vyre", ref: h.ref ?? "", name: found.name ?? "", intent: intentOf(h), words: String(h.words ?? "").trim(), shape: found.shape ?? [] };
+  return { source: h.source, label: SOURCES[h.source]?.label ?? "Vyre", ref: h.ref ?? "", name: found.name ?? "", intent: intentOf(h), words: String(h.words ?? "").trim(), shape: found.shape ?? [], project: String(h.project ?? "").trim() };
 }
 
 /**
@@ -68,9 +68,10 @@ export function handoffText(c) {
   const thing = SOURCES[c.source]?.thing ?? "thing";
   const where = `From ${c.label}${c.name ? `: ${c.name}` : ""}`;
   const ask = c.words || (c.intent === "create" ? `Help me make a new ${thing}.` : c.intent === "explain" ? `Explain this ${thing} to me.` : `Help me change this ${thing}.`);
+  const inProject = c.project ? `Make it in the project ${c.project}.` : "";
   const shape = c.shape.length ? `What it is now:\n${c.shape.map((l) => `- ${l}`).join("\n")}` : c.intent === "create" ? `There is no ${thing} yet: this one is new.` : "";
-  const json = JSON.stringify({ source: c.source, ref: c.ref || null, name: c.name || null, intent: c.intent, words: c.words || null, shape: c.shape });
-  return [`${where} (${INTENTS[c.intent].toLowerCase()})`, shape, `What I want: ${ask}`, "Start the brainstorm: your read of this, the two or three questions that matter most, and a first draft I can say yes to.", "```engineer-context\n" + json + "\n```"].filter(Boolean).join("\n\n");
+  const json = JSON.stringify({ source: c.source, ref: c.ref || null, name: c.name || null, intent: c.intent, words: c.words || null, shape: c.shape, project: c.project || null });
+  return [`${where} (${INTENTS[c.intent].toLowerCase()})`, inProject, shape, `What I want: ${ask}`, "Start the brainstorm: your read of this, the two or three questions that matter most, and a first draft I can say yes to.", "```engineer-context\n" + json + "\n```"].filter(Boolean).join("\n\n");
 }
 
 /** A handoff waiting for the Engineer chat to open. One at a time; taking it clears it, so a reload never sends it twice. */

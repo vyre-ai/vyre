@@ -141,6 +141,18 @@ test("Watchtower: groups in the Deck's order, only reasons with items, reused ke
   assert.deepEqual(pickCaps(null), { reveal: false, breach: "off", host: "" });
 });
 
+test("Watchtower: Turn on and Turn off write vault.breach", { skip: !strip }, async () => {
+  const { vaultMoreSource } = await import("./more-source.ts");
+  const b = box();
+  const s = vaultMoreSource(b.call);
+  await s.setBreach(true);
+  await s.setBreach(false);
+  assert.deepEqual(b.seen, [
+    { tool: "settings.set", input: { key: "vault.breach", value: "ask", level: "account" } },
+    { tool: "settings.set", input: { key: "vault.breach", value: "off", level: "account" } },
+  ]);
+});
+
 test("history: versions with who and when, earlier passwords counted, never shown; a box without it is null", { skip: !strip }, async () => {
   const { vaultMoreSource } = await import("./more-source.ts");
   const { versionLine } = await import("./more-model.ts");

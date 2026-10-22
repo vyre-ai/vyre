@@ -771,18 +771,6 @@
       "apply": "live"
     },
     {
-      "key": "sessions.fast",
-      "group": "models",
-      "label": "Fast mode",
-      "type": "bool",
-      "default": false,
-      "levels": [
-        "account",
-        "project"
-      ],
-      "apply": "session"
-    },
-    {
       "key": "sessions.mode",
       "group": "permissions",
       "label": "Permission mode new sessions start in",
@@ -920,18 +908,6 @@
         "account"
       ],
       "apply": "live"
-    },
-    {
-      "key": "sessions.checkpoints",
-      "group": "sessions",
-      "label": "Keep file checkpoints for rewind",
-      "type": "bool",
-      "default": true,
-      "levels": [
-        "account",
-        "project"
-      ],
-      "apply": "session"
     },
     {
       "key": "sessions.max_turns",

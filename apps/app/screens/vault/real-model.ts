@@ -5,6 +5,7 @@
 export type ListRow = {
   name: string; kind: string; description: string; fields: string[]; url?: string; hosts: string[]; rotate: boolean; why?: string;
   updated: number; vault: string; unverified?: boolean; grants: { module: string; watcher?: string; project?: string }[];
+  details?: { title?: string };
 };
 /** One row from vault.uses (core/vault/agents.js uses()). */
 export type UseRow = { at: number; action: string; item: string | null; who: string; origin?: string; surface?: string; ok: boolean };
@@ -25,6 +26,12 @@ export const iconOf = (kind: string): "globe" | "key" | "card" | "term" | "file"
 /** A name as a person reads it: the vault keeps letters, digits, dot, dash and underscore, so "Airline-account" is shown as "Airline account". The name itself is still what every action sends. */
 export const displayName = (name: string): string => name.replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim();
 
+/** The list's title: the words the person typed, else the slug read as words. */
+export const itemTitle = (name: string, details?: { title?: string } | null): string => {
+  const t = typeof details?.title === "string" ? details.title.trim() : "";
+  return t || displayName(name);
+};
+
 const FIELD_WORD: Record<string, string> = { totp: "One-time code", cvc: "Security code", expiry: "Expires", number: "Number", url: "Web address", ssh_private_key: "Private key", public_key: "Public key", client_id: "Client ID", client_secret: "Client secret" };
 /** A field's name as a person reads it: "totp" is "One-time code"; anything else is the name with a capital and no underscores. */
 export const fieldWord = (f: string): string => FIELD_WORD[f] ?? (f.charAt(0).toUpperCase() + f.slice(1).replace(/[_-]+/g, " "));
@@ -40,7 +47,7 @@ export function lineOf(r: ListRow): string {
 
 export function toItem(r: ListRow): RealItem {
   return {
-    id: r.name, kind: r.kind, tab: tabOf(r.kind), name: r.name, title: displayName(r.name), icon: iconOf(r.kind), line: lineOf(r), fields: r.fields, unverified: Boolean(r.unverified), rotate: r.rotate,
+    id: r.name, kind: r.kind, tab: tabOf(r.kind), name: r.name, title: itemTitle(r.name, r.details), icon: iconOf(r.kind), line: lineOf(r), fields: r.fields, unverified: Boolean(r.unverified), rotate: r.rotate,
     grants: (r.grants ?? []).map((g) => ({ who: g.watcher ? `${g.module}/${g.watcher}` : g.module, ...(g.project ? { project: g.project } : {}) })),
   };
 }
@@ -57,7 +64,7 @@ export function searchItems(rows: ListRow[], query: string): RealItem[] {
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   if (!words.length) return [];
   const scored = rows.map((r) => {
-    const name = r.name.toLowerCase(), rest = [r.description, ...r.hosts, r.url ?? "", kindWord(r.kind), r.kind].join(" ").toLowerCase();
+    const name = `${r.name} ${r.details?.title ?? ""}`.toLowerCase(), rest = [r.description, ...r.hosts, r.url ?? "", kindWord(r.kind), r.kind].join(" ").toLowerCase();
     const all = words.every((w) => name.includes(w) || rest.includes(w));
     return { r, all, byName: words.every((w) => name.includes(w)) };
   }).filter((x) => x.all);

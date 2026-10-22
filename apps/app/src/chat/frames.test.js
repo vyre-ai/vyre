@@ -10,6 +10,15 @@ let cur = 0;
 /** @param {string} type @param {any} data */
 const fr = (type, data) => ({ v: 1, id: "x" + cur, cur: ++cur, session: "s", turn: "t", type: "session." + type, time: 0, corr: "t", data });
 
+test("a reply keeps the time of its first words", () => {
+  cur = 0;
+  const f = createFolder();
+  f.apply({ ...fr("text-delta", { message: "a1", index: 0, text: "Hel" }), time: 1_700_000_000_000 });
+  f.apply({ ...fr("text-delta", { message: "a1", index: 1, text: "lo" }), time: 1_700_000_000_500 });
+  assert.equal(f.item("a:a1")?.at, 1_700_000_000_000);
+  assert.equal(f.item("a:a1")?.text, "Hello");
+});
+
 test("text deltas fold into one row and grow it", () => {
   cur = 0;
   const f = createFolder();
