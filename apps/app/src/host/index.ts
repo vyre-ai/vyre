@@ -6,7 +6,7 @@ import { kvGet, kvSet } from "../state/member-key-kv";
 import { deviceKeyStore } from "../state/member-key.js";
 import { hostStore } from "./host-store";
 import { spacePorts } from "./space-ports";
-import { hostWantedFor } from "./wanted.js";
+import { deviceLabelFor, hostWantedFor } from "./wanted.js";
 import { shellKind, shellSetupDone } from "../shell/shell";
 import { relayUrl } from "../api/relay-url";
 import { agreeKeyResult, chatKeyProblem, makeRecordAgreeKey, useRecordAgreeKey } from "../crypto/agree-key";
@@ -39,7 +39,9 @@ const github = {
   async start() {
     const { signInWithGithub } = await import("../real/github");
     const r = await signInWithGithub({ signin: true });
-    return r.ok ? { ok: true, session: r.session, user: { id: r.user.id, login: r.user.login } } : { ok: false, code: (r as { code?: string }).code };
+    if (!r.ok) return { ok: false, code: (r as { code?: string }).code };
+    const u = r.user;
+    return { ok: true, session: r.session, user: { id: u.id, login: u.login, ...(u.displayName ? { displayName: u.displayName } : {}), ...(u.avatarUrl ? { avatarUrl: u.avatarUrl } : {}) } };
   },
   async assert(session: { ticket: string; cv: string }, audience: string): Promise<string> {
     const base = (process.env.EXPO_PUBLIC_VYRE_RELAY_HTTP || relayUrl().replace(/^ws/, "http")).replace(/\/+$/, "");
@@ -71,7 +73,7 @@ let host: ReturnType<typeof createHost> | null = null;
 export function getHost() {
   // The Mac window pairs with the page's own software key today (the Secure Enclave key does not sign the session yet), so a release server will not take it for approvals that need a fingerprint: the online screen says so.
   if (!host) {
-    const made = createHost({ store: hostStore, directory: directory(), agreePoint, agreeKey: { make: makeRecordAgreeKey, use: useRecordAgreeKey }, github, signin: { deviceId }, space: { load: spacePorts }, done: shellSetupDone, softwareKeyHere: shellKind() === "mac", memberKeyPath: true, memberKeys: deviceKeyStore({ get: kvGet, set: kvSet }) });
+    const made = createHost({ store: hostStore, directory: directory(), agreePoint, agreeKey: { make: makeRecordAgreeKey, use: useRecordAgreeKey }, github, signin: { deviceId, label: deviceLabelFor(shellKind() || "") }, space: { load: spacePorts }, done: shellSetupDone, softwareKeyHere: shellKind() === "mac", memberKeyPath: true, memberKeys: deviceKeyStore({ get: kvGet, set: kvSet }) });
     host = made;
     // The repairs run again when the connection comes back and every ten minutes while the app is open (quiet when locked), so a Space's address the server cannot serve heals by itself.
     const onOnline = typeof window !== "undefined" && typeof window.addEventListener === "function" ? (f: () => void) => { window.addEventListener("online", f); return () => window.removeEventListener("online", f); } : undefined;

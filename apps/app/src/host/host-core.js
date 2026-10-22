@@ -25,6 +25,8 @@ import { BROWSER_TOO_OLD, ed25519Works, ed25519Mode } from "../identity/webcrypt
 import { githubSay } from "../identity/github-core.js";
 import { actMessage } from "../../../../names/worker/id-messages.js";
 import { acceptKdf, bundleHash, deriveLogin, githubLinkMessage, loginMessage, registerMessage } from "./login-web.js";
+import { personFromGithub, photoOk } from "./github-person.js";
+import { welcomeOf } from "../../../../core/assistant/welcome.js";
 
 /**
  * Is this key a DEVICE key on the person's checked chain? A sign-in that opens a record whose identity key the chain does not list as a device is refused: the server (or a swapped record) cannot hand a device
@@ -43,10 +45,10 @@ const unb64 = (/** @type {string} */ s) => { const t = s.replace(/-/g, "+").repl
 
 /**
  * @typedef {{ id: string, name: string, role: string, server: string | null, paired?: { box: string, route: string, relay: string, name: string } | null }} KeptSpace
- * @typedef {{ master: any, username: string, display?: string, githubLogin?: string, id: string, ops: unknown[], pin: unknown, device?: { pub: string, wrapped: { iv: string, ct: string } }, signin?: { space: string }, spaces?: KeptSpace[], listed?: Record<string, string>, current?: string | null, progress?: { screen: string, stack: string[] } | null, done?: boolean }} Kept
+ * @typedef {{ master: any, username: string, display?: string, photo?: string, githubLogin?: string, id: string, ops: unknown[], pin: unknown, device?: { pub: string, wrapped: { iv: string, ct: string } }, signin?: { space: string }, spaces?: KeptSpace[], listed?: Record<string, string>, current?: string | null, progress?: { screen: string, stack: string[] } | null, done?: boolean }} Kept
  * @typedef {{ load(): Promise<Kept | null>, save(k: Kept): Promise<void> }} KeptStore
  * The GitHub leg of sign-in, bound in the app (host/index.ts): `start` runs the GitHub sign-in (src/real/github.ts signInWithGithub: who GitHub says this is, and the session the relay holds), `assert` asks the relay for a short assertion
- * for one audience (a space's name, or "names" for the directory). @typedef {{ start(): Promise<{ ok: boolean, code?: string, session?: any, user?: { id: number, login: string } }>, assert(session: any, audience: string): Promise<string> }} GithubPorts
+ * for one audience (a space's name, or "names" for the directory). @typedef {{ start(): Promise<{ ok: boolean, code?: string, session?: any, user?: { id: number, login: string, displayName?: string, avatarUrl?: string, name?: string } }>, assert(session: any, audience: string): Promise<string> }} GithubPorts
  * The outside things the space steps need (host/space-ports.ts binds them in the app; a test binds fakes or a real server over a real relay): the relay client's setup module, the relay's url, the setup channel,
  * the pairing the app already does with a server's ticket (it returns the pairing it made), the claim of the space's name (the paired server names its own space and the directory gets the record, signed by this identity), a call to the paired server, reading and accepting a join link through the team's own server, and forgetting a pairing.
  * @typedef {{ client: any, mintPairCode: typeof import("@vyre/relay-client/pair-install.js").mintPairCode, createSetupKey: typeof import("@vyre/relay-client/setup.js").createSetupKey, setupFingerprint: typeof import("@vyre/relay-client/setup.js").setupFingerprint, relay: string, connect: (o: any) => Promise<any>, pair: (qr: string, ctx: { pageKey?: unknown }, who: { id: string, name: string, pin: any, key: any }) => Promise<{ box: string, route: string, relay: string, name: string } | null>, claim: (who: { id: string, name: string, eid: string, ops: unknown[], key: any }, o: { name: string, route: { relay: string, route: string, box: string } }) => Promise<string>, call: (name: string, input: any, box: string) => Promise<any>, join?: (link: string, who: { id: string, name: string, pin: any, key: any }) => Promise<{ card: any, accept: () => Promise<any>, close: () => void }>, ask?: (address: string, note: string, who: { id: string, name: string, pin: any, key: any }) => Promise<any>, askStatus?: (address: string, who: { id: string, name: string, pin: any, key: any }) => Promise<any>, forget: (box: string) => Promise<void>, pairings?: () => Promise<{ box: string, route: string, relay?: string, name?: string }[]> }} SpacePorts
@@ -562,7 +564,7 @@ export function createHost(o) {
     return healing;
   }
 
-  /** The GitHub sign-in in progress: the relay session, the username the directory found, and the spaces it listed. Memory only, ten minutes. @type {{ session: any, username: string, spaces: { space: string, address: string }[], at: number } | null} */
+  /** The GitHub sign-in in progress: the relay session, who GitHub said this is (name and photo included), the username the directory found, and the spaces it listed. Memory only, ten minutes. @type {{ session: any, username: string, spaces: { space: string, address: string }[], user: any, at: number } | null} */
   let pendingGithub = null;
 
   /** One answer to onboard.space.poll: where the install is, and once the server is paired, the steps that make the space usable. */
@@ -677,7 +679,7 @@ export function createHost(o) {
     "identity.status": async () => {
       const k = await o.store.load();
       if (!k) return { exists: false, unlocked: false, username: null, id: null, url: null, private: true, github: null, needsMigration: false };
-      return { exists: true, unlocked: held !== null, username: k.username, ...(k.display ? { display: k.display } : {}), id: k.id, url: personRoutes(k.username).route, private: true, github: k.githubLogin || null, needsMigration: false };
+      return { exists: true, unlocked: held !== null, username: k.username, ...(k.display ? { display: k.display } : {}), ...(k.photo ? { photo: k.photo } : {}), id: k.id, url: personRoutes(k.username).route, private: true, github: k.githubLogin || null, needsMigration: false };
     },
 
     // Link a GitHub account to this username at each space the identity signs in to, so "Continue with GitHub, then your password" finds them on a new device. GitHub says who it is (the relay's short assertion, one per space);
@@ -710,7 +712,9 @@ export function createHost(o) {
         } catch (e) { last = e; trail(`github link at ${space}: ${String(/** @type {any} */ (e) && /** @type {any} */ (e).code || "error")}`); }
       }
       if (!linked) throw last || bad("Your spaces did not take the link. Try again.", "unreachable");
-      await o.store.save({ ...(await o.store.load() || k), githubLogin: String(who.login || "") });
+      const fresh = (await o.store.load()) || k;
+      const person = personFromGithub(who);
+      await o.store.save({ ...fresh, githubLogin: String(who.login || ""), ...(!fresh.display && person.display ? { display: person.display } : {}), ...(!fresh.photo && person.photo ? { photo: person.photo } : {}) });
       return { linked: true, login: String(who.login || ""), spaces: linked };
     },
 
@@ -761,6 +765,15 @@ export function createHost(o) {
       if (!given) throw bad("A name is one line of up to 60 characters, with at least one letter.", "bad_name");
       await o.store.save({ ...k, display: given });
       return { display: given };
+    },
+    // A photo is an https address the person pasted. A file upload is a later step. Kept beside the username and returned by identity.status when one is set.
+    "identity.photo.set": async ({ photo }) => {
+      const k = await o.store.load();
+      if (!k) throw bad("There is no identity on this page yet.", "no_identity");
+      const url = photoOk(photo);
+      if (!url) throw bad("A photo is an https address.", "bad_photo");
+      await o.store.save({ ...k, photo: url });
+      return { photo: url };
     },
     // An identity made before the name was kept: read what the person's server already got at the Assistant step (its onboard.status says `person`) and keep it, so the name shows without typing. Quiet: nothing changes if the server has none or cannot be reached.
     "identity.display.sync": async () => {
@@ -891,7 +904,7 @@ export function createHost(o) {
         if (!typed) throw Object.assign(new Error("Type the address of a space you belong to, then continue with GitHub again."), { code: "needs_space" });
         spaces = [typed];
       }
-      pendingGithub = { session: started.session, username, spaces, at: Date.now() };
+      pendingGithub = { session: started.session, username, spaces, user: started.user || null, at: Date.now() };
       return { login: pendingGithub.username, spaces: spaces.map((x) => ({ id: x.space, name: x.space, role: "member", server: x.address })) };
     },
 
@@ -924,7 +937,8 @@ export function createHost(o) {
       if (!(await seedIsDeviceOnChain(seed, chain.entries))) throw Object.assign(new Error(BAD), { code: "bad_password" });
       const rows = opened.map((x) => x.row);
       const master = await adoptChatKey(first.bundle, keys, String(password));
-      await o.store.save({ master, username: String(first.bundle.username), id: String(first.bundle.id), ops: chain.ops, pin: chain.pin, device: makeDeviceKey(seed, o.random), signin: { space: opened[0].space }, spaces: rows, current: rows[0].id });
+      const person = personFromGithub(pend.user);
+      await o.store.save({ master, username: String(first.bundle.username), ...(person.display ? { display: person.display } : {}), ...(person.photo ? { photo: person.photo } : {}), id: String(first.bundle.id), ops: chain.ops, pin: chain.pin, device: makeDeviceKey(seed, o.random), signin: { space: opened[0].space }, spaces: rows, current: rows[0].id });
       held = seed;
       pendingGithub = null;
       if (master !== first.bundle) void pushRecord({ spaces: rows, signin: { space: opened[0].space } }, master, String(password));
@@ -1100,6 +1114,20 @@ export function createHost(o) {
       if (!a || !a.made || !a.name) throw bad(a && a.why ? String(a.why) : "Your Assistant could not be made yet. Try again in a moment.", "assistant_not_made");
       if (look) await ports.call("agents.update", { name: String(a.name), look }, box);
       return { name: String(a.name), display: String(a.display || display), look: look || null };
+    },
+
+    // The first chat after setup: the server's assistant.welcome when this run has a server, else the same words built here from the name just saved. Nothing is posted to a thread.
+    "onboard.first.chat": async () => {
+      const k = await o.store.load();
+      const local = () => welcomeOf({ person: (k && (k.display || k.username)) || null, assistant: null, detail: {} });
+      if (!o.space || !k) return local();
+      try {
+        const { box } = await serverOfThisRun("Say hello once your space is online.");
+        const ports = await o.space.load();
+        const st = /** @type {any} */ (await ports.call("assistant.welcome", {}, box));
+        if (!st || typeof st.text !== "string" || !st.text) return local();
+        return { text: st.text, cards: Array.isArray(st.cards) ? st.cards : [] };
+      } catch { return local(); }
     },
 
     // An API key as an AI account (the owner's own): sent once to the server's own key tool, which checks it with the provider and keeps it in the Vault. The key is never logged, kept or returned: only the account's id, provider and name come back.
