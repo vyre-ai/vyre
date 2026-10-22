@@ -312,6 +312,14 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; computer.use opened to a model or a module in 8b72edb5c (9 Oct 2026); the body decides: guard: a model uses only its own agent's computer; a Mac is reached only for a class the person allowed there (link.computer.allow); the engine's own floor, indicator and Gate still apply, and interface first offers a Connection before the screen (callers list, check)"
  },
  {
+  "tool": "computers.agent.file.make",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; computers.agent.file.make opened to a model or a module in d86de6507 (22 Oct 2026); the body decides: own-computer check: the body lets an agent write only its own folder (agentClaim) and refuses any other caller unless that person may edit the agent (mayUse); the path stays inside the agent's home"
+ },
+ {
+  "tool": "computers.agent.terminal.run",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; computers.agent.terminal.run opened to a model or a module in d86de6507 (22 Oct 2026); the body decides: own-computer check: the body lets an agent type one command into its own desk Terminal (agentClaim) and refuses any other caller unless that person may edit the agent (mayUse)"
+ },
+ {
   "tool": "computers.handback.status",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads after how many idle minutes a take-over hands the keyboard back"
  },

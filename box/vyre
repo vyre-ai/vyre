@@ -796,16 +796,45 @@ verify_release_images() {
   say "images checked against Vyre's release workflow"
 }
 
-# pull_computer: the agents' computers' image, by the digest release.json names, after verify_release_images has cosign-checked it. It is not a
-# service of the stack, so compose pull leaves it out, and the Engine never pulls on create (the docker-api proxy allows no pull): without this
-# a box has no image to start an agent's computer from. A failed pull does not undo the update; the Computer tab then says the image is missing,
-# and the next update pulls it again.
-pull_computer() {
-  [ -n "${computer_ref:-}" ] || return 0
-  if docker image inspect "$computer_ref" >/dev/null 2>&1; then return 0; fi
-  if docker pull -q "$computer_ref" >/dev/null; then say "agents' computer image pulled by digest"
-  else echo "vyre: the agents' computer image ($computer_ref) could not be pulled; agents' computers start once an update pulls it" >&2
+# computer_image_named: the image the computers module will create with after this update's files are in place
+# (put_box has already written compose.yml). The same order as effectiveComputers: config computers.image, else the
+# running server's config, else VYRE_COMPUTERS_IMAGE in .env, else the compose default. A root run passes none of the
+# VYRE_COMPUTERS_* settings on, so the default is what a released server starts an agent's computer from.
+computer_image_named() {
+  img=""
+  if [ -f "$DIR/config.json" ]; then
+    img=$(tr -d '\n' <"$DIR/config.json" | sed -n 's/.*"computers": *{[^}]*"image": *"\([^"]*\)".*/\1/p' || true)
   fi
+  if [ -z "$img" ]; then
+    raw=$(compose exec -T vyre sh -c 'tr -d "\n" </home/vyre/.vyre/config.json' 2>/dev/null || true)
+    img=$(printf '%s' "$raw" | sed -n 's/.*"computers": *{[^}]*"image": *"\([^"]*\)".*/\1/p' || true)
+  fi
+  if [ -n "$img" ]; then printf '%s\n' "$img"; return 0; fi
+  if [ -f "$DIR/.env" ]; then
+    img=$(sed -n 's/^VYRE_COMPUTERS_IMAGE=//p' "$DIR/.env" | tail -n 1 || true)
+  fi
+  if [ -n "$img" ]; then printf '%s\n' "$img"; return 0; fi
+  grep -v '^[[:space:]]*#' "$DIR/compose.yml" | sed -n 's/.*VYRE_COMPUTERS_IMAGE:-\([^}[:space:]]*\)}.*/\1/p' | tail -n 1 || true
+}
+
+# pull_computer: that image, which compose pull leaves out (it is not a service) and which the Engine never pulls on
+# create. An image already present is left alone. A ghcr.io/vyre-ai digest that is still missing after the pull fails
+# the update (the caller puts the previous files back). A moving tag is tried and, if it cannot be pulled, only warned
+# about: a server that builds from source still names vyre/computer:0.1.
+pull_computer() {
+  ref=$(computer_image_named | head -n 1 || true)
+  [ -n "$ref" ] || ref=${computer_ref:-}
+  [ -n "$ref" ] || return 0
+  if docker image inspect "$ref" >/dev/null 2>&1; then return 0; fi
+  if docker pull -q "$ref" >/dev/null 2>&1 && docker image inspect "$ref" >/dev/null 2>&1; then
+    say "agents' computer image pulled"
+    return 0
+  fi
+  case "$ref" in
+    ghcr.io/vyre-ai/*@sha256:*) return 1 ;;
+  esac
+  echo "vyre: the agents' computer image ($ref) could not be pulled; agents' computers start once an update pulls it" >&2
+  return 0
 }
 
 update() {
@@ -933,7 +962,14 @@ update() {
   if [ "$BUILD" = 1 ]; then ok=0; compose build --pull && ok=1
   else ok=0; compose pull && ok=1
   fi
-  if [ "$ok" = 1 ] && [ "$BUILD" = 0 ]; then pull_computer; fi
+  if [ "$ok" = 1 ] && [ "$BUILD" = 0 ]; then
+    # The computer image is not in the stack. A digest the module will create with, and that is not here after the pull,
+    # fails the update the same way a failed compose pull does: nothing new has run, so only the files go back.
+    if ! pull_computer; then
+      put_box "$BOXPREV" exact
+      die "the agents' computer image was not pulled; the files are back as they were and Vyre was not restarted"
+    fi
+  fi
   if [ "$ok" = 0 ]; then
     # Nothing new ran, so the database is untouched: put the files back only.
     if [ "$BUILD_SRC" = 1 ] && [ -d "$SRCDIR.prev" ]; then rm -rf "$SRCDIR"; mv "$SRCDIR.prev" "$SRCDIR"; fi

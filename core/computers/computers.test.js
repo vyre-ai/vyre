@@ -83,7 +83,7 @@ async function boot(t, o = {}) {
 test("computers: the manifest loads on the box with its tools and the glass stream declared", async t => {
   const s = await boot(t);
   const tools = s.d.registry.listTools().map(x => x.name).filter(n => n.startsWith("computers."));
-  assert.deepEqual(tools.sort(), ["computers.agent.reset", "computers.agent.sleep", "computers.agent.status", "computers.agent.terminal.open", "computers.agent.terminals", "computers.agent.wake", "computers.agent.watch",
+  assert.deepEqual(tools.sort(), ["computers.agent.file.make", "computers.agent.reset", "computers.agent.sleep", "computers.agent.status", "computers.agent.terminal.open", "computers.agent.terminal.run", "computers.agent.terminals", "computers.agent.wake", "computers.agent.watch",
     "computers.checkout", "computers.exec", "computers.get", "computers.giveback",
     "computers.handback.set", "computers.handback.status",
     "computers.limits", "computers.list",

@@ -26,6 +26,8 @@
       {"name": "computers.agent.watch", "effect": "write", "reach": "person"},
       {"name": "computers.agent.terminals", "effect": "read", "reach": "person"},
       {"name": "computers.agent.terminal.open", "effect": "write", "reach": "person"},
+      {"name": "computers.agent.terminal.run", "effect": "write", "reach": "anyone"},
+      {"name": "computers.agent.file.make", "effect": "write", "reach": "anyone"},
       {"name": "computers.exec", "effect": "write", "reach": "person"},
       {"name": "computers.agent.reset", "effect": "write", "reach": "person"},
       {"name": "computers.update", "effect": "write", "reach": "person"},

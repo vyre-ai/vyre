@@ -27,6 +27,8 @@ import fs from "node:fs";
 import { makeAgentEndpoint } from "./agent-endpoint.js";
 import { makeAgentRun } from "./agent-run.js";
 import { makeAgentFiles } from "./agent-files.js";
+import { registerDeskAsk } from "./desk-ask.js";
+import { asModule } from "./module-call.js";
 import { createCdpAdapter } from "./cdp-adapter.js";
 import { Keyboard, isSurface, idleMsOf, IDLE_CHOICES, IDLE_WARN_MS } from "./keyboard.js";
 import { FakeDriver } from "./driver/fake.js";
@@ -59,11 +61,10 @@ const PEOPLE = ["cli", "local", "deck", "capsule", "tailnet", "device"];
 /** An agent's own hands (mcp:agent:<name>, a model session) and the harness; only the tools that act on the caller's OWN computer list them. */
 const OWN = [...PEOPLE, "module", "mcp", "harness"];
 
-/** The vault item a shared computer's member tokens are derived from (pool.js's memberToken()) --
- * declared in module.json's needs.vault, the same shape as any vault item a module needs. Never
- * generated here: like every other vault item, a person puts it in (vault.put, HUMAN_ONLY)
- * before the first computers.member.add that needs it; fetched fresh each time, never cached, so
- * a person rotating it in the vault directly takes effect on the very next add/rotate/reseed. */
+/** The vault item a shared computer's member tokens and the agents' screen passwords are derived from
+ * (pool.js memberToken). Declared in module.json needs.vault. The first ask creates it, as this module
+ * and only when it is absent, without the asking agent's origin (module-call.js). A later read is fresh,
+ * so a person who replaces the item is picked up on the next screen. */
 const MEMBER_TOKEN_ITEM = "vyre-shared-computer-member-key";
 
 /** The default path for the docker-api bearer, in a volume box/compose.yml shares between the
@@ -97,14 +98,14 @@ export default {
     const driver = pickDriver(cfg, ctx.paths ? ctx.paths.root : "default");
     const emit = (type, payload, where) => ctx.events.emit(type, payload, where);
     // The key every shared-computer member token and every agent's VNC password is derived from: a Space vault item only this module reads. Nothing else provisions it, so the first use makes it (random, 32 bytes),
-    // once even when calls race, and reads it back through the same declared-needs check as any later use. If it cannot be made (the vault is locked) the caller gets the vault's own refusal.
+    // as this module (asModule drops the asking agent's origin; the vault refuses a module acting for an agent), once even when calls race, and reads it back through the same declared-needs check as any later use. If it cannot be made (the vault is locked) the caller gets the vault's own refusal.
     const memberKey = createMemberKey({
       fetch: () => ctx.vault.fetch(MEMBER_TOKEN_ITEM),
-      put: async value => {
+      put: value => asModule(async () => {
         const r = await ctx.call("vault.put", { name: MEMBER_TOKEN_ITEM, kind: "secret", description: "Derives the shared computers' member tokens and the agents' screen passwords (created automatically).", fields: { value, made_by: "computers" }, grants: ["computers"], onlyIfAbsent: true });
         if (r && r.error) throw new Error(r.error.message);
         return r && r.data;
-      } });
+      }) });
     const pool = new Pool({ db: ctx.store.db, driver, call: ctx.call, emit, log: ctx.log, config: cfg,
       memberTokenKey: () => memberKey() });
     const dataRoot = (ctx.paths && ctx.paths.data) || (ctx.paths && ctx.paths.root ? `${ctx.paths.root}/data` : "data");
@@ -534,25 +535,37 @@ export default {
         const waitMs = Number(liveCfg().agentdWaitMs ?? 90_000), t0 = Date.now();
         let last = NOT_SET, said = false;
         for (;;) {
-          if (agentdReady()) {
-            try { await agentTools.place(agent); await agentUsers.wake(agent); return await cdpAdapter.endpoint(agent); } catch (e) { last = /** @type {Error} */ (e).message; }
-          }
+          // place and wake are what bring the Space's computer up (createUser and startScreen). Waiting for agentdReady first never starts it.
+          try {
+            await agentTools.place(agent);
+            await agentUsers.wake(agent);
+            if (agentdReady()) return await cdpAdapter.endpoint(agent);
+            last = NOT_SET;
+          } catch (e) { last = /** @type {Error} */ (e).message; }
           if (Date.now() - t0 > waitMs) {
             ctx.log(`AGENT COMPUTER NOT READY: ${agent} waited ${Math.round(waitMs / 1000)} s for the Space's computer and agentd (${last}); the shared browser is not used because computers.browse is not "browser"`);
             throw new Error(`the Space's computer is not ready yet (${last}); try again in a moment. The shared browser is used only when computers.browse is "browser".`);
           }
           if (!said) { said = true; ctx.log(`agent computer: starting the Space's computer for ${agent}; waiting up to ${Math.round(waitMs / 1000)} s for agentd`); }
-          await new Promise(r => setTimeout(r, 1000));
+          await new Promise(r => setTimeout(r, 250));
         }
       } };
     }
     const agentEndpoint = makeAgentEndpoint({ resolve, claimOf: agentClaim, mayUse: agentTools.mayUse, place: agentTools.place, wake: a => agentUsers.wake(a), endpoint: a => cdpAdapter.endpoint(a) });
 
     tool("computers.endpoint", "Where the agent's Chrome and computerd answer, and computerd's token. Thaws the shared browser or checks out a desktop.",
-      obj({ agent: str, thread: str }), async (i, { caller }) => {
-        // The space's computer, when it is there: the agent's own Chrome, whose address and token come from here and from nowhere else. (The shared headless browser below is the fallback until it is deleted.)
-        if (agentdReady()) return agentEndpoint(i, caller);
-        const agent = await resolve(i, caller);
+      obj({ agent: str, thread: str }), async (i, meta) => {
+        // A hands call arrives as the module. The person or agent who asked is the origin, and that is who the computer belongs to.
+        const caller = String(meta && meta.caller || "");
+        const who = String((meta && meta.origin) || caller);
+        // The agent's own Chrome on the Space's computer, including the first ask, which is what starts that computer. The shared browser is used only when computers.browse is "browser" on purpose.
+        if (liveCfg().agentUsers === true && agentBrowser.space && !agentBrowser.explicitShared()) {
+          const agent = await resolve(i, who);
+          if (agentClaim(who) !== agent) await agentTools.mayUse("use", agent);
+          return { helper: await agentBrowser.space.endpoint(agent) };
+        }
+        if (agentdReady()) return agentEndpoint(i, who);
+        const agent = await resolve(i, who);
         const ep = await agentBrowser.endpoint(agent, { thread: i.thread, why: "hands" });
         return { helper: ep.helper };
       }, { internal: true });
@@ -613,6 +626,8 @@ export default {
           default: throw Object.assign(new Error("name the op: open, list, stat, read, write, mkdir, move or trash"), { code: "bad_input" });
         }
       }, { internal: true });
+
+    registerDeskAsk({ tool, users: agentUsers, files: agentFiles, place: a => agentTools.place(a), mayUse: agentTools.mayUse, callers: OWN });
 
     tool("computers.may-act", "May the agent's hands act now? Refused while paused or taken over, with who has the keyboard; while shielded, refused for reads too.",
       obj({ agent: str, tool: str, read: { type: "boolean" } }), async (i, { caller }) => {
@@ -706,6 +721,7 @@ export default {
         keyboard.stop();
         shield.stop();
         fills.stop();
+        try { await cdpAdapter.close(); } catch { /* the endpoint is already gone */ }
         pool.wake();
         if (glass && typeof glass.stop === "function") { try { await glass.stop(); } catch {} }
       },
