@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6.9
 
+- fix(sidebar): Design changes is in the sidebar for an owner. Anyone else does not see it (lib/sidebar/model.js).
 - fix(vault): an item shows the name you typed. The stored name stays a slug, and the list uses your words (lib/vault-kinds/kinds.js, apps/app/screens/vault/env-model.js).
 - fix(chat): the transcript shows the day when the date changes. A reply keeps the time of its first words, so the day is named before that message (apps/app/src/chat/day-rows.js, frames.js).
 - fix(sign-in): an invite that is not for you says so, instead of saying the space cannot be reached (relay/client/peerclient.js, core/spaces/index.js).
