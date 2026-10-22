@@ -7,7 +7,7 @@
 import { toolEntries } from "../../packages/module-sdk/manifest.js";
 import { storeStarting, retryAfter } from "../../lib/store-away.js";
 
-/** What a module that threw at start becomes: waiting when only the record store was away (the store's own refusal, stores/twenty/deferred-store.js), failed otherwise: other starts throw `unavailable` for reasons that are not the store. @param {any} e @returns {{ state: string, error: string, waitsForStore: boolean }} */
+/** What a module that threw at start becomes: waiting when only the record store was away (the store's own refusal), failed otherwise: other starts throw `unavailable` for reasons that are not the store. @param {any} e @returns {{ state: string, error: string, waitsForStore: boolean }} */
 export function failure(e) {
   const waits = storeStarting(e);
   return { state: waits ? "waiting" : "failed", error: String((e && e.message) || e), waitsForStore: waits };

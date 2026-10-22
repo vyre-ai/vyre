@@ -130,7 +130,7 @@ export function registerQuick({ tool, obj, str, refuse, addLink }) {
     });
 }
 
-// Every records list, get, create and update asks for its type's fast fields first, which was a store read (on Twenty a round trip) before the call itself. The rows are kept for
+// Every records list, get, create and update asks for its type's fast fields first, which was a store read (on the record store a round trip) before the call itself. The rows are kept for
 // QUICK_MS per Space and caller (what a member may read is hers), and forgotten for the whole Space when a fast field is added or promoted here, the only writers of quick-field rows.
 export const QUICK_MS = 15_000;
 /** @type {Map<string, { at: number, rows: Promise<any[]> }>} */ const kept = new Map();

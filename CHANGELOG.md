@@ -90,6 +90,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - feat(home): Home is a column at most 760 wide. The date and the greeting sit over the ask field ("Ask anything, or @ an agent", the send arrow inside it, Enter sends). Under it, small face chips for the assistant and the agents the person made. The Engineer is never a chip. Needs you, Doing, Today and Recent appear only when they have something, as a small label with a count. Today's Day and Week toggle sits on that label. On a quiet day one line says "All clear. Nothing needs you today." The task field is one line, "Add a task, like remind me at 7", with a plus inside it. (apps/app/screens/now)
 - fix(home): the busy Home picture leaves off the space monogram and the project monogram. Both sit under 12, so the picture rule refused them. Doing shows what finished today. (apps/app/screens/now/HomePreview.tsx)
 - chore(design): picture references for Home on a quiet day and a busy day, at app and phone width, in both themes (design-refs).
+- fix(records): Twenty is removed. Records live only in the kernel's own SQLite store. `vyre status` says "records: Vyre store · N records". A server that still has `VYRE_STORE=auto` or `twenty` starts on SQLite and logs "records: Twenty is gone; this Space starts on the Vyre store, empty". `vyre update` removes that server's old Twenty containers and volumes. Nothing is copied across.
+- fix(install): the installer's last line is still the next step. The dry run does not name an internal part. The unused per-Space cap left by the old record stacks is gone.
 
 ## 0.6.8
 

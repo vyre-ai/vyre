@@ -15,9 +15,8 @@
 #
 # Environment: VYRE_DIR (default /srv/vyre), VYRE_BOX_URL (default https://vyre.run/box/),
 # VYRE_IMAGE (default ghcr.io/vyre-ai/vyre:latest), VYRE_BUILD=tgz to build from vyre.tgz even
-# when the image can be pulled, VYRE_STORE (auto or unset: every space is on Records; there is no without-Records choice for a person),
-# and VYRE_CODE: the one-time setup code the Vyre app makes when a server is added, for the
-# install line `curl -fsSL https://vyre.run/i | VYRE_CODE=... VYRE_STORE=auto sh` (the variable goes on sh, the reader
+# when the image can be pulled, and VYRE_CODE: the one-time setup code the Vyre app makes when a server is added, for the
+# install line `curl -fsSL https://vyre.run/i | VYRE_CODE=... sh` (the variable goes on sh, the reader
 # of the script: on curl it would never reach it, and sudo drops it, so run it as yourself). The code is never a command-line
 # argument (a process list shows arguments); without one, and on a terminal, it is asked for and
 # Enter skips it. It goes only into $VYRE_DIR/vyre.env (0600) as VYRE_SETUP_CODE (VYRE_CODE stays the host-side pipe), which the box reads once
@@ -185,17 +184,15 @@ finish() {
     say "  $BOLD${BONE}Vyre is running on this server.$RESET"
     # The custody notice the user approved (kernel/seal/process.js custodyNote, server profile): said where the install says what it set up.
     say "  About your keys: $CUSTODY_NOTE"
-    # "Running" means the server answers. Records takes several minutes more on a first start (its types are set up one module at a time), and the app says when it is ready.
+    # "Running" means the server answers. Records takes several minutes more on a first start, and the app says when it is ready. The note comes before the next step, which stays last.
     RECORDS_NOTE="  Records is still setting up and can take several minutes; the app shows when it is ready."
+    say "$RECORDS_NOTE"
     if [ "$LINK_ONLY" = 1 ]; then
       say "  Whether it is paired went to stdout for the program that asked."
-      if [ "$STORE_CHOICE" != sqlite ]; then say "$RECORDS_NOTE"; fi
     elif [ -n "$CODE" ]; then
       say "  Go back to the Vyre app to finish."
-      if [ "$STORE_CHOICE" != sqlite ]; then say "$RECORDS_NOTE"; fi
     else
-      # The space code is the last thing on the screen, so the Records note goes before it.
-      if [ "$STORE_CHOICE" != sqlite ]; then say "$RECORDS_NOTE"; fi
+      # The space code is the last thing on the screen.
       show_space_code || say "  Open the Vyre app, choose \"Add a server\", and run the line it shows on this server."
     fi
   fi
@@ -635,9 +632,8 @@ install_wrapper() {
   fi
 }
 
-# The Space helper (box/vyre `space-helper`): the root path unit that starts a Space's Twenty store and firewalls it from the agents, on vyred's request. It records the
-# image vyre runs, so it is installed once the container is up. It is required: a space on a server runs on Twenty, and without the helper (or its images) it
-# would have no store. A failure stops the install with the helper's own cause (an image that could not be pulled names the image and the registry's reason).
+# The Space helper (box/vyre `space-helper`): the root path unit that starts an app module or a published site and firewalls it from the agents, on vyred's request. It records the
+# image vyre runs, so it is installed once the container is up. Records live in the kernel's own store. A failure stops the install with the helper's own cause (an image that could not be pulled names the image and the registry's reason).
 install_space_helper() {
   [ "$DRY" != 1 ] && [ -z "${VYRE_WRAPPER:-}" ] || return 0
   priv env "VYRE_DIR=$DIR" "$WRAPPER" space-helper install || die "the Space helper could not be set up (the cause is the line above), so a space on this server would have no records store. Vyre is running but unfinished; fix the cause, then run: sudo vyre space-helper install, and pair the server after it"
@@ -828,10 +824,9 @@ intake_code() {
 # was written so `vyre` can remove both lines once the hour is over (the box reads the code once, at
 # start, and never keeps it). The rest of the file is kept as it is, and put installs from a temp file
 # so the code is never an argument.
-# write_kernel_env: the 0.3 settings, put into vyre.env once on a fresh install: the kernel on, and each Space on Twenty when this server has
-# room for it; only a server too small for Twenty gets the small built-in store. Never touches a vyre.env that already names either (a person's choice stays), and never the setup code lines.
+# write_kernel_env: the kernel setting, put into vyre.env once on a fresh install. Never touches a vyre.env that already names it, and never the setup code lines. An older VYRE_STORE line already in the file is left as it is; a fresh install does not write one.
 write_kernel_env() {
-  [ "$DRY" = 1 ] && { say "would write the 0.3 settings to $DIR/vyre.env"; return 0; }
+  [ "$DRY" = 1 ] && { say "would write the server setting to $DIR/vyre.env"; return 0; }
   TMP=${TMP:-$(mktemp -d)}
   : >"$TMP/vyre.kernel"
   if [ -e "$DIR/vyre.env" ]; then
@@ -841,7 +836,6 @@ write_kernel_env() {
   fi
   chmod 600 "$TMP/vyre.kernel"
   grep -q '^VYRE_KERNEL=' "$TMP/vyre.kernel" || printf 'VYRE_KERNEL=1\n' >>"$TMP/vyre.kernel"
-  grep -q '^VYRE_STORE=' "$TMP/vyre.kernel" || printf 'VYRE_STORE=%s\n' "${STORE_CHOICE:-${VYRE_STORE:-auto}}" >>"$TMP/vyre.kernel"
   put "$TMP/vyre.kernel" "$DIR/vyre.env" 0600
 }
 
@@ -888,12 +882,11 @@ early_one_install() {
   DOCKER_SUDO=""
 }
 
-# The memory one Space's larger (Twenty) store needs on this server, in MB: the same number as stores/twenty/space-store.js REQUIRE.memoryMb
-# (test/install-box-v2.test.js keeps the two equal; records sets it). Disk is the images and one Space's volumes.
+# The memory one Space is counted against on this server, in MB. Disk is the images and one Space's volumes.
 # The sealing key's custody on a server, word for word as kernel/seal/process.js custodyNote("server") says it (test/install-box-v2.test.js keeps them equal).
 CUSTODY_NOTE="The sealing key is a file owned by the sealing process's own user. Root on this server, or a stolen disk, can read it."
 SPACE_MEM_MB=${VYRE_SPACE_MEM_MB:-3212}
-# A server under 6 GB of memory (TINY_BELOW_MB in stores/twenty/provision.js) gets the tiny profile, whose measured need is stores/twenty/space-store.js requireFor(4096).memoryMb; the test keeps both equal.
+# A server under 6 GB of memory is counted at the smaller number.
 SPACE_MEM_TINY_MB=${VYRE_SPACE_MEM_TINY_MB:-2521}
 TINY_BELOW_MB=6144
 SPACE_DISK_MB=${VYRE_SPACE_DISK_MB:-6144}
@@ -1115,14 +1108,8 @@ main() {
   pick_look
   [ "$UNINSTALL" = 1 ] || hello
   intake_code
-  # Records is always on. The built-in store stays only for the CI install proof (VYRE_PROOF_BUILTIN_STORE=1), never as a person's choice.
-  case "${VYRE_STORE:-auto}" in
-    auto) ;;
-    sqlite) [ "${VYRE_PROOF_BUILTIN_STORE:-0}" = 1 ] || die "Vyre always uses Records, so VYRE_STORE=sqlite is not a choice any more. Run the install line again without VYRE_STORE (or with VYRE_STORE=auto)." ;;
-    *) die "VYRE_STORE is auto (Records), not ${VYRE_STORE}. Run the install line again without it." ;;
-  esac
-  # kept in our own variable and taken out of the environment: this script runs as root on most servers (a fresh droplet logs in as root), and a root run of the vyre command refuses any VYRE_ setting it inherits (its root_guard)
-  STORE_CHOICE=${VYRE_STORE:-auto}; unset VYRE_STORE
+  # An older install line may still set VYRE_STORE. Records live in the kernel's own store, so that value is not a choice. It is taken out of the environment: this script runs as root on most servers (a fresh droplet logs in as root), and a root run of the vyre command refuses any VYRE_ setting it inherits (its root_guard).
+  unset VYRE_STORE
   early_one_install
   [ "$DRY" = 1 ] || mbx_init
   [ "$DRY" = 1 ] && say "dry run: nothing on this server will change"

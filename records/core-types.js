@@ -1,7 +1,7 @@
 // @ts-check
 // The business record types every Space has before any Kit is installed: events, templates, playbooks and team members
 // (team/0.3/DESIGN-tasks.md and DESIGN-native-assistant.md). They are plain kernel TypeDefinitions, stored in the
-// Space's Twenty like any other type, so a Kit can link to them and a view can list them.
+// Space's record store like any other type, so a Kit can link to them and a view can list them.
 //
 // Tasks are here as a record type (team/0.3/DESIGN-tasks-records.md): what a person reads, edits, links or reports on is a field of the task record; who may act and what the approvals
 // depend on stay kernel state keyed by the same id. Goals, Flows, runs, grants and the log live in the kernel store.

@@ -20,7 +20,7 @@ The creator's published identity key is the thing that should name the owner. AD
 
 **One signed line.** The app, or `spaces.pair.install` (the Create step) and `wink.install.issue` (the same mint, for an agent), shows one line. Linux and a Mac that stays on use that same line.
 
-- `curl -fsSL vyre.run/i | VYRE_CODE=... VYRE_STORE=auto sh`
+- `curl -fsSL vyre.run/i | VYRE_CODE=... sh`
 
 On a Mac, `i.sh` hands the line to the Mac server installer. The Mac asks for its password once so Vyre starts when the Mac does, with nobody signed in.
 

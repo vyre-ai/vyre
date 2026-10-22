@@ -159,7 +159,7 @@ export function createGateway(cfg) {
    * through `seal.put` and its reference is written (the change events keep no plaintext), the plain field is emptied and then removed softly, and the old values
    * are scrubbed from where this side keeps them: the change log, snapshots and the event log (an event that held one keeps its envelope and loses its data,
    * so the chain still verifies). The caller's chain needs `records.define`, `records.update` on every record and `seal.put`; it stops at the first refusal.
-   * Records in the bin are brought back for the write and put back. Twenty's own history is purged by the store (`scrub`); a database that has already written
+   * Records in the bin are brought back for the write and put back. The record store's own history is purged by the store (`scrub`); a database that has already written
    * the old values to disk keeps dead pages until it is vacuumed, which is the Space operator's job.
    */
   async function sealField(/** @type {any} */ chain, /** @type {{ type: string, field: string, class: string, level?: "ai" | "human", name?: string, scrub_history?: boolean }} */ i) {
@@ -222,7 +222,7 @@ export function createGateway(cfg) {
 
   /**
    * Forget one record for good: the erasure a person asks for (a client leaves, a law says so). In this order: (1) the text of every task that concerned it is emptied (`tasks.scrubTexts({ record })`, the
-   * tasks service's own call), (2) the store destroys the row and what it keeps of it (its snapshot, its change log data, Twenty's timeline), (3) every event about the record keeps its envelope and loses
+   * tasks service's own call), (2) the store destroys the row and what it keeps of it (its snapshot, its change log data, the record store's timeline), (3) every event about the record keeps its envelope and loses
    * its data, (4) one `records.forgotten` event says it happened, with the counts and never a value. The caller's chain needs `records.define` (Customize: admin and owner) and `records.remove` on the record.
    * Links held by other records stay and point at nothing. A database keeps dead pages until it is vacuumed (the operator's step).
    */

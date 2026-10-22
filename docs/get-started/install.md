@@ -73,10 +73,9 @@ A Mac, a Windows PC and the web app offer the same two choices. Vyre does not ru
 ## 5. Add a server
 
 1. Choose what the server is: **A Linux server or cloud machine**, or **A Mac that stays on**.
-2. Choose **With Records** (recommended) or **Without Records** (a small server). Records is where your contacts, projects and
-   tasks live, so pick it unless the server is small.
+2. Records, where your contacts, projects and tasks live, are kept in Vyre's own store on the server. The server needs 8 GB of memory (4 GB is the least).
 3. The app shows one line. Copy it, then paste it into a terminal on the server and run it as yourself, not as root.
-   Linux and a Mac that stays on use the same shape: `curl -fsSL vyre.run/i | VYRE_CODE=... VYRE_STORE=auto sh`.
+   A Linux server and a computer that stays on use the same shape: `curl -fsSL vyre.run/i | VYRE_CODE=... sh`.
    On a Mac it asks for the Mac's password once, to set Vyre up to start when the Mac starts, even with nobody signed in. On a Mac server, the Mac app's
    Touch ID key approves new devices.
 

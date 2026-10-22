@@ -1,5 +1,5 @@
 // @ts-check
-// One Space's records host: the kernel's gateway over a store (the Space's Twenty), the event log, the chain builder,
+// One Space's records host: the kernel's gateway over a store (the Space's record store), the event log, the chain builder,
 // the Flow runner and the Kit manager, wired together. The platform's own assembly calls the same pieces; this file is
 // what the records team's tests and the testbox runs use to prove a Kit's types and Flows go through `kernel.records.*`
 // with authorize and events, and that the runner runs the Kit's Flows.

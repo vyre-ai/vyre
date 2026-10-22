@@ -248,13 +248,13 @@ shardTest("a box-less client makes its first space on a paired server: the serve
   assert.equal((await dir.check("nopeproof")).status, "ok");
 });
 
-shardTest("host-here on a server that cannot run Twenty refuses in the kernel's words and hosts nothing", async t => {
+shardTest("host-here on a server that cannot run the record store refuses in the kernel's words and hosts nothing", async t => {
   const f = await pairFreshServer(t);
   const links = linksFor(t, f);
   await links.startPaired("srv");
   const session = links.sessionFor("srv");
   const sp = f.w.d.kernel.spaces;
-  spacesHooks.storePlan = async () => ({ store: "none", confirm: { text: "This server cannot run the record store (Twenty), so the space was not made here.", choices: ["server", "cancel"] } });
+  spacesHooks.storePlan = async () => ({ store: "none", confirm: { text: "This server cannot run the record store, so the space was not made here.", choices: ["server", "cancel"] } });
   t.after(() => { spacesHooks.storePlan = null; });
   const before = sp.list().length;
   await assert.rejects(() => session.call("spaces.host-here", { name: "smallroom", proof: { key: "k1" } }), e => e.code === "store_unavailable" && /cannot run the record store/.test(e.message));

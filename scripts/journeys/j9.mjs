@@ -19,7 +19,7 @@ export default {
   id: "J9", title: "Team day", owner: "release", world: "own", store: "records", optIn: true,
   /** @param {any} ctx @param {ReturnType<typeof stepper>} J */
   async steps(ctx, J) {
-    // J9_PARTS=chat walks only the team, the members' sign-ins and the shared chat, on the plain store (no Twenty to wait for): the quick loop while that part is built. The journey as the release runs it is all of it.
+    // J9_PARTS=chat walks only the team, the members' sign-ins and the shared chat, on the plain store (no record store to wait for): the quick loop while that part is built. The journey as the release runs it is all of it.
     const only = process.env.J9_PARTS === "chat";
     const heavy = (/** @type {any[]} */ ...a) => (only ? undefined : /** @type {any} */ (J.step)(...a));
     const w = await bringUp({ run: ctx.run, out: path.join(ctx.out, "j9"), kind: "box", store: only ? "plain" : "records", devBuild: true, recreate: false });

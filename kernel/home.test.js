@@ -265,7 +265,7 @@ test("stages: a Space this home hosts gets the same stage hook as the home's own
   assert.ok(logs.some(m => /stage\.error|stages: /.test(m)), `the hosted Space's stages module saw the entry: ${logs.filter(m => /stage|flows/.test(m)).join(" | ")}`);
 });
 
-test("home: a home whose records live in Twenty refuses to start when no record store was made, instead of falling back to the built-in SQLite one", async t => {
+test("home: a home whose records live in the record store refuses to start when no record store was made, instead of falling back to the built-in SQLite one", async t => {
   const { bootHomeKernel } = await import("./home.js");
   const { DatabaseSync } = await import("node:sqlite");
   const root = tempHome(t);

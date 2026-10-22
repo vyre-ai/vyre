@@ -34,7 +34,7 @@ test("Flow tools answer within a bounded time on a store whose core-type definit
   const { newKernel, prepareKernel, OWNER, SPACE } = await import("../planner/testing.js");
   const k = await newKernel(null);
   await prepareKernel(k);
-  // every define that adds a core type takes 1.5 s, as Twenty's per-field cache rebuild does on a live server (scaled down)
+  // every define that adds a core type takes 1.5 s, as the record store's per-field cache rebuild does on a live server (scaled down)
   const core = new Set(CORE_TYPES.map((c) => c.name));
   const realDefine = k.store.define.bind(k.store);
   /** @type {string[][]} */ const seen = [];

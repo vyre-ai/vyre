@@ -1,4 +1,4 @@
-// A restart on a store whose per-record attributes are NOT kept on disk (the real Twenty store: its `meta` is an in-memory Map that mirrors writes to columns and is empty in a new process), over a durable log that holds
+// A restart on a store whose per-record attributes are NOT kept on disk (the real record store: its `meta` is an in-memory Map that mirrors writes to columns and is empty in a new process), over a durable log that holds
 // every record's create event. The log is the authority for who made a record and how sensitive it is; the Map is only a cache. After the restart: the keeper service and the owner still read the kept types' rows (skill,
 // def-flow, flow-state, kit-install); a member reads nothing of them by get, query, search, aggregate or the event log; a row marked privileged is not listed to a member; a member's own removed row is still hers in the Bin.
 // The same checks run BEFORE the restart as the control. Run on a test box (node:sqlite), never on a person's Mac.
@@ -21,7 +21,7 @@ const proof = (action, input, resource) => ({ op: `grant.${action.split(".")[1]}
 const T = (name, extra = {}) => ({ name, label: name, fields: [{ name: "body", kind: "text", label: "Body" }], ...extra });
 const TYPES = [T("skill"), T("def-flow", { protected: true }), T("flow-state", { protected: true }), T("kit-install"), T("plain"), T("matter")];
 
-/** A kernel over this database whose store keeps its attributes in a Map that starts EMPTY, as a new process of the Twenty store does. */
+/** A kernel over this database whose store keeps its attributes in a Map that starts EMPTY, as a new process of the record store does. */
 async function boot(db) {
   const log = createSqliteEventLog({ db, space: SPACE });
   const real = createSqliteStore({ db });

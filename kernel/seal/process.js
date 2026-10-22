@@ -386,7 +386,7 @@ export class Sealer {
       case "space.dump": { need(!req.ctx?.model_originated, "bad_input"); return this.spaceDump(req); }
       case "space.restore": { need(!req.ctx?.model_originated, "bad_input"); return this.spaceRestore(req); }
       case "pool.key": { need(!req.ctx?.model_originated && /^(per|spc)_[a-z0-9]{8,40}$/.test(req.owner), "bad_input"); const o = this.store.read("values", serviceMeta(`pool.override.${req.owner}`).ref, "_service"); return { key: o ? o.plaintext : this.store.poolKey(req.owner).toString("base64") }; }
-      // Service credentials the kernel's own modules hold (a Space's Twenty API key): sealed here instead of in a 0600 file any same-uid process can read, read back at the
+      // Service credentials the kernel's own modules hold (a Space's record-store API key): sealed here instead of in a 0600 file any same-uid process can read, read back at the
       // point of use over the kernel's own channel. A name is `<module>.<space>.<what>`; a call that says a model started it is refused; nothing is ever returned by another op.
       case "service.put": { need(!req.ctx?.model_originated && SERVICE_NAME.test(req.name) && typeof req.value === "string" && req.value.length > 0 && req.value.length <= 16_384, "bad_input"); this.store.write("values", serviceMeta(req.name), req.value); return { stored: true, event: { type: "service.stored", name: req.name } }; }
       case "service.get": { need(!req.ctx?.model_originated && SERVICE_NAME.test(req.name), "bad_input"); const r = this.store.read("values", serviceMeta(req.name).ref, "_service"); need(r, "not_found"); return { value: r.plaintext }; }

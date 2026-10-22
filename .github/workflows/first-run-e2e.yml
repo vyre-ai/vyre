@@ -45,8 +45,6 @@ jobs:
         with:
           node-version: 22.11.0
       - run: npm ci --no-audit --no-fund
-      # The saved Twenty database a new Space starts from, built before the install packs this checkout (stores/twenty/provision.js findGolden), as a release and the box image do: without it Records migrate from scratch on the first start, which takes ten minutes.
-      - uses: ./.github/actions/twenty-golden
       - name: The runner's address (a server in a container reaches the stand-ins there)
         run: echo "PROOF_HOST_IP=$(hostname -I | awk '{print $1}')" >> "$GITHUB_ENV"
       - name: Export the web app, pointed at the stand-ins
@@ -88,8 +86,8 @@ jobs:
           docker logs vyre-vyre-1 2>&1 | grep -E "phase |definition|record store|saved database|Records starting|Records are available" | grep -v "waiting work after the store joined: 0.0s" | cut -c1-240 | head -80 || true
           echo "== helper log"
           sudo sh -c 'for f in /var/lib/vyre-spaces/private/log /srv/vyre/spaces/private/log; do [ -f "$f" ] && { echo "$f"; tail -60 "$f"; }; done' 2>&1 | cut -c1-240 || true
-          echo "== restore container"
-          for c in $(docker ps -a --format '{{.Names}}' | grep -E "twenty-restore"); do docker inspect -f '{{.Name}} started {{.State.StartedAt}} finished {{.State.FinishedAt}} exit {{.State.ExitCode}}' "$c"; done || true
+          echo "== containers"
+          docker ps -a --format '{{.Names}} {{.Status}}' | head -40 || true
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
@@ -123,7 +121,6 @@ jobs:
         with:
           node-version: 22.11.0
       - run: npm ci --no-audit --no-fund
-      - uses: ./.github/actions/twenty-golden
       - name: The runner's address (a server in a container reaches the stand-ins there)
         run: echo "PROOF_HOST_IP=$(hostname -I | awk '{print $1}')" >> "$GITHUB_ENV"
       - name: Export the web app, pointed at the stand-ins

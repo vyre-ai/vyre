@@ -91,7 +91,7 @@ export async function bringUp(o) {
   if (o.store === "records") {
     await run.step(S("the record store answers"), async () => {
       let last = "";
-      // A first start with no saved database (stores/twenty/golden, built per Twenty image by the golden refresh) makes Twenty's database and every core type: 165 s to a healthy Twenty and about 260 s more for the types
+      // A first start with no saved database (built per record-store image by the golden refresh) makes the record store's database and every core type: 165 s to a healthy record store and about 260 s more for the types
       // (183 field creates at 0.9 s each) on a quiet 4-core box, so 8 minutes was not enough. 20 minutes, and the last answer is in the failure.
       for (let i = 0; i < 120; i++) { try { await mac.callTool("records.types", {}); return `up after ${i * 10} s`; } catch (e) { last = String(/** @type {Error} */ (e).message); await new Promise(r => setTimeout(r, 10_000)); } }
       throw new Error(`the record store was not up after 20 minutes: ${last}`);

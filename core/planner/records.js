@@ -328,7 +328,7 @@ export async function openRecords(o) {
         return made;
       }
       const type = typeOf(row);
-      // A field with nothing in it is left out: a store may keep an empty field as no field (Twenty does), and a create that said null would then read back as something else.
+      // A field with nothing in it is left out: a store may keep an empty field as no field (the record store does), and a create that said null would then read back as something else.
       const rec = await K.records.create(chain(), type, Object.fromEntries(Object.entries(toData(row)).filter(([, v]) => v !== null && v !== undefined)), w.chain ? { on_behalf: w.chain } : {});
       versions.set(rec.id, rec.version); known.set(rec.id, rec.version);
       const made = { ...row, id: rec.id };

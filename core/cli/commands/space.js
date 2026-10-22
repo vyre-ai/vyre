@@ -52,7 +52,7 @@ async function details() {
   const owned = Boolean(st.data && st.data.owned);
   const owner = owned ? `${st.data.space || "someone"}${st.data.device ? ` (paired by ${st.data.device})` : ""}` : null;
   const rs = d.records_store || null;
-  const recordsLine = rs ? `${rs.store === "twenty" ? "Records" : rs.store === "builtin" ? "built-in store" : rs.store === "none" ? "none" : rs.store}${rs.records === null || rs.records === undefined ? "" : ` · ${rs.records} records`}${rs.note ? ` · ${rs.note}` : ""}` : "no answer";
+  const recordsLine = rs ? `Vyre store${rs.records === null || rs.records === undefined ? "" : ` · ${rs.records} records`}${rs.note ? ` · ${rs.note}` : ""}` : "no answer";
   const items = vault.data && Array.isArray(vault.data.items) ? vault.data.items.length : null;
   const vaultLine = items === null ? "not answering" : items === 0 ? "empty" : `${items} item${items === 1 ? "" : "s"}`;
   const nameOf = row ? String(row.displayName || row.label || row.name || row.id) : null;

@@ -22,7 +22,7 @@ test("ids: time-prefixed, v4 marker, sortable, round-trip", () => {
   assert.ok(a < b);
   assert.equal(timeOf(a), 1000);
   assert.equal(timeOf(mintId("dec", 5000)), 5000);
-  assert.equal(isUuid("0190c3f2-1111-7abc-8def-000000000000"), false, "a v7 marker is refused (Twenty rejects it)");
+  assert.equal(isUuid("0190c3f2-1111-7abc-8def-000000000000"), false, "a v7 marker is refused (the record store rejects it)");
   assert.throws(() => mintUuid(-1));
 });
 

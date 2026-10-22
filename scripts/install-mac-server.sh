@@ -187,16 +187,7 @@ report_left() {
   printf '  It left:%s\n  To remove all of it, run this one line:\n\n  %s\n\n  Then run the install line again.\n' "$left" "${cmd%; }" >&2
 }
 
-# store_gate: Records is always on (the same rule as install-box.sh). VYRE_STORE unset or auto is Records; sqlite (the small built-in store) is only for the CI install proof (VYRE_PROOF_BUILTIN_STORE=1), never offered.
-store_gate() {
-  case "${VYRE_STORE:-auto}" in
-    auto) ;;
-    sqlite) [ "${VYRE_PROOF_BUILTIN_STORE:-0}" = 1 ] || die "Vyre always uses Records, so VYRE_STORE=sqlite is not a choice any more. Run the install line again without VYRE_STORE (or with VYRE_STORE=auto)." ;;
-    *) die "VYRE_STORE is auto (Records), not ${VYRE_STORE}. Run the install line again without it." ;;
-  esac
-}
-
-# memory_gate: Records (Twenty, Postgres, Redis) and agents' computers run in Colima. Under about 4 GB the Mac cannot host them, and that is said before anything is laid out. VYRE_RAM_BYTES is for tests;
+# memory_gate: agents' computers run in Colima. Under about 4 GB the Mac cannot host them, and that is said before anything is laid out. VYRE_RAM_BYTES is for tests;
 # a Mac whose memory cannot be read is not refused.
 memory_gate() {
   ram=${VYRE_RAM_BYTES:-$(sysctl -n hw.memsize 2>/dev/null || true)}
@@ -688,9 +679,7 @@ write_env() {
   mkdir -p "$VHOME"; chmod 700 "$VHOME" 2>/dev/null || true
   : >"$TMP/vyre.env"
   [ ! -f "$f" ] || grep -v -e '^VYRE_SETUP_CODE=' -e '^VYRE_SETUP_CODE_AT=' "$f" >"$TMP/vyre.env" || true
-  # The Records choice from the install line (VYRE_STORE=auto is Records, sqlite is the small built-in store). A choice named now replaces an older one; none named keeps it, or takes auto.
-  if [ -n "${VYRE_STORE:-}" ]; then grep -v '^VYRE_STORE=' "$TMP/vyre.env" >"$TMP/vyre.env.x" || true; cat "$TMP/vyre.env.x" >"$TMP/vyre.env"; fi
-  grep -q '^VYRE_STORE=' "$TMP/vyre.env" || printf 'VYRE_STORE=%s\n' "${VYRE_STORE:-auto}" >>"$TMP/vyre.env"
+  # An older vyre.env may already name VYRE_STORE. A fresh file does not gain one, and a line already there is left as it is.
   grep -q '^DOCKER_HOST=' "$TMP/vyre.env" || printf 'DOCKER_HOST=unix://%s/.colima/default/docker.sock\n' "$HOME" >>"$TMP/vyre.env"
   if [ -n "$CODE" ]; then printf 'VYRE_SETUP_CODE_AT=%s\nVYRE_SETUP_CODE=%s\n' "$(date +%s)" "$CODE" >>"$TMP/vyre.env"; fi
   chmod 600 "$TMP/vyre.env"
@@ -918,7 +907,7 @@ check_dependencies() {
   v=$("$nb" -v 2>/dev/null || true); case "$v" in v22.*|v2[3-9].*) step "Node $v runs ($([ "$nb" = "$NODE_DIST/bin/node" ] && echo "the pinned one in $NODE_DIST" || echo "yours, $nb"))" ;; *) say "  note  Node did not run; Vyre needs Node 22.5 or newer" ;; esac
   c=$(command -v colima 2>/dev/null || true)
   if [ -n "$c" ]; then v=$("$c" version 2>/dev/null | head -n 1 || true); step "Colima runs${v:+ ($v)}"; else say "  note  Colima is not installed; agents get no computer until it is (see above)"; fi
-  case "$UNAME_M" in arm64|aarch64) step "Rosetta is not needed: every image Vyre runs (vyre, Twenty, Postgres, Redis, Gotenberg and the Debian base of agents' computers) has a native arm64 build" ;; esac
+  case "$UNAME_M" in arm64|aarch64) step "Rosetta is not needed: every image Vyre runs (vyre, Gotenberg and the Debian base of agents' computers) has a native arm64 build" ;; esac
   l=$(command -v limactl 2>/dev/null || true)
   if [ -n "$l" ]; then v=$("$l" --version 2>/dev/null | head -n 1 || true); step "Lima runs${v:+ ($v)}"; elif [ -n "$c" ] && command -v brew >/dev/null 2>&1; then step "Lima comes with Homebrew's Colima"; else say "  note  Lima is not installed; Colima needs it"; fi
   d=$(command -v docker 2>/dev/null || true)
@@ -1092,7 +1081,8 @@ main() {
   say "When it finishes, go back to the Vyre app."
   phase "Checking this Mac"
   filevault_gate
-  store_gate
+  # An older install line may still set VYRE_STORE. Records live in the kernel's own store, so that value is not a choice and must not leak into later commands.
+  unset VYRE_STORE
   memory_gate
   disk_gate
   check_git

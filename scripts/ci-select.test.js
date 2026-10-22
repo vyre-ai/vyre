@@ -36,7 +36,7 @@ test("a changed test file picks itself; a deleted test picks nothing", () => {
 });
 
 test("a change to a lockfile, a package.json, a workflow, the module loader, the kernel core or the test runner picks all", () => {
-  for (const f of ["package-lock.json", "package.json", "apps/app/package.json", "apps/app/package-lock.json", ".github/workflows/node.yml", ".github/actions/twenty-golden/action.yml", "core/modules/index.js", "kernel/core/errors.js", "scripts/test-counts.mjs", "test/helpers.js", "test/test-counts.json"]) {
+  for (const f of ["package-lock.json", "package.json", "apps/app/package.json", "apps/app/package-lock.json", ".github/workflows/node.yml", "core/modules/index.js", "kernel/core/errors.js", "scripts/test-counts.mjs", "test/helpers.js", "test/test-counts.json"]) {
     const r = pick(base(), [f]);
     assert.equal(r.all, true, f);
     assert.match(r.why.join(" "), /reaches every test/);

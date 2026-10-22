@@ -70,7 +70,6 @@ SPACES_ROOT=${VYRE_SPACES_ROOT:-/var/lib/vyre-spaces}
 SPACES_UNIT=${VYRE_SPACES_UNIT:-vyre-spaces}
 CTR_NAME=${VYRE_CTR_NAME:-vyre-vyre-1}
 DAEMON_UID=${VYRE_DAEMON_UID:-1000}
-SPACES_CAP=${VYRE_SPACES_CAP:-16}
 SPACES_UP_PER_MIN=${VYRE_SPACES_UP_PER_MIN:-6}
 SPACES_SPOOL_CAP=${VYRE_SPACES_SPOOL_CAP:-64}
 ADMIN_NOTTY=${VYRE_ADMIN_NO_TTY:-0}
@@ -986,6 +985,8 @@ update() {
   compose up -d || roll_back
   ready || roll_back
   modules_ok || roll_back
+  # An older release may still have a per-Space record stack. Records now live in the kernel's own store, so those containers and volumes go. A failure here never fails a healthy update.
+  drop_old_record_stacks || true
   # Healthy: the swap this update made stays (release.prev is the rollback's), but its mark does not outlive the update.
   rm -f "$UPD_PRIV/release.swapped" 2>/dev/null || true
   # The Space helper (when installed): the new container has none of the old one's network joins or firewall rules, and the image the helper regenerates from changed.
@@ -1008,6 +1009,30 @@ update() {
   # (Not for a root run: the mode and the stack folder root recorded at install are not rewritten from a .env by an update.)
   if [ "$WRAPPER" = /usr/local/bin/vyre ] && [ "$ROOT_RUN" = 0 ]; then "$WRAPPER" updater install --dir "$DIR" >/dev/null 2>&1 || true; fi
   exit 0
+}
+
+# drop_old_record_stacks: containers and volumes of an older per-Space record stack that belong to THIS server.
+# The running container names them (box/old-record-stacks.js reads this server's Spaces). The host checks the same shape again before removing anything.
+# say prints the name only. A missing container, a refused exec, or a failed removal returns 0 so an update still finishes.
+drop_old_record_stacks() {
+  command -v docker >/dev/null 2>&1 || return 0
+  list=$( { docker ps -a --format '{{.Names}}' 2>/dev/null | sed 's/^/container /'; docker volume ls -q 2>/dev/null | sed 's/^/volume /'; } || true )
+  out=$(printf '%s\n' "$list" | compose exec -T -u vyre vyre node /opt/vyre/box/old-record-stacks.js 2>/dev/null || true)
+  printf '%s\n' "$out" | while IFS= read -r line; do
+    case "$line" in
+      container\ vyre-spc-[a-z0-9]*-twenty[-_]*)
+        n=${line#container }
+        docker rm -f "$n" >/dev/null 2>&1 || true
+        say "removed $n"
+        ;;
+      volume\ vyre-spc-[a-z0-9]*-twenty[-_]*)
+        n=${line#volume }
+        docker volume rm "$n" >/dev/null 2>&1 || true
+        say "removed $n"
+        ;;
+    esac
+  done
+  return 0
 }
 
 # updater_dirs: the two folders the automatic path uses, made before compose mounts them (a missing bind source is
@@ -1303,8 +1328,7 @@ uninstall() {
   comp=$(docker ps -aq --filter network=vyre-computers 2>/dev/null || true)
   # shellcheck disable=SC2086 # one container id per word
   [ -z "$comp" ] || docker rm -f $comp >/dev/null
-  # A Space's record store is a stack of its own (project vyre-spc-<id>-twenty: the database, the cache, the server and its worker), started by the Space helper, not by this compose project: `compose down`
-  # never knew it, and an uninstall used to leave it running with its images and network. It goes now whatever is chosen about the data; the data is the volumes, and those follow the choice below.
+  # An older release started a record stack per Space, outside this compose project, so `compose down` never knew it. Those containers and networks go now whatever is chosen about the data; the volumes follow the choice below.
   sc=$(docker ps -a --format '{{.ID}} {{.Label "com.docker.compose.project"}}' 2>/dev/null | awk '$2 ~ /^vyre-spc-[a-z0-9-]+-twenty$/ { print $1 }' || true)
   # shellcheck disable=SC2086 # one container id per word
   [ -z "$sc" ] || docker rm -f $sc >/dev/null 2>&1 || true
@@ -1366,11 +1390,12 @@ if [ "$(id -u)" = 0 ] && [ -f "$UPD_ROOT/mode" ]; then
   case "${1:-}" in updater|publish-release|update-from-request|update) ;; *) set_root_run; prepare_run ;; esac
 fi
 # ---------------------------------------------------------------------------------------------------------------------------------------------
-# The Space helper: the root side of a Space's Twenty store (team/archive/work-journals/space-helper.md, Revision 2). Linux only.
+# The Space helper: the root side of app modules and published sites (team/archive/work-journals/space-helper.md, Revision 2). Linux only.
+# Records live in the kernel's own store, so this helper no longer starts a record stack.
 #
-# vyred (uid DAEMON_UID in its container) drops one file `req-<32 hex>` holding `<verb> <space>` into SP_SPOOL, a folder it alone can write; a root path unit
+# vyred (uid DAEMON_UID in its container) drops one file `req-<32 hex>` holding `<verb> <name>` into SP_SPOOL, a folder it alone can write; a root path unit
 # runs `space-helper-run`. The request is data: it is CLAIMED by rename into a root-only folder, looked at with stat, parsed whole against one anchored
-# pattern, and only then acted on, from root's own regenerated copy of the Space's compose file. Five verbs: up, stop, down, firewall-add, firewall-del.
+# pattern, and only then acted on. Verbs: app-up, app-stop, app-down, the pub-* verbs, and publish-fill.
 # `purge` and `fscrypt-enable` are not verbs: they are `sudo vyre admin ...` (RH-2). No request carries a secret, a path, an image, a subnet or a flag.
 #   spool/    vyred's alone (DAEMON_UID, 0700), mounted read-write into the container
 #   status/   root writes `status-<id>`, mounted read-only into the container
@@ -1428,24 +1453,13 @@ sp_status() {
 }
 # hdock ARGS: docker, from a clean environment, with a root-owned config folder: nothing a caller or a shell hands down reaches it.
 hdock() { env -i PATH="$PATH" HOME=/root DOCKER_CONFIG="$SP_PRIV/docker-config" docker "$@"; }
-# sp_dc NAME ARGS: compose for one Space, only on root's own copy, the project name fixed from the validated name.
-sp_dc() {
-  n=$1; shift
-  sp_name_ok "$n" || return 1
-  d=$SP_PRIV/spaces/$n
-  # 40 minutes: a first start migrates an empty database (compose waits for the server through its 15 minute start period, see composeFile), which a slow server can need most of
-  timeout 2400 env -i PATH="$PATH" HOME=/root DOCKER_CONFIG="$SP_PRIV/docker-config" docker compose --project-directory "$d" --project-name "vyre-$n-twenty" \
-    --env-file "$d/secrets.env" -f "$d/compose.yml" "$@"
-}
 sp_known() { sp_name_ok "$1" && [ -f "$SP_PRIV/spaces/$1/record" ] && [ ! -L "$SP_PRIV/spaces/$1/record" ]; }
-sp_running() { [ -n "$(hdock ps -q --filter "label=com.docker.compose.project=vyre-$1-twenty" 2>/dev/null || true)" ]; }
 # sp_pid: the vyre container's pid, taken fresh on every call (a recreated container has a new one and a new, empty network namespace).
 sp_pid() {
   p=$(hdock inspect -f '{{.State.Pid}}' "$CTR_NAME" 2>/dev/null || true)
   case "$p" in ""|*[!0-9]*|0) return 1 ;; esac
   printf '%s\n' "$p"
 }
-sp_net_subnets() { sp_net_subnets_of "vyre-$1-twenty_store"; }
 sp_net_subnets_of() { hdock network inspect -f '{{range .IPAM.Config}}{{.Subnet}} {{end}}' "$1" 2>/dev/null | tr -d '\r'; }
 sp_subnet_ok() { printf '%s\n' "$1" | grep -Eqx '([0-9]{1,3}\.){3}[0-9]{1,3}/[0-9]{1,2}|[0-9a-f:]+/[0-9]{1,3}'; }
 sp_ipt() { case "$1" in *:*) echo ip6tables ;; *) echo iptables ;; esac; }
@@ -1458,9 +1472,6 @@ sp_fw_each() {
 # has no socket owner and goes to the container's address inside the store subnet, so the reply is dropped and every refused connect times out instead of being refused (reviewer-3,
 # on real iptables). Two positive ranges never match an ownerless packet.
 sp_ranges() { printf '0-%s\n%s-4294967294\n' $((DAEMON_UID - 1)) $((DAEMON_UID + 1)); }
-# sp_fw_apply NAME: every subnet of the Space's store network gets the two rules (reviewer-3's shape): -C first, then inserted at position 1, then verified with -C.
-# It is sp_fw_apply_net with the Space's own network and comment; an app module's network and comment (vyre-app:<module>) go through the same function.
-sp_fw_apply() { sp_fw_apply_net "$1" "vyre-$1-twenty_store" "vyre:$1" "$1"; }
 # sp_fw_apply_net NAME NET TAG KEY: NAME is the word in the messages; the rules carry the comment TAG; KEY is the name the subnet is listed under in status/subnets.
 sp_fw_apply_net() {
   n=$1; net=$2; tag=$3; key=$4
@@ -1479,10 +1490,6 @@ sp_fw_apply_net() {
     sp_sub_set "$key" "$s" || { MSG="the list of firewalled subnets could not be written"; return 1; }
   done
 }
-# sp_probe NAME: the rule is proved, not assumed. In the vyre container's namespace a connect to the store's address as an agent uid must be REFUSED at once
-# (exit 1: not a timeout, which a dead store or a dropped packet also gives), and as the daemon's uid must go through (the control), for each address family the store has.
-# It is sp_probe_to with the Space's own project, service, network and port; an app module's go through the same function.
-sp_probe() { sp_probe_to "$1" "vyre-$1-twenty" server "vyre-$1-twenty_store" 3000 "the Space's server"; }
 # sp_probe_to NAME PROJECT SERVICE NET PORT WHO: WHO is the words the messages use for the container being proved.
 sp_probe_to() {
   n=$1; project=$2; service=$3; net=$4; port=$5; who=$6
@@ -1500,7 +1507,7 @@ sp_probe_to() {
     if ! timeout 8 nsenter -t "$pid" -n setpriv --reuid="$DAEMON_UID" --regid="$DAEMON_UID" --clear-groups -- timeout 4 bash -c "exec 3<>/dev/tcp/$ip/$port" >/dev/null 2>&1; then
       MSG="the control connect (the daemon's uid) did not reach the store, so the firewall could not be proved"; return 1
     fi
-    # Every uid but the daemon's is refused: root (0), an agent's (2000) and a Vyre session's (the daemon's uid plus one), so nothing else can reach Twenty's first-user signup (RH-6).
+    # Every uid but the daemon's is refused: root (0), an agent's (2000) and a Vyre session's (the daemon's uid plus one), so nothing else can reach the service (RH-6).
     for ou in 0 2000 $((DAEMON_UID + 1)); do
       prc=0
       timeout 8 nsenter -t "$pid" -n setpriv --reuid="$ou" --regid="$ou" --clear-groups -- timeout 4 bash -c "exec 3<>/dev/tcp/$ip/$port" >/dev/null 2>&1 || prc=$?
@@ -1508,9 +1515,6 @@ sp_probe_to() {
     done
   done
 }
-# sp_attach NAME: the vyre container joins the Space's network (with the alias the store calls it by), then the rule goes in. Both live in that container's
-# namespace and are lost when it is recreated, so this runs at every `up` and after every update.
-sp_attach() { sp_attach_net "$1" "vyre-$1-twenty_store" "vyre-$1" && sp_fw_apply "$1"; }
 # sp_attach_net NAME NET ALIAS: the join only (the caller puts the rules in): the vyre container joins NET with the alias ALIAS.
 sp_attach_net() {
   n=$1; net=$2; alias=$3
@@ -1528,7 +1532,6 @@ sp_attach_net() {
 # only after a second listing shows no line that names the Space at all (a form this function does not know is a failure, never a silent success).
 sp_fw_del() {
   n=$1
-  if sp_running "$n"; then MSG="the Space is running; stop or down it first"; return 1; fi
   pid=$(sp_pid) || { MSG="nothing to remove: the vyre container is not running"; sp_sub_del "$n"; return 0; }
   for fam in iptables ip6tables; do
     lines=$(timeout 20 nsenter -t "$pid" -n "$fam" -w -S OUTPUT 2>/dev/null | grep -E -- "vyre:$n([^a-z0-9-]|\$)" || true)
@@ -1558,269 +1561,27 @@ sp_sub_del() {
   # shellcheck disable=SC2015 # A && B || C on purpose: C is "carry on"
   { grep -v -- "^$1 " "$f" 2>/dev/null || true; } >"$f.new" && chmod 644 "$f.new" && rename_over "$f.new" "$f" || true
 }
-# sp_secrets NAME: made once, by root, kept 0600 in root's folder; the daemon never reads them (RH-1).
-sp_secrets() {
-  f=$SP_PRIV/spaces/$1/secrets.env
-  [ -f "$f" ] && [ ! -L "$f" ] && return 0
-  t=$(mktemp "$f.XXXXXX") || return 1
-  # shellcheck disable=SC2015 # A && B || C on purpose: C is the refusal
-  printf 'PG_PASSWORD=%s\nREDIS_PASSWORD=%s\nAPP_SECRET=%s\nENCRYPTION_KEY=%s\n' "$(sp_rnd)" "$(sp_rnd)" "$(sp_rnd)" "$(sp_rnd)" >"$t" && chmod 600 "$t" && rename_over "$t" "$f" || { rm -f "$t"; return 1; }
-}
 sp_rnd() { head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n'; }
-# sp_golden NAME: a NEW Space starts from the saved database the vyre image carries (stores/twenty/golden, one dump per pinned Twenty image) when there is one: about a minute to a working Space,
-# not thirteen. Root takes the dump out of the image once per image (docker create + cp, never a mount) into private/golden/, read-only, and every Space's restore step reads it from there
-# (GOLDEN_DUMP in its secrets.env, the one mount sp_lint allows). Root makes the Space's admin password, puts it in the Space's secrets (ADMIN_PASSWORD, for the restore step) and in
-# status/admin-NAME (0600, the daemon's uid, removed after ten minutes) for the one sign-in vyred does to make the Space's key. No golden, or any failure here, is the slow path: nothing else changes.
-sp_golden() {
-  GOLDENWHY=""
-  n=$1; d=$SP_PRIV/spaces/$n; gd=$SP_PRIV/golden
-  img=$(head -n 1 "$SP_PRIV/image" 2>/dev/null || true)
-  printf '%s\n' "$img" | grep -Eqx 'sha256:[0-9a-f]{64}' || { GOLDENWHY="root has not recorded this image"; return 1; }
-  if [ "$(cat "$gd/image-id" 2>/dev/null || true)" != "$img" ] || [ ! -s "$gd/golden.dump" ]; then
-    # shellcheck disable=SC2015 # A && B || C on purpose: C is the refusal
-    mkdir -p "$gd" && chmod 755 "$gd" && rm -f "$gd/image-id" "$gd/golden.dump" || { GOLDENWHY="the saved-database folder could not be made"; return 1; }
-    # shellcheck disable=SC2016 # the script is node's, not the shell's
-    p=$(timeout 60 env -i PATH="$PATH" HOME=/root DOCKER_CONFIG="$SP_PRIV/docker-config" docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges --user 65534:65534 --pids-limit 64 --memory 128m \
-      --entrypoint node "$img" -e 'import("/opt/vyre/stores/twenty/provision.js").then(m=>{const g=m.findGolden({image:m.TWENTY_TESTED_REF});if(g)process.stdout.write(g.dump)})' 2>/dev/null || true)
-    case "$p" in /*.dump) ;; *) GOLDENWHY="this image carries no saved database for its Twenty image"; return 1 ;; esac
-    case "$p" in *..*|*[!A-Za-z0-9._/-]*) GOLDENWHY="the saved database path in the image is not one the helper accepts"; return 1 ;; esac
-    cid=$(timeout 120 env -i PATH="$PATH" HOME=/root DOCKER_CONFIG="$SP_PRIV/docker-config" docker create --network none "$img" 2>/dev/null || true)
-    [ -n "$cid" ] || { GOLDENWHY="the image could not be opened to read it"; return 1; }
-    timeout 120 env -i PATH="$PATH" HOME=/root DOCKER_CONFIG="$SP_PRIV/docker-config" docker cp "$cid:$p" "$gd/golden.dump.new" >/dev/null 2>&1; cprc=$?
-    timeout 60 env -i PATH="$PATH" HOME=/root DOCKER_CONFIG="$SP_PRIV/docker-config" docker rm -f "$cid" >/dev/null 2>&1 || true
-    if [ "$cprc" != 0 ] || [ ! -s "$gd/golden.dump.new" ]; then rm -f "$gd/golden.dump.new"; GOLDENWHY="the saved database could not be copied out of the image"; return 1; fi
-    # shellcheck disable=SC2015 # A && B || C on purpose: C is the refusal
-    chmod 444 "$gd/golden.dump.new" && mv -f "$gd/golden.dump.new" "$gd/golden.dump" && printf '%s\n' "$img" >"$gd/image-id" || { GOLDENWHY="the saved database could not be kept"; return 1; }
-  fi
-  pw=$(sp_rnd)
-  printf 'GOLDEN_DUMP=%s\nADMIN_PASSWORD=%s\n' "$gd/golden.dump" "$pw" >>"$d/secrets.env" || { GOLDENWHY="the Space secrets could not be written"; return 1; }
-  t=$(mktemp "$SP_STATE/admin-$n.XXXXXX") && printf '%s\n' "$pw" >"$t" && chmod 600 "$t" && chown "$DAEMON_UID:$DAEMON_UID" "$t" 2>/dev/null; mv -f "$t" "$SP_STATE/admin-$n" 2>/dev/null || { GOLDENWHY="the sign-in could not be handed to vyred"; return 1; }
-  : >"$d/golden"
+# sp_old_drop NAME: containers and volumes of an older per-Space record stack for this one Space. A name that is not that shape is left alone. Returns 1 when a removal fails.
+sp_old_drop() {
+  n=$1; bad=0
+  sp_name_ok "$n" || return 0
+  for c in $(docker ps -a --format '{{.Names}}' 2>/dev/null || true); do
+    case "$c" in vyre-"$n"-twenty[-_]*) docker rm -f "$c" >/dev/null 2>&1 || bad=1 ;; esac
+  done
+  for v in $(docker volume ls -q 2>/dev/null || true); do
+    case "$v" in vyre-"$n"-twenty[-_]*) docker volume rm "$v" >/dev/null 2>&1 || bad=1 ;; esac
+  done
+  return "$bad"
 }
-# sp_golden_say NAME: sp_golden for a Space that should start from the saved database, loud when it cannot. One line in the helper log, and NOGOLDEN (the reason) for sp_up to put in the status message, which the daemon shows.
-sp_golden_say() {
-  if sp_golden "$1"; then NOGOLDEN=""; return 0; fi
-  NOGOLDEN="Records starting without the saved database: ${GOLDENWHY:-unknown reason}"
-  sp_log "$NOGOLDEN"
-  return 0
-}
-
-# sp_lint FILE NAME: a closed check of the regenerated compose: only the keys the generator uses, only the Space's own named volumes and the one empty folder,
-# only the images root recorded, the network internal. Anything else is a refusal, so a bug in the generator cannot become host access.
-sp_lint() {
-  awk -v name="$2" '
-  function bad(m) { print "lint: " m; ok = 0 }
-  BEGIN { ok = 1; split("image restart mem_limit memswap_limit networks volumes environment depends_on healthcheck command entrypoint", a, " "); for (i in a) allowed[a[i]] = 1
-    vol["      - server-data:/app/packages/twenty-server/.local-storage"] = 1; vol["      - ./empty-front:/app/packages/twenty-server/dist/front:ro"] = 1; vol["      - db-data:/var/lib/postgresql/data"] = 1; vol["      - ${GOLDEN_DUMP:-./golden.dump}:/golden.dump:ro"] = 1
-    split("server worker db redis restore", s, " "); for (i in s) svc["  " s[i] ":"] = 1 }
-  NR == FNR { img[$2] = 1; next }
-  /^#/ || /^$/ { next }
-  /^[a-z]/ { k = $1; sub(/:.*/, "", k); if (k != "name" && k != "services" && k != "networks" && k != "volumes") bad("top-level key " k)
-    if (k == "name" && $0 != "name: vyre-" name "-twenty") bad("the project name"); top = k; key = ""; next }
-  top == "services" && /^  [a-z]/ { if (!($0 in svc)) bad("service " $0); next }
-  top == "services" && /^    [a-z_]+:/ { k = $1; sub(/:.*/, "", k); if (!(k in allowed)) bad("service key " k); key = k
-    if (k == "restart" && $0 != "    restart: \"no\"") bad("a restart policy")
-    if (k == "image") { v = $0; sub(/^    image: /, "", v); if (!(v in img)) bad("an image root did not record") } next }
-  top == "services" && /^      / { if (key == "volumes" && !($0 in vol)) bad("a volume entry"); next }
-  top == "networks" { if ($0 != "  store:" && $0 != "    internal: true") bad("the networks block"); next }
-  top == "volumes" { if ($0 != "  db-data:" && $0 != "  server-data:" && $0 != "    name: vyre-" name "-twenty_db-data" && $0 != "    name: vyre-" name "-twenty_server-data") bad("the volumes block"); next }
-  { bad("a line outside every block") }
-  END { exit ok ? 0 : 1 }' "$SP_PRIV/images" "$1"
-}
-# sp_run_gen NAME OUT: the generator, inside the image root recorded (by id): unprivileged, read-only, no network, no mounts, stdout only, capped at 64 KB.
-# sp_run_gen NAME OUT [golden|migrated]: the third word says the Space starts from the saved database (golden: the restore step, once) or already did (migrated: the server skips its migration steps).
-sp_run_gen() {
-  GENWHY=""
-  img=$(head -n 1 "$SP_PRIV/image" 2>/dev/null || true)
-  printf '%s\n' "$img" | grep -Eqx 'sha256:[0-9a-f]{64}' || { GENWHY="no valid image id is recorded yet"; return 1; }
-  # Two private files in root's own folder, one for the generator's stderr and one for its exit code. If root's folder will not give them, nothing is kept (no fallback to a shared /tmp, where a link
-  # planted at a guessed name would make root write through it) and the message stays the generic sentence.
-  # `made` says the two files are ours to remove; when they are not (root's folder would not give them), the null device stands in and is NEVER removed.
-  ge=$(mktemp "$SP_PRIV/gen-err.XXXXXX" 2>/dev/null || true); rcf=$(mktemp "$SP_PRIV/gen-rc.XXXXXX" 2>/dev/null || true)
-  made=1
-  if [ -z "$ge" ] || [ -z "$rcf" ]; then
-    if [ -n "$ge" ]; then rm -f "$ge"; fi
-    if [ -n "$rcf" ]; then rm -f "$rcf"; fi
-    ge=/dev/null; rcf=/dev/null; made=0
-  fi
-  mem=$(head -n 1 "$SP_PRIV/memory" 2>/dev/null || true)
-  # the default is "auto": tiny under about 6 GB of host memory, small above (the person never picks it). The host's memory is read here, as root, and handed in as a number.
-  case "$mem" in small|standard|tiny|auto) ;; *) mem=auto ;; esac
-  tot=$(awk '/^MemTotal:/ {print int($2/1024)}' /proc/meminfo 2>/dev/null || true)
-  case "$tot" in ""|*[!0-9]*) tot=0 ;; esac
-  # shellcheck disable=SC2016 # the script is node's, not the shell's
-  { { ( rc=0; timeout 60 env -i PATH="$PATH" HOME=/root DOCKER_CONFIG="$SP_PRIV/docker-config" docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges --user 65534:65534 --pids-limit 64 --memory 128m \
-      --entrypoint node "$img" -e 'import("/opt/vyre/stores/twenty/provision.js").then(m=>process.stdout.write(m.composeFile({space:process.argv[1],memory:process.argv[2],totalMb:Number(process.argv[3])||undefined,golden:process.argv[4]==="golden",migrated:process.argv[4]==="migrated"})))' "$1" "$mem" "$tot" "${3:-}" || rc=$?; printf '%s\n' "$rc" >"$rcf" ) 2>&1 1>&3 3>&- | head -c 4096 >"$ge"; } 3>&1; } | head -c 65537 >"$2"
-  sz=$(wc -c <"$2")
-  if [ "$sz" -ge 200 ] && [ "$sz" -le 65536 ] && head -n 1 "$2" | grep -q '^# Generated by Vyre'; then if [ "$made" = 1 ]; then rm -f "$ge" "$rcf"; fi; return 0; fi
-  # Why it failed, for the person and for vyred, who both read it: docker's exit code, and the FIRST line the generator printed to stderr. That line comes from a process in a container, so it is cut down
-  # before it goes anywhere: a path into root's folders is reduced to its last name, anything but plain ASCII letters, digits and a few marks becomes a space, one line, 160 characters.
-  code=$(head -n 1 "$rcf" 2>/dev/null | tr -d ' \r\n' || true)
-  case "$code" in ""|*[!0-9]*) code="" ;; esac
-  line=$(head -n 1 "$ge" 2>/dev/null | LC_ALL=C sed "s#${SP_PRIV}[^ ]*/\([^ /]*\)#\1#g" | LC_ALL=C tr -c 'A-Za-z0-9 :._,=+-' ' ' | tr -s ' ' | cut -c1-160 || true)
-  [ -z "$code" ] || GENWHY="docker exit $code"
-  [ -z "$line" ] || GENWHY="${GENWHY:+$GENWHY, }$line"
-  if [ "$made" = 1 ]; then rm -f "$ge" "$rcf"; fi
-  return 1
-}
-sp_gen() {
-  n=$1; d=$SP_PRIV/spaces/$n
-  [ -s "$SP_PRIV/images" ] || { MSG="root has no recorded image for the helper; run sudo vyre space-helper install"; return 1; }
-  t=$(mktemp "$d/compose.XXXXXX") || return 1
-  fl=""; if [ -f "$d/golden" ]; then fl=golden; elif [ -f "$d/migrated" ]; then fl=migrated; fi
-  if ! sp_run_gen "$n" "$t" "$fl"; then rm -f "$t"; MSG="the compose file could not be regenerated${GENWHY:+: $GENWHY}"; return 1; fi
-  # RH-7: a store never starts by itself. A restart policy would bring it up after a reboot or a Docker restart with no rule in the (new) vyre container; only `up` starts a Space.
-  sed 's/^    restart: unless-stopped$/    restart: "no"/' "$t" >"$t.r" && mv "$t.r" "$t"
-  # Images by DIGEST, from root's own record (made at install and at every update, from a pull): a tag the registry moves later cannot change what `up` runs.
-  awk 'NR == FNR { map[$1] = $2; next } /^    image: / { v = $0; sub(/^    image: /, "", v); if (v in map) $0 = "    image: " map[v] } { print }' "$SP_PRIV/images" "$t" >"$t.r" && mv "$t.r" "$t"
-  if ! l=$(sp_lint "$t" "$n"); then rm -f "$t"; MSG="the regenerated compose file was refused: $(printf '%s' "$l" | head -n 1)"; return 1; fi
-  chmod 600 "$t"; mkdir -p "$d/empty-front"; chmod 755 "$d/empty-front"
-  rename_over "$t" "$d/compose.yml"
-}
-# sp_image_current: the generator runs in the image root recorded at install, and that record is the image the vyre container ran THEN. A server installed again keeps the record of the install before
-# it: when that image is gone (a rebuild retags vyre:local, a cleanup removes it) or is no longer the one the container runs, the first request for a Space's store failed in a second ("No such
-# image: sha256:...", docker exit 125) and only the retry, after the installer had recorded the new one, worked. So the record is made again here, from the container that runs now, exactly as
-# `space-helper install` makes it (space_helper_record: the same read of the container's image, the same probe), in a subshell because that function reuses names (the request's id among them). A container that is not running cannot be compared: later steps say so themselves.
-sp_image_current() {
-  cur=$(hdock inspect -f '{{.Image}}' "$CTR_NAME" 2>/dev/null || true)
-  printf '%s\n' "$cur" | grep -Eqx 'sha256:[0-9a-f]{64}' || return 0
-  [ "$cur" != "$(head -n 1 "$SP_PRIV/image" 2>/dev/null || true)" ] || return 0
-  # Pulling the images the generator names can take minutes: say so, in the status vyred logs while it waits and in root's own log, so nobody is told the helper is broken.
-  sp_status "$id" running "recording the image Vyre runs now"
-  sp_log "the recorded image is not the one the vyre container runs; recording it again"
-  ( space_helper_record ) >/dev/null 2>&1 || { MSG="the image the helper recorded is not the one Vyre runs, and recording it again failed; run: sudo vyre space-helper install"; return 1; }
-}
-# space_helper_record: the image the helper regenerates from is the one the vyre container runs now (an update has verified it), recorded by id, and the
-# image names the generator may put in a compose file are recorded with it. Run at install and after every healthy update.
+# space_helper_record: the image the helper reads catalogs from is the one the vyre container runs now, recorded by id.
+# private/images is a non-empty marker an update looks for before it records again. Run at install and after every healthy update.
 space_helper_record() {
   id=$(hdock inspect -f '{{.Image}}' "$CTR_NAME" 2>/dev/null || true)
   printf '%s\n' "$id" | grep -Eqx 'sha256:[0-9a-f]{64}' || { echo "vyre: the vyre container's image id could not be read" >&2; return 1; }
-  t=$(mktemp "$SP_PRIV/probe.XXXXXX") || return 1
-  printf '%s\n' "$id" >"$SP_PRIV/image.new" && rename_over "$SP_PRIV/image.new" "$SP_PRIV/image"
-  if ! sp_run_gen imgprobe "$t"; then rm -f "$t"; echo "vyre: the compose generator did not run in the image" >&2; return 1; fi
-  # Every image the generator names is pulled and its digest recorded: `<name as written> <name@sha256:...>`. A name that cannot be resolved to a digest is a failure.
-  : >"$SP_PRIV/images.new"
-  # shellcheck disable=SC2013 # image references have no spaces
-  for im in $(grep '^    image: ' "$t" | sed 's/^    image: //' | sort -u); do
-    # A compose default (`${TWENTY_IMAGE:-twentycrm/twenty:v2...@sha256:...}`, `${TWENTY_TAG:-...}`) is pulled as its default: root never takes the value from an env file.
-    pl=$(printf '%s' "$im" | sed 's/\${[A-Z_][A-Z0-9_]*:-\([^}]*\)}/\1/g')
-    case "$pl" in *'${'*) rm -f "$t" "$SP_PRIV/images.new"; echo "vyre: the image name $im has a variable with no default, so it cannot be pulled" >&2; return 1 ;; esac
-    if ! why=$(timeout 900 env -i PATH="$PATH" HOME=/root DOCKER_CONFIG="$SP_PRIV/docker-config" docker pull -q "$pl" 2>&1 >/dev/null); then
-      rm -f "$t" "$SP_PRIV/images.new"
-      echo "vyre: could not pull $pl: $(printf '%s' "${why:-no answer from the registry}" | tail -n 1 | cut -c1-200)" >&2; return 1
-    fi
-    dg=$(hdock image inspect -f '{{index .RepoDigests 0}}' "$pl" 2>/dev/null || true)
-    printf '%s\n' "$dg" | grep -Eqx '[a-z0-9./_-]+@sha256:[0-9a-f]{64}' || { rm -f "$t" "$SP_PRIV/images.new"; echo "vyre: no digest for $pl" >&2; return 1; }
-    printf '%s %s\n' "$im" "$dg" >>"$SP_PRIV/images.new"
-  done
-  rename_over "$SP_PRIV/images.new" "$SP_PRIV/images"
-  rm -f "$t"
-  # The app modules' catalog is recorded from the same image at the same moments; it never makes this function fail (see sp_app_record).
+  printf '%s\n' "$id" >"$SP_PRIV/image.new" && rename_over "$SP_PRIV/image.new" "$SP_PRIV/image" || return 1
+  printf 'vyre %s\n' "$id" >"$SP_PRIV/images.new" && rename_over "$SP_PRIV/images.new" "$SP_PRIV/images" || return 1
   sp_app_record
-}
-# sp_swap: a Linux server under 6 GB of memory with no swap gets ENCRYPTED swap (the tiny profile's containers may spill into it), or none. Swap writes memory to disk, and a server holds lent keys and
-# session leases in memory, so the swap is a dm-crypt plain mapping keyed from /dev/urandom at every boot: no key is kept anywhere, and nothing in it survives a reboot. With no cryptsetup or no
-# losetup there is NO swap (the capped run held without it). Root only, one fixed file and size that no request can change, never touches a server that already has swap, and a failure only logs: the Space
-# still starts without it. The paths and the memory file are variables only so a test can point them at a temp folder.
-SP_SWAPFILE=${SP_SWAPFILE:-/var/lib/vyre-swapfile}
-SP_SWAP_MAP=${SP_SWAP_MAP:-vyre-swap}
-SP_DM=${SP_DM:-/dev/mapper}
-SP_MEMINFO=${SP_MEMINFO:-/proc/meminfo}
-SP_CRYPTTAB=${SP_CRYPTTAB:-/etc/crypttab}
-SP_FSTAB=${SP_FSTAB:-/etc/fstab}
-sp_swap_undo() { cryptsetup close "$SP_SWAP_MAP" >/dev/null 2>&1 || true; [ -z "$1" ] || losetup -d "$1" >/dev/null 2>&1 || true; }
-sp_swap() {
-  [ "$(uname -s)" = Linux ] || return 0
-  mt=$(awk '/^MemTotal:/ {print int($2/1024)}' "$SP_MEMINFO" 2>/dev/null || true)
-  case "$mt" in ""|*[!0-9]*) return 0 ;; esac
-  [ "$mt" -gt 0 ] && [ "$mt" -lt 6144 ] || return 0
-  if [ -n "$(swapon --noheadings --show=NAME 2>/dev/null)" ]; then return 0; fi
-  if ! command -v cryptsetup >/dev/null 2>&1 || ! command -v losetup >/dev/null 2>&1; then
-    sp_log "swap: no cryptsetup here, so no swap (plain swap would write memory, keys included, to the disk in the clear)"; return 0
-  fi
-  if [ ! -f "$SP_SWAPFILE" ]; then
-    ( umask 077; fallocate -l 2G "$SP_SWAPFILE" 2>/dev/null || dd if=/dev/zero of="$SP_SWAPFILE" bs=1M count=2048 2>/dev/null ) || { sp_log "swap: could not make $SP_SWAPFILE"; rm -f "$SP_SWAPFILE"; return 0; }
-    chmod 600 "$SP_SWAPFILE" || { rm -f "$SP_SWAPFILE"; return 0; }
-  fi
-  # the file is used only if it is what this function makes: a regular file owned by the user running it (root), mode 600
-  { [ -f "$SP_SWAPFILE" ] && [ ! -L "$SP_SWAPFILE" ] && [ "$(stat -c '%U|%a' "$SP_SWAPFILE" 2>/dev/null)" = "$(id -un)|600" ]; } || { sp_log "swap: $SP_SWAPFILE is not a 0600 file of this user; left alone"; return 0; }
-  loop=$(losetup -j "$SP_SWAPFILE" 2>/dev/null | head -n 1 | cut -d: -f1)
-  [ -n "$loop" ] || loop=$(losetup -f --show "$SP_SWAPFILE" 2>/dev/null) || { sp_log "swap: no loop device"; return 0; }
-  # a fresh random key now (and at every boot through crypttab): never stored, so the contents die with the mapping
-  if [ ! -e "$SP_DM/$SP_SWAP_MAP" ]; then
-    cryptsetup open --type plain --cipher aes-xts-plain64 --key-size 512 --key-file /dev/urandom --keyfile-size 64 "$loop" "$SP_SWAP_MAP" >/dev/null 2>&1 || { sp_log "swap: cryptsetup failed"; sp_swap_undo "$loop"; return 0; }
-  fi
-  if ! { mkswap "$SP_DM/$SP_SWAP_MAP" >/dev/null 2>&1 && swapon "$SP_DM/$SP_SWAP_MAP" 2>/dev/null; }; then sp_log "swap: mkswap or swapon failed"; sp_swap_undo "$loop"; return 0; fi
-  grep -qF "$SP_SWAP_MAP" "$SP_CRYPTTAB" 2>/dev/null || printf '%s %s /dev/urandom swap,cipher=aes-xts-plain64,size=512\n' "$SP_SWAP_MAP" "$SP_SWAPFILE" >>"$SP_CRYPTTAB" 2>/dev/null || true
-  grep -qF "$SP_DM/$SP_SWAP_MAP" "$SP_FSTAB" 2>/dev/null || printf '%s none swap sw 0 0\n' "$SP_DM/$SP_SWAP_MAP" >>"$SP_FSTAB" 2>/dev/null || true
-  sp_log "swap: turned on 2 GB of encrypted swap (a random key every boot) at $SP_SWAPFILE (this server has ${mt} MB of memory and had no swap)"
-}
-sp_up() {
-  n=$1
-  sp_name_ok "$n" || { MSG="not a Space name"; return 1; }
-  fresh=0; NOGOLDEN=""
-  if ! sp_known "$n"; then
-    fresh=1
-    [ "$(find "$SP_PRIV/spaces" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)" -lt "$SPACES_CAP" ] || { MSG="too many Spaces on this server"; return 1; }
-    # shellcheck disable=SC2015 # A && B || C on purpose: C is the refusal
-    mkdir -p "$SP_PRIV/spaces/$n" && chmod 700 "$SP_PRIV/spaces/$n" && : >"$SP_PRIV/spaces/$n/record" || { MSG="could not make the Space's folder"; return 1; }
-  fi
-  sp_swap || true
-  sp_image_current || return 1
-  sp_secrets "$n" || { MSG="could not make the Space's secrets"; return 1; }
-  [ "$fresh" = 0 ] || sp_golden_say "$n"
-  sp_gen "$n" || return 1
-  sp_dc "$n" create >/dev/null 2>&1 || { MSG="the Space's containers could not be created"; return 1; }
-  # Joined and firewalled BEFORE the store starts, so it never runs unfirewalled; proved after, and stopped again if the proof fails.
-  sp_attach "$n" || return 1
-  # a Space made by this very call has no earlier, cut-off start to repair: its database is empty because nothing has started yet (the saved database is restored by the start below)
-  [ "$fresh" = 1 ] || sp_repair "$n" || return 1
-  sp_dc "$n" up -d --wait >/dev/null 2>&1 || { MSG="the Space's store did not become healthy"; return 1; }
-  if ! sp_probe "$n"; then sp_dc "$n" stop >/dev/null 2>&1 || true; return 1; fi
-  # the saved database has been restored: from here the compose file has no restore step, and the server skips its migration steps
-  if [ -f "$SP_PRIV/spaces/$n/golden" ]; then
-    mv -f "$SP_PRIV/spaces/$n/golden" "$SP_PRIV/spaces/$n/migrated"; sp_gen "$n" || true
-    # the restore step is over: the admin password and the dump path leave root's copy of the Space's secrets (the daemon has the password; the compose file no longer names either)
-    t=$(mktemp "$SP_PRIV/spaces/$n/secrets.XXXXXX") || t=""
-    if [ -n "$t" ]; then
-      if grep -v -e '^ADMIN_PASSWORD=' -e '^GOLDEN_DUMP=' "$SP_PRIV/spaces/$n/secrets.env" >"$t" && chmod 600 "$t"; then mv -f "$t" "$SP_PRIV/spaces/$n/secrets.env"; else rm -f "$t"; fi
-    fi
-  fi
-  # The first start is over and the database has its schema: the Space gets its mark, and sp_repair never touches it again.
-  if t=$(sp_schema "$n") && [ -n "$t" ]; then : >"$SP_PRIV/spaces/$n/ready"; fi
-  MSG="the store is up and the agents are firewalled from it${NOGOLDEN:+. $NOGOLDEN}"
-}
-# sp_schema NAME: the name of the Space's core user table, or nothing when the database has none. Run after the Space's database is up.
-# It fails (nothing printed) when the database cannot be asked, which is not the same as an empty answer.
-sp_schema() { o=$(sp_dc "$1" exec -T db psql -U postgres -d default -tAc 'select to_regclass($$core."user"$$)' 2>/dev/null) || return 1; printf '%s' "$o" | tr -d ' \r\n'; }
-# sp_repair NAME: a first start cut off by a restart leaves a database with an empty `core` schema: Twenty's own start finds the schema, skips its migrations and reports healthy, and nothing repaired it
-# (issue 90). A Space with no `ready` mark whose database already exists is looked at once, here, before the store starts: a database with no core user table holds nothing, so its volumes are removed and
-# it starts again from the beginning (from the saved database when there is one). A Space with the mark, or whose database has the table, is never touched, and a Space that cannot be looked at is left as it is.
-sp_repair() {
-  n=$1; d=$SP_PRIV/spaces/$n
-  [ ! -f "$d/ready" ] || return 0
-  hdock volume inspect "vyre-$n-twenty_db-data" >/dev/null 2>&1 || return 0
-  sp_dc "$n" up -d --wait db >/dev/null 2>&1 || return 0
-  t=$(sp_schema "$n") || return 0
-  [ -z "$t" ] || return 0
-  sp_log "repair: empty core schema from a cut off first start, removed and made again"
-  hdock network disconnect -f "vyre-$n-twenty_store" "$CTR_NAME" >/dev/null 2>&1 || true
-  sp_dc "$n" down -v >/dev/null 2>&1 || { MSG="the Space's empty database could not be removed"; return 1; }
-  if type sp_golden_say >/dev/null 2>&1; then sp_golden_say "$n"; fi
-  sp_gen "$n" || return 1
-  sp_dc "$n" create >/dev/null 2>&1 || { MSG="the Space's containers could not be created"; return 1; }
-  sp_attach "$n" || return 1
-}
-sp_stop() { sp_dc "$1" stop >/dev/null 2>&1 || { MSG="stop failed"; return 1; }; MSG=stopped; }
-sp_down() {
-  hdock network disconnect -f "vyre-$1-twenty_store" "$CTR_NAME" >/dev/null 2>&1 || true
-  sp_dc "$1" down >/dev/null 2>&1 || { MSG="down failed"; return 1; }
-  MSG="removed; the data is kept (purge is a command on the server)"
-}
-sp_fw_add() {
-  sp_attach "$1" || return 1
-  if sp_running "$1"; then sp_probe "$1" || return 1; fi
-  MSG="the firewall is in place"
 }
 # ---------------------------------------------------------------------------------------------------------------------------------------------
 # App modules (spec 0.3.0 part 8, team/0.3/DESIGN-appmods-helper.md): a third-party app (DocuSeal first) started from a pinned image, walled off the way a Space's store is. The daemon asks
@@ -1906,7 +1667,7 @@ sp_listen_ports() {
 }
 # sp_app_record: the catalog out of the recorded vyre image, checked field by field, written to private/app-modules. Names must be unique, hook ports must be unique and must not be a port the vyre
 # container listens on now. The images are NOT pulled here (a server that never installs an app should not carry 800 MB of one); `app-up` pulls the pinned digest when it is not there. A catalog that fails any of that records NO app: a failure here never
-# stops the Space helper's install or an update (Twenty does not wait on an app), and `app-up` says the app is not recorded.
+# stops the Space helper's install or an update, and `app-up` says the app is not recorded.
 sp_app_record() {
   t=$(mktemp "$SP_PRIV/applist.XXXXXX") || return 0
   new=$SP_PRIV/app-modules.new; : >"$new"
@@ -2731,7 +2492,7 @@ STAT
   fi
   # pub-build|pub-up|pub-stop|pub-down take a deployment id and nothing else (the daemon's folder for it is found and claimed by root, never named in the request)
   case "$v_" in pub-build|pub-up|pub-run|pub-stop|pub-down) { [ "$LINE" = "$v_ $n_" ] && sp_pub_dep_ok "$n_"; } && return 0; MSG="not a request the helper knows"; return 1 ;; esac
-  case "$v_" in up|stop|down|firewall-add|firewall-del|app-up|app-stop|app-down) ;; *) MSG="not a request the helper knows"; return 1 ;; esac
+  case "$v_" in app-up|app-stop|app-down) ;; *) MSG="not a request the helper knows"; return 1 ;; esac
   # shellcheck disable=SC2015 # A && B || C on purpose: C is the refusal
   [ "$LINE" = "$v_ $n_" ] && sp_name_ok "$n_" || { MSG="not a request the helper knows"; return 1; }
 }
@@ -2810,19 +2571,12 @@ sp_do() {
   [ "${#id}" = 32 ] || return 0
   if [ "$v" = publish-fill ]; then sp_publish_fill_do "$id" "$n"; return 0; fi
   case "$v" in pub-build|pub-up|pub-run|pub-stop|pub-down) sp_pub_do "$id" "$v" "$n"; return 0 ;; esac
-  case "$v" in up|stop|down|firewall-add|firewall-del|app-up|app-stop|app-down) ;; *) sp_status "$id" failed "not a request the helper knows"; return 0 ;; esac
+  case "$v" in app-up|app-stop|app-down) ;; *) sp_status "$id" failed "not a request the helper knows"; return 0 ;; esac
   sp_name_ok "$n" || { sp_status "$id" failed "not a request the helper knows"; sp_log "refused $v: a name that is not one"; return 0; }
-  # An app verb names a module in root's recorded catalog and nothing else; its lock is lock-app.<module> (a dot is not in a Space's name, so the two can never be the same lock).
-  lkn=$n
-  case "$v" in
-    app-*)
-      if ! { sp_app_name_ok "$n" && [ -n "$(sp_app_line "$n")" ]; }; then sp_status "$id" failed "no such app"; sp_log "refused $v: not a recorded app"; return 0; fi
-      lkn=app.$n ;;
-    *)
-      case "$n" in *-twenty*) sp_status "$id" failed "that name is not allowed"; sp_log "refused $v: a name with -twenty"; return 0 ;; esac
-      if [ "$v" != up ] && ! sp_known "$n"; then sp_status "$id" failed "no such Space"; sp_log "refused $v: unknown Space"; return 0; fi ;;
-  esac
-  if [ "$v" = up ] || [ "$v" = app-up ]; then
+  # An app verb names a module in root's recorded catalog and nothing else; its lock is lock-app.<module>.
+  if ! { sp_app_name_ok "$n" && [ -n "$(sp_app_line "$n")" ]; }; then sp_status "$id" failed "no such app"; sp_log "refused $v: not a recorded app"; return 0; fi
+  lkn=app.$n
+  if [ "$v" = app-up ]; then
     mn=$(($(date +%s) / 60)); r=$SP_PRIV/rate-up; last=$(cat "$r" 2>/dev/null || true); cnt=0
     case "$last" in "$mn "*) cnt=${last#* } ;; esac
     case "$cnt" in ""|*[!0-9]*) cnt=0 ;; esac
@@ -2840,7 +2594,7 @@ sp_do() {
   printf '%s\n' "$$" >"$lk/pid" 2>/dev/null || true
   sp_status "$id" running "$v"
   rc=0
-  case "$v" in up) sp_up "$n" || rc=1 ;; stop) sp_stop "$n" || rc=1 ;; down) sp_down "$n" || rc=1 ;; firewall-add) sp_fw_add "$n" || rc=1 ;; firewall-del) sp_fw_del "$n" || rc=1 ;; app-up) sp_app_up "$n" || rc=1 ;; app-stop) sp_app_stop "$n" || rc=1 ;; app-down) sp_app_down "$n" || rc=1 ;; esac
+  case "$v" in app-up) sp_app_up "$n" || rc=1 ;; app-stop) sp_app_stop "$n" || rc=1 ;; app-down) sp_app_down "$n" || rc=1 ;; esac
   rm -rf "${lk:?}" 2>/dev/null || true
   if [ "$rc" = 0 ]; then sp_status "$id" ok "${MSG:-done}"; sp_log "ok $v"; else sp_status "$id" failed "${MSG:-failed}"; sp_log "failed $v: ${MSG:-}"; fi
 }
@@ -2875,12 +2629,12 @@ space_helper_run() {
       v=${LINE%% *}; nm=${LINE#* }
       # The queue is a list of words: publish-fill's three tokens travel joined by + (no token holds one) and are split again, and checked again, where it runs.
       [ "$v" != publish-fill ] || nm=$(printf '%s' "$nm" | tr ' ' '+')
-      case "$v" in stop|down|firewall-del|app-stop|app-down|pub-stop|pub-down) cleanup_q="$cleanup_q $h:$v:$nm" ;; *) other_q="$other_q $h:$v:$nm" ;; esac
+      case "$v" in app-stop|app-down|pub-stop|pub-down) cleanup_q="$cleanup_q $h:$v:$nm" ;; *) other_q="$other_q $h:$v:$nm" ;; esac
     else
       sp_status "$h" failed "refused: $MSG"; sp_log "refused: $MSG"; rm -rf -- "${SP_PRIV:?}/claim/$b"
     fi
   done
-  # The cleanup lane first, so a flood of up never delays a stop, a down or a firewall-del.
+  # The cleanup lane first, so a flood of starts never delays a stop or a down.
   for q in $cleanup_q $other_q; do
     h=${q%%:*}; r=${q#*:}; v=${r%%:*}; nm=${r#*:}
     sp_do "$h" "$v" "$nm"
@@ -2911,25 +2665,11 @@ sp_locked() {
   case "$lp" in ""|*[!0-9]*) [ -z "$(find "$lk" -maxdepth 0 -mmin +120 2>/dev/null)" ]; return ;; esac
   kill -0 "$lp" 2>/dev/null
 }
-# space_helper_reattach: after an update the vyre container is a new one with no network joins and no rules: every recorded Space whose containers still run is
-# joined and firewalled again and proved. A Space that fails is stopped (never left running unfirewalled) and said.
+# space_helper_reattach: after an update the vyre container is a new one with no network joins and no rules. Every app whose container still runs is
+# joined and firewalled again and proved. An app that fails is stopped (never left running unfirewalled) and said.
 space_helper_reattach() {
   [ -s "$SP_PRIV/images" ] || return 0
-  for r in "$SP_PRIV"/spaces/*/record; do
-    [ -f "$r" ] || continue
-    d=${r%/record}; n=${d##*/}
-    printf '%s\n' "$n" | grep -Eqx "$SP_NAME_RE" || continue
-    sp_running "$n" || continue
-    # a Space that a request is bringing up right now joins, is firewalled and is proved by that request: its server may not be running yet (a restore comes first), and stopping it here would end the request
-    sp_locked "$n" && continue
-    MSG=""
-    if ! { sp_attach "$n" && sp_probe "$n"; }; then
-      sp_dc "$n" stop >/dev/null 2>&1 || true
-      echo "vyre: the Space $n was stopped: ${MSG:-its firewall could not be proved} (ask for up again once the server is healthy)" >&2
-      sp_log "stopped after update: ${MSG:-}"
-    fi
-  done
-  # App modules: the same, for every app whose container still runs. An app that cannot be walled again is stopped.
+  # App modules: every app whose container still runs. An app that cannot be walled again is stopped.
   for ad in "$SP_APPS"/*/; do
     [ -f "${ad}compose.yml" ] || continue
     m=$(basename "$ad")
@@ -2991,10 +2731,10 @@ space_helper() {
       ;;
     remove)
       [ "$(id -u)" = 0 ] || [ -n "$SYSTEMD_SEAM" ] || exec sudo -n "$WRAPPER" space-helper remove
-      # Each Space's containers go with the helper (left running, nothing would firewall them again); their volumes and keys stay, and purging them is `vyre admin purge-space`.
+      # Older record stacks and their firewall rules go with the helper. App stacks follow.
       for sd in "$SP_PRIV"/spaces/*/; do
         n=$(basename "$sd"); sp_known "$n" || continue
-        sp_dc "$n" down --remove-orphans >/dev/null 2>&1 || say "the Space $n's containers could not be removed: sudo docker compose -p vyre-$n-twenty down"
+        sp_old_drop "$n" >/dev/null 2>&1 || say "the Space $n's old containers could not be removed"
         sp_fw_del "$n" >/dev/null 2>&1 || true
       done
       for ad in "$SP_APPS"/*/; do
@@ -3089,7 +2829,7 @@ admin() {
         [ -f "$r" ] || continue
         d=${r%/record}; nm=${d##*/}
         printf '%s\n' "$nm" | grep -Eqx "$SP_NAME_RE" || continue
-        sp_dc "$nm" down -v --remove-orphans >/dev/null 2>&1 || die "the store of the Space $nm could not be removed; the daemon is stopped and nothing else was destroyed. Fix that and run this again."
+        sp_old_drop "$nm" >/dev/null 2>&1 || die "the store of the Space $nm could not be removed; the daemon is stopped and nothing else was destroyed. Fix that and run this again."
         MSG=""; sp_fw_del "$nm" >/dev/null 2>&1 || true
         rm -rf -- "${d:?}"
       done
@@ -3126,7 +2866,7 @@ admin() {
       ;;
     purge-space)
       set_root_run
-      sp_dc "$tgt" down -v --remove-orphans >/dev/null 2>&1 || die "the Space's containers and volumes could not be removed; nothing else was deleted"
+      sp_old_drop "$tgt" >/dev/null 2>&1 || die "the Space's containers and volumes could not be removed; nothing else was deleted"
       sp_fw_del "$tgt" || echo "vyre: the firewall rule for $tgt was left: ${MSG:-}" >&2
       rm -rf -- "${SP_PRIV:?}/spaces/$tgt"
       say "the Space $tgt is purged"

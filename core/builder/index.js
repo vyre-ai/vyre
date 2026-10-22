@@ -4,7 +4,7 @@
 
 import { readSite, digestOf } from "../../lib/publish/folder-build.js";
 import { checkDockerfile, buildImage } from "./container.js";
-import { askHelper, helperPresent } from "../../stores/twenty/helper.js";
+import { askHelper, helperPresent } from "../../stores/helper.js";
 import { requestText, writeServerFolder, removeServerFolder } from "../../lib/publish/server-folder.js";
 import { repoOf, cloneArgs, cloneEnv, tokenShape, TOKEN_ID, CLONE_MAX_BYTES } from "../../lib/publish/repo-source.js";
 import { gitCloneRun } from "../../lib/git-safe.js";

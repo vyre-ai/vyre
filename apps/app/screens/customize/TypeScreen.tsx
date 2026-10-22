@@ -36,7 +36,7 @@ export function TypeFields({ type }: { type: string }) {
   useEffect(() => { if (!defs.length) void load(); }, []);
   const def = defs.find((d) => d.name === type);
   const [edit, setEdit] = useState<null | { orig?: any; draft: Draft; rules: Rules; tried: boolean }>(null);
-  // Moving fields up and down shows at once and is saved once, MOVE_MS after the last press: each records.define is a change to the type in the store (on Twenty, seconds), so five presses are one.
+  // Moving fields up and down shows at once and is saved once, MOVE_MS after the last press: each records.define is a change to the type in the store, so five presses are one.
   const [moved, setMoved] = useState<{ type: string; fields: any[] } | null>(null);
   const moveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pending = useRef<null | (() => void)>(null);

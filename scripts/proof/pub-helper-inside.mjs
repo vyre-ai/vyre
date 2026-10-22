@@ -11,7 +11,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { buildByHelper } from "/opt/vyre/core/builder/index.js";
 import { checkDockerfile } from "/opt/vyre/lib/publish/dockerfile.js";
-import { askHelper } from "/opt/vyre/stores/twenty/helper.js";
+import { askHelper } from "/opt/vyre/stores/helper.js";
 import { createHelperDriver } from "/opt/vyre/core/appmods/helper-driver.js";
 import { publishedManifest } from "/opt/vyre/core/appmods/published.js";
 

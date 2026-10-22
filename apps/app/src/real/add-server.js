@@ -13,7 +13,7 @@ import { trail } from "../host/trail.js";
 
 export const SETUP_TTL_MS = 3_600_000;
 
-/** The one choice: Records is always on (the installer refuses the small built-in store for a person). `store` is VYRE_STORE on the install line. */
+/** Records live in the kernel's own store. `store` on a choice is ignored by the install line. */
 /** Which kind of machine the server is: the line differs (a Linux server or cloud machine, or a Mac that stays on). */
 export const SERVER_KINDS = Object.freeze([
   { id: "linux", label: "A Linux server, or a cloud server", where: "On the server, paste this line. Use your own account, not root." },

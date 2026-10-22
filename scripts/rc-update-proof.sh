@@ -125,7 +125,7 @@ console.log(running.length + " modules run, none failed");
   ! docker logs vyre-vyre-1 2>&1 | grep -E 'migration .* v[0-9]+: column already present, treated as applied' || { docker logs vyre-vyre-1 2>&1 | grep -E 'column already present' | head -5; fail "$1: an upgrade from a released version needed the duplicate-column repair"; }
 }
 # do_update LABEL: the update to the candidate, the way the root unit does it (a hand run of its step), with the throwaway key trusted for this run.
-do_update() { # LABEL STORE: STORE is none (an untouched box: no VYRE_STORE appears, no Twenty stack starts) or kept (VYRE_STORE is still there)
+do_update() { # LABEL STORE: STORE is none (an untouched box: no VYRE_STORE appears, no record-store stack starts) or kept (VYRE_STORE is still there)
   # The installer's own update unit is stopped first: it would pick the request up itself, with the pinned (real) key, and the hand run below would find nothing to do.
   sudo systemctl stop vyre-update.path vyre-update.service >/dev/null 2>&1 || true
   sudo sh -c 'printf "update\n" >/var/lib/vyre-update/request/request' 2>/dev/null || true
@@ -146,7 +146,7 @@ do_update() { # LABEL STORE: STORE is none (an untouched box: no VYRE_STORE appe
   case "$2" in
     kept) docker exec vyre-vyre-1 env | grep -qx 'VYRE_STORE=auto' || fail "$1: after the update VYRE_STORE=auto is not kept" ;;
     none) docker exec vyre-vyre-1 env | grep -q '^VYRE_STORE=' && fail "$1: the update added a VYRE_STORE the box never had (a silent switch of store)"
-          # (a shared test box may hold other people's Twenty stacks, so the question is whether THIS box asked for one: its helper has recorded no Space store)
+          # (a shared test box may hold other people's record-store stacks, so the question is whether THIS box asked for one: its helper has recorded no Space store)
           [ -z "$(sudo ls /var/lib/vyre-spaces/private/spaces 2>/dev/null)" ] || fail "$1: a Space store was set up on a box that never chose one" ;;
   esac
   every_module "$1"
@@ -162,7 +162,7 @@ do_update() { # LABEL STORE: STORE is none (an untouched box: no VYRE_STORE appe
       *'"records_store"'*) printf '%s' "$rs" | grep -q '"records_store":{[^}]*"store":"builtin"' && printf '%s' "$rs" | grep -q '"from":"default"' && printf '%s' "$rs" | grep -q '"reachable":true' || fail "$1: the records store line is not built-in, default and reachable: $rs" ;;
     esac
   fi
-  # The records written before the update are read back, and the box is still on the store they live in (the built-in one: there is no status line for the store, so: no Twenty stack, and the data reads).
+  # The records written before the update are read back, and the box is still on the store they live in (the built-in one: there is no status line for the store, so: no record-store stack, and the data reads).
   read_back Robin memory.me || { echo "--- memory.me:"; { [ "${DEV_KIND:-0}" = 1 ] && person_call memory.me '{}' || vyre call memory.me '{}' 2>&1; } | head -5; fail "$1: the memory fact written before the update is not read back"; }
   read_back 'retainer draft' planner.list || fail "$1: the planner note written before the update is not read back"
   [ "$(docker exec -u 1000 vyre-vyre-1 cat /home/vyre/.vyre/rc-marker 2>/dev/null)" = rc-marker-1 ] || fail "$1: the data written before the update is gone"

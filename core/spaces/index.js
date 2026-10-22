@@ -808,7 +808,7 @@ export default {
           const prec = prior ? /** @type {any} */ (await kv.get(`space-create/${prior.id}`)) : null;
           if (prior && prec && prec.status !== "cancelled" && prec.status !== "done") { spaceId = prior.id; resumed = true; } }
         // A Space the kernel hosts here is made by the kernel (its own id, store and key). The kernel says first what store it would use: on a server too small for the larger one
-        // it answers in the kernel's own words and offers the person's server; nothing is made here without Twenty.
+        // it answers in the kernel's own words and offers the person's server; nothing is made here without the record store.
         // A space whose home is a PAIRED SERVER is hosted by that server (DESIGN-spaces-first, "Where a space is hosted"): the server's kernel makes it (key, store, log, files there) and answers THE id;
         // this device keeps only the row. A server that is not yet paired goes through the code step as before. "On this computer" stays local.
         let remoteServer = null;
@@ -1284,10 +1284,10 @@ export default {
         if (K.spaces.hosts(i.id) === true) { const have = files.keys.load(i.id); return { space: i.id, existed: true, ...(have ? { rootPublic: have.publicKey } : {}) }; }
       }
       if (!(typeof i.id === "string" && i.id) && await kv.get("home-named").catch(() => null)) throw refuse("This server's Space is already your team's. Connect another server for My Cloud.", "server_has_team");   // ONE SPACE PER SERVER: a server whose own Space is named as a team's hosts no NEW Space beside it (a call with an id, a resume or an existing one, is untouched)
-      // A server that cannot run the record store (Twenty) hosts nothing: the refusal carries the kernel's own words.
+      // A server that cannot run the record store hosts nothing: the refusal carries the kernel's own words.
       const plan = typeof hooks.storePlan === "function" ? await hooks.storePlan() : typeof K.spaces.storePlan === "function" ? await K.spaces.storePlan().catch(() => null) : null;
       const confirm = plan && plan.confirm ? plan.confirm : null;
-      if (confirm) throw refuse(String(confirm.text || "This server cannot run the record store (Twenty)."), "store_unavailable");
+      if (confirm) throw refuse(String(confirm.text || "This server cannot run the record store."), "store_unavailable");
       let h;
       try { h = await K.spaces.host({ owner: K.owner, name: label, ...(typeof i.id === "string" && i.id ? { id: i.id } : {}) }); } catch (e) { throw plainKernelError(e); }
       const id = h.space || h.id;

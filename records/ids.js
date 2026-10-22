@@ -1,5 +1,5 @@
 // @ts-check
-// Record ids. Minting is kernel/core/ids.js (the one file that mints ids: a time-prefixed UUID in the v7 layout with the version-4 marker, because Twenty rejects the v7 marker; the reason is written at the top of that file).
+// Record ids. Minting is kernel/core/ids.js (the one file that mints ids: a time-prefixed UUID in the v7 layout with the version-4 marker, because the record store rejects the v7 marker; the reason is written at the top of that file).
 // This file adds only what a record store wants on top: ids from ONE process come out strictly in order, also within one millisecond and across a clock step back, by putting a 12-bit counter in the id's rand_a bits.
 
 import crypto from "node:crypto";

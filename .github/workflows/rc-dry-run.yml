@@ -1,7 +1,7 @@
 # The release-candidate dry run (RC1): everything a candidate has to pass before the user signs anything, on a throwaway key made in CI (the real key never appears here).
 # Run by hand (Actions, rc-dry-run, on the branch that will be cut):
 #   1. release-dist: the release folder a build makes is checked file by file (signed list, app build, installer, compose pins).
-#   2. packaged-boot: the package built with a throwaway key, installed with the real installer, every listed module runs, a root-run update keeps VYRE_KERNEL and VYRE_STORE,
+#   2. packaged-boot: the package built with a throwaway key, installed with the real installer, every listed module runs, a root-run update keeps VYRE_KERNEL,
 #      the signed web app is served and a changed file is refused, the release stamp says release, a tampered module is refused.
 #   3. update-refusals: an update from an older release to the candidate (signed, kept data), and every refusal (unsigned, wrong signer, tampered, downgrade).
 #   4. cosign-refusals: the image signature checks.

@@ -73,7 +73,7 @@ export interface ChangeEntry {
   readonly kind: 'created' | 'updated' | 'removed' | 'restored';
   readonly version: number;
   readonly at: Ms;
-  /** Present only if the store has it. A webhook-backed store usually has no "before" (the Twenty spike). */
+  /** Present only if the store has it. A webhook-backed store usually has no "before" (an early record-store spike). */
   readonly before?: Readonly<Record<string, FieldValue>>;
   readonly after?: Readonly<Record<string, FieldValue>>;
 }
