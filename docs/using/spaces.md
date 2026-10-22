@@ -38,6 +38,12 @@ If you joined a team first, **Add your own server** on that home takes you to th
 
 **I am joining a team** needs only a name and a code: make your name, connect the device with the code a team member gives you, and you are in. Inside a space, what each person may do depends on their role: owner, admin, manager, member or temp. See [Your private network](../concepts/network.md#the-owner).
 
+## The first page for each role
+
+An owner or an admin can give each role its own first page. Open Settings, under the name of the space, and choose **First page for each role**. The choices are the places in the app, such as Home, Chats or Records, and the screens the space has of its own. A role with no first page of its own opens Home.
+
+Everyone in the space opens the page set for their role the next time they open the app. A change is kept at once, and it belongs to the space it was set in. Your assistant can set it as well, but only when you ask it to in your own words.
+
 ## Records and servers
 
 Records (contacts, projects, tasks and anything you define), flows and Kits live in a space that runs on a server, My Cloud or a team's Cloud space. A Personal space on a device never starts that store. One space per server. A 4 GB server runs one space; Vyre sizes it for you. 8 GB is comfortable and leaves room to grow ([Install](../get-started/install.md)).
