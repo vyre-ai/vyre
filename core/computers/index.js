@@ -721,6 +721,7 @@ export default {
         keyboard.stop();
         shield.stop();
         fills.stop();
+        try { await cdpAdapter.close(); } catch { /* the endpoint is already gone */ }
         pool.wake();
         if (glass && typeof glass.stop === "function") { try { await glass.stop(); } catch {} }
       },

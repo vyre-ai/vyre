@@ -249,6 +249,14 @@ export function createCdpAdapter(deps) {
     },
     /** Close an agent's link (its computer went to sleep or was reset): its clients see a close and reconnect through the endpoint. @param {string} agent */
     drop(agent) { const l = links.get(agent); if (l) l.close(); },
-    async close() { for (const l of [...links.values()]) l.close(); if (server) await new Promise(r => /** @type {http.Server} */ (server).close(() => r(undefined))); },
+    async close() {
+      for (const l of [...links.values()]) l.close();
+      const s = server;
+      if (!s) return;
+      server = null;
+      // A hands client stays connected after the page opens. close() alone waits for that socket, so a stop would never finish.
+      if (typeof s.closeAllConnections === "function") s.closeAllConnections();
+      await new Promise(r => s.close(() => r(undefined)));
+    },
   };
 }
