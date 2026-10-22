@@ -5,7 +5,7 @@
 
 import { agentWords } from "../../src/state/agent-name.js";
 
-/** @typedef {{ id: string, label: string, kind: "all" | "recent" | "shared" | "project" | "agent" | "site" | "newsite", live?: boolean, draft?: boolean, path?: string }} Place */
+/** @typedef {{ id: string, label: string, kind: "all" | "recent" | "shared" | "with" | "project" | "agent" | "site" | "newsite", live?: boolean, draft?: boolean, path?: string }} Place */
 
 /**
  * The left column, in groups. A group with nothing in it is left out (no Projects heading over an empty list). Projects and Agents are the ones `files.places` returned for this person, each with the
@@ -18,7 +18,7 @@ export function placeGroups(o = {}) {
   const projects = folders(o.projects, "project"), agents = folders(o.agents, "agent");
   const sites = (o.sites || []).filter((s) => s && s.id && s.name);
   return [
-    { id: "top", heading: null, places: [{ id: "all", label: "All files", kind: "all" }, { id: "recent", label: "Recent", kind: "recent" }, { id: "shared-links", label: "Your shared links", kind: "shared" }] },
+    { id: "top", heading: null, places: [{ id: "all", label: "All files", kind: "all" }, { id: "recent", label: "Recent", kind: "recent" }, { id: "shared-links", label: "Your shared links", kind: "shared" }, { id: "shared-with-me", label: "Shared with me", kind: "with" }] },
     ...(projects.length ? [{ id: "projects", heading: "Projects", places: projects }] : []),
     ...(agents.length ? [{ id: "agents", heading: "Agents", places: agents }] : []),
     ...(!o.labs ? [] : [{ id: "sites", heading: "Sites", places: [...sites.map((s) => /** @type {Place} */ ({ id: `site:${s.id}`, label: s.name, kind: "site", ...(s.live ? { live: true } : { draft: true }) })), /** @type {Place} */ ({ id: "new-site", label: "New site", kind: "newsite" })] }]),

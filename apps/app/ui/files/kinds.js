@@ -2,14 +2,14 @@
 // What kind of file this is, so the viewer picks one renderer: markdown, code, text, json, image, pdf, docx, sheet, audio, video, html, or other (a card with Download). By name first, then the type the
 // server gave. Pure.
 
-/** @typedef {"markdown" | "code" | "text" | "json" | "image" | "pdf" | "docx" | "sheet" | "audio" | "video" | "html" | "other"} ViewKind */
+/** @typedef {"markdown" | "code" | "text" | "json" | "image" | "pdf" | "docx" | "sheet" | "pptx" | "audio" | "video" | "html" | "other"} ViewKind */
 
 const EXT = /** @type {Record<string, ViewKind>} */ ({
   md: "markdown", markdown: "markdown", mdx: "markdown",
   json: "json", jsonl: "text", geojson: "json",
   txt: "text", log: "text", text: "text", rtf: "text", env: "text", ini: "text", cfg: "text", conf: "text", toml: "code", lock: "text",
   png: "image", jpg: "image", jpeg: "image", gif: "image", webp: "image", avif: "image", bmp: "image", svg: "image", ico: "image",
-  pdf: "pdf", docx: "docx",
+  pdf: "pdf", docx: "docx", pptx: "pptx",
   xlsx: "sheet", xls: "sheet", csv: "sheet", tsv: "sheet",
   mp3: "audio", wav: "audio", m4a: "audio", ogg: "audio", flac: "audio", aac: "audio",
   mp4: "video", mov: "video", webm: "video", m4v: "video",
@@ -36,6 +36,7 @@ export function viewerKind(name, mime = "") {
   if (m === "text/csv") return "sheet";
   if (m.includes("wordprocessingml")) return "docx";
   if (m.includes("spreadsheetml") || m === "application/vnd.ms-excel") return "sheet";
+  if (m.includes("presentationml")) return "pptx";
   if (m.startsWith("text/")) return "text";
   return "other";
 }
@@ -63,4 +64,4 @@ export function mimeFor(name, kind) {
 }
 
 /** Largest bytes each renderer reads in the page. @type {Record<ViewKind, number>} */
-export const LIMITS = { markdown: 2 << 20, code: 2 << 20, text: 2 << 20, json: 4 << 20, image: 16 << 20, pdf: 32 << 20, docx: 16 << 20, sheet: 8 << 20, audio: 64 << 20, video: 128 << 20, html: 2 << 20, other: 0 };
+export const LIMITS = { markdown: 2 << 20, code: 2 << 20, text: 2 << 20, json: 4 << 20, image: 16 << 20, pdf: 32 << 20, docx: 16 << 20, sheet: 8 << 20, pptx: 16 << 20, audio: 64 << 20, video: 128 << 20, html: 2 << 20, other: 0 };

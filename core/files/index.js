@@ -30,6 +30,7 @@ import { registerSpaceEdit } from "./space-edit.js";
 import { registerAgentFolder } from "./agent-folder.js";
 import { registerSpaceMentions } from "./space-mentions.js";
 import { registerSpaceLinks } from "./space-links.js";
+import { registerWithMe } from "./with-me.js";
 import { registerLinked } from "./linked.js";
 import { googleDriveProvider } from "./linked-gdrive.js";
 import { driveClient } from "../google/drive-seam.js";
@@ -425,6 +426,8 @@ export default {
     registerSpaceMentions(ctx);
     // Shared links to a file in it, read only until they expire (core/files/space-links.js).
     registerSpaceLinks(ctx);
+    // Files shared with this person, one file at a time (core/files/with-me.js).
+    registerWithMe(ctx);
     // Files > Linked: live folders from a source, shown at Linked/<name> (core/files/linked.js). Providers are added as they land (Google Drive first).
     // Google Drive is the first source. It is made as the calling person through the google module's modules-only tool google.drive.linked (google/drive-seam.js picks their account), the
     // same module-to-module route the calendar sync and the watchers already use, so files holds no Google credential and reads no Google table.

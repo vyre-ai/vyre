@@ -34,7 +34,7 @@ function Places() {
   // Sites sits in Files only with Labs on: it is half built here, and Sites has its own page.
   const labs = useLabs((x) => x.on);
   const groups = placeGroups({ sites, projects: [], agents: folders.agents, labs });
-  const target = (id: string) => (id === "all" ? "space" : id === "shared-links" ? "shared" : id.startsWith("project:") || id.startsWith("agent:") ? `space:${id.slice(id.indexOf(":") + 1)}` : id);
+  const target = (id: string) => (id === "all" ? "space" : id === "shared-links" ? "shared" : id === "shared-with-me" ? "with" : id.startsWith("project:") || id.startsWith("agent:") ? `space:${id.slice(id.indexOf(":") + 1)}` : id);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 2, paddingBottom: 8 }}>
       {groups.map((g) => (
@@ -45,7 +45,7 @@ function Places() {
             return (
               <div key={p.id} role="button" onClick={() => { if (p.kind === "newsite") void startThread(router, "engineer", "Build me a new site: ", "New site"); else go(target(p.id)); }}
                 style={{ display: "flex", alignItems: "center", gap: RAIL.iconGap, height: RAIL.navRowH, margin: `0 ${RAIL.rowInset}px`, padding: `0 ${RAIL.gutter - RAIL.rowInset}px`, borderRadius: RAIL.rowRadius, cursor: "pointer", background: on ? "var(--selected, var(--surface-3))" : "transparent" }}>
-                <Icon name={(p.kind === "all" ? "drive" : p.kind === "recent" ? "clock" : p.kind === "shared" ? "users" : p.kind === "newsite" ? "plus" : p.kind === "project" ? "projects" : p.kind === "agent" ? "agents" : "globe") as never} size={RAIL.iconSize as never} tone={on ? "text" : "text-2"} />
+                <Icon name={(p.kind === "all" ? "drive" : p.kind === "recent" ? "clock" : p.kind === "shared" ? "users" : p.kind === "with" ? "share" : p.kind === "newsite" ? "plus" : p.kind === "project" ? "projects" : p.kind === "agent" ? "agents" : "globe") as never} size={RAIL.iconSize as never} tone={on ? "text" : "text-2"} />
                 <div style={{ minWidth: 0, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}><RailLabel medium={on}>{p.label}</RailLabel></div>
                 {p.live ? <Chip tone="ok">Live</Chip> : p.draft ? <Text size="caption" tone="faint">draft</Text> : null}
               </div>

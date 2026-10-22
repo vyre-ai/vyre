@@ -32,6 +32,8 @@ export const MEMBER_MAY = Object.freeze(new Set([
   "connectors.catalog", "connectors.connect", "connectors.connect.cancel", "connectors.connect.finish", "connectors.disconnect", "connectors.list",
   "mcp.catalog", "mcp.mine.add", "mcp.mine.list", "mcp.mine.remove",
   "files.drive.address", "files.drive.space.list", "files.drive.space.read", "files.drive.unshare", "files.drive.versions", "files.places", "files.space.mentions.search",
+  // A file someone shared with this person: the handler lists and reads only the caller's own rows, and the kernel's drive.read grant is what lets the read through (core/files/with-me.js).
+  "files.with.list", "files.with.read", "files.with.share",
   // Linked folders: a member links, lists and works her own, as her own source account (core/files/linked.js, member tests in core/files/linked.test.js and core/modules/door-linked.test.js).
   "files.linked.delete", "files.linked.link", "files.linked.list", "files.linked.ls", "files.linked.mentions.search", "files.linked.pick", "files.linked.providers", "files.linked.read", "files.linked.rename", "files.linked.search", "files.linked.status", "files.linked.sync", "files.linked.tree", "files.linked.unlink", "files.linked.versions", "files.linked.write",
   "flows.access.get", "flows.access.set", "flows.budget", "flows.cancel", "flows.card", "flows.cheatsheet", "flows.code", "flows.compile-text", "flows.connections", "flows.control", "flows.define", "flows.describe", "flows.diff", "flows.from-chat", "flows.get",

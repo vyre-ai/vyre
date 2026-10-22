@@ -10,6 +10,7 @@ import { Banner, Button, Card, Divider, EmptyState, ErrorState, Field, IconTile,
 import { Frame } from "../places/Frame";
 import RealDrive from "./RealDrive";
 import { SharedLinks } from "./SharedLinks";
+import { SharedWithMe } from "./SharedWithMe";
 import { Breadcrumb } from "./Breadcrumb";
 import { driveSource, linkedFileSource } from "./file-source";
 import { MenuRow } from "../../ui/blocks/RowMenu";
@@ -243,9 +244,9 @@ function Manager({ wide }: { wide: boolean }) {
     if (!r.dir && a.share && r.root === "space") items.push({ label: "Share a link", onPress: () => { linkCreate(undefined, r.path).then(() => showToast("Link made. It is under Shared.")).catch((e) => showToast(say(e))); } });
     if (r.dir && r.root === "space" && !agentFolderOf(r.path)) items.push({ label: "Publish as a site", onPress: () => setPublishing({ row: r, name: r.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) }) });
     if (!r.dir && r.root === "box" && r.share) items.push({ label: "Send to another computer", onPress: () => { tool<{ devices?: { id: string; name: string; ready?: boolean }[] }>("files.drop.targets", {}).then((t) => { const d = (t?.devices ?? []).find((x) => x.ready); if (!d) { showToast("No other computer is set up to receive. Turn receiving on there first."); return; } return tool("files.deliver", { path: r.path, device: d.id }).then(() => showToast(`Sent to ${d.name}. It arrives when that computer is on.`)); }).catch((e) => showToast(say(e))); } });
-    if (a.edit && (r.root === "linked" || (r.root === "space" && agentFolderOf(r.path)))) items.push({ label: "Rename", onPress: () => setDialog({ kind: "rename", rows: [r] }) });
+    if (a.edit && (r.root === "linked" || r.root === "space")) items.push({ label: "Rename", onPress: () => setDialog({ kind: "rename", rows: [r] }) });
     if (a.move) items.push({ label: "Move", onPress: () => setDialog({ kind: "move", rows: [r] }) });
-    if (a.remove && (r.root === "linked" || (r.root === "space" && agentFolderOf(r.path)))) items.push({ label: "Delete", danger: true, onPress: () => setDialog({ kind: "delete", rows: [r] }) });
+    if (a.remove && (r.root === "linked" || r.root === "space")) items.push({ label: "Delete", danger: true, onPress: () => setDialog({ kind: "delete", rows: [r] }) });
     return items;
   };
   const runBulk = (id: string) => {
@@ -408,6 +409,7 @@ function Manager({ wide }: { wide: boolean }) {
 
   const main = place.startsWith("site:") ? <SitePage name={place.slice(5)} onBack={() => go("space")} />
     : root === "shared" ? <View className="gap-s3"><SharedLinks refresh={0} /></View>
+    : place === "with" ? <View className="gap-s3"><SharedWithMe /></View>
     : root === "computer" ? <ComputerPage status={status} reload={loadRoots} />
     : waking ? <Card flush><EmptyState title={OPENING_COMPUTER} body="Its folder opens as soon as the computer answers." /></Card>
     : err ? <Card flush><ErrorState title="This folder did not open" reason={err} retry={() => load(place)} /></Card>

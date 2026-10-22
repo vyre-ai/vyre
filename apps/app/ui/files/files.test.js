@@ -8,13 +8,14 @@ import { lineDiff, diffStats, hunks, linesOf } from "./diff.js";
 import { looksBinary, textOfBytes, bytesOfText, base64Of, editState, needsGuard, saveWords, tagParts, taskOf, toggleTask, outline, fileCardOf, changedBy } from "./viewer-model.js";
 
 test("every file type picks one renderer, by name first and then by the type the server gave", () => {
-  const cases = { "README.md": "markdown", "a.MD": "markdown", "x.json": "json", "main.rs": "code", "Dockerfile": "code", "notes.txt": "text", "p.PNG": "image", "d.pdf": "pdf", "w.docx": "docx", "s.xlsx": "sheet", "t.csv": "sheet", "a.mp3": "audio", "v.mov": "video", "i.html": "html", "x.zip": "other", "noext": "other", "a.ts": "code", "c.yaml": "code" };
+  const cases = { "README.md": "markdown", "a.MD": "markdown", "x.json": "json", "main.rs": "code", "Dockerfile": "code", "notes.txt": "text", "p.PNG": "image", "d.pdf": "pdf", "w.docx": "docx", "s.xlsx": "sheet", "deck.pptx": "pptx", "t.csv": "sheet", "a.mp3": "audio", "v.mov": "video", "i.html": "html", "x.zip": "other", "noext": "other", "a.ts": "code", "c.yaml": "code" };
   for (const [n, k] of Object.entries(cases)) assert.equal(viewerKind(n), k, n);
   assert.equal(viewerKind("blob", "application/pdf"), "pdf");
   assert.equal(viewerKind("blob", "text/csv"), "sheet");
   assert.equal(viewerKind("blob", "image/png"), "image");
   assert.equal(viewerKind("blob", "text/plain"), "text");
   assert.equal(viewerKind("blob", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"), "docx");
+  assert.equal(viewerKind("blob", "application/vnd.openxmlformats-officedocument.presentationml.presentation"), "pptx");
   assert.equal(viewerKind("blob", "application/octet-stream"), "other");
   assert.equal(languageOf("a/b/main.jsx"), "js");
   assert.ok(canEdit("markdown") && canEdit("code") && !canEdit("json") && !canEdit("pdf") && isTextKind("json"));

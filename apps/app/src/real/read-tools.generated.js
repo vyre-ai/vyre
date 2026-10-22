@@ -163,6 +163,8 @@ export const READ_TOOLS = [
  "files.search",
  "files.space.mentions.search",
  "files.stat",
+ "files.with.list",
+ "files.with.read",
  "flows.access.get",
  "flows.actions",
  "flows.attention",

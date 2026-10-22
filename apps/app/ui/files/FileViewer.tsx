@@ -6,6 +6,7 @@ import { Platform, TextInput, View } from "react-native";
 import PdfDom from "./PdfDom";
 import DocxDom from "./DocxDom";
 import SheetDom from "./SheetDom";
+import PptxDom from "./PptxDom";
 import { Banner } from "../components/Banner";
 import { Button, IconButton } from "../components/Button";
 import { Icon } from "../components/Icon";
@@ -176,6 +177,7 @@ export function FileViewer(p: FileViewerProps) {
       case "audio": case "video":
         return Platform.OS === "web" && uri ? <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 16 }}>{createMedia(kind, uri)}</View> : <OtherCard name={p.name} note="Play this on a computer, or download it." onDownload={doDownload} />;
       case "docx": return body?.base64 || body?.bytes ? <DocxDom ink={color.text} base64={body.base64 ?? base64Of(body.bytes!)} dom={{ style: { flex: 1, width: "100%", height: "100%" } }} /> : null;
+      case "pptx": return body?.base64 || body?.bytes ? <PptxDom ink={color.text} base64={body.base64 ?? base64Of(body.bytes!)} dom={{ style: { flex: 1, width: "100%", height: "100%" } }} /> : null;
       case "sheet": {
         const ext = extOf(p.name);
         if (ext === "xls") return <OtherCard name={p.name} size={body?.bytes?.length} note="Older .xls spreadsheets cannot be shown here. Download it, or save it as .xlsx." onDownload={doDownload} />;

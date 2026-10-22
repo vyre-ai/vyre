@@ -31,6 +31,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - fix(sessions): an agent idle for 15 minutes sleeps, its process stops, and the next message resumes the same conversation with one short "waking" (core/sessions, core/switchboard/idle-wake.js).
 - fix(doctor): a slow call or a retry at or before `vyred` is up is warmup and is not counted. An error still is (core/cli/commands/doctor-log.js).
 - fix(server): the start log no longer warns that attachments and commands use apiVersion, a slow call during startup is held until vyred is up, and the daemon drops Node's SQLite experimental line (core/attachments, core/commands, core/daemon).
+- fix(files): a PowerPoint preview inflates each slide from its own bytes, which the app typecheck accepts (apps/app/ui/files/PptxDom.tsx).
+- fix(files): a file that is not shared says to ask the person who has it (core/files/with-me.js).
+- fix(files): Shared with me stays the person's own decision. A phone reaches those tools as its paired device, and a refusal says what to do next (core/files/with-me.js).
+- feat(files): a Space folder can be moved and renamed in Files, and an agent's folder can be moved, renamed and deleted on that agent's computer. Deleting a Space file is refused: the owner role has no drive.delete grant, so the file stays (core/files, apps/app/screens/drive).
+- feat(files): Shared with me lists a file another person shared with you, and you can read that file (core/files/with-me.js, apps/app/screens/drive).
+- feat(files): a Word, Excel or PowerPoint file opens in the preview as a page of its text (core/previews/office.js, apps/app/ui/files).
+- feat(files): a second writer of the same file waits up to 10 seconds, then is told who has it. The first writer's bytes stay (core/files/write-lock.js).
 - fix(records): switching Spaces shows the new Space's records. The shared records world was kept by its filters alone, so Records kept drawing the last Space's rows after a switch; it is now kept per Space (apps/app/ui/views/data.ts, world-space.js, screens/shell/state.ts).
 - fix(chat): the Computer tab is the screen, one line under it, and Reset. Pressing an asleep screen wakes it. Pressing a live screen opens the computer full screen. Open, Sleep, the Chrome / Files / Terminal rows, and the files row are gone (apps/app/ui/chat/AgentComputerPane.tsx, apps/app/src/chat/ComputerTab.tsx).
 - fix(glass): a live computer opens over the whole window: the screen, Take over (Hand back while you hold the keyboard), Sign in privately, and close. Escape hands the keyboard back, then closes. The old page chrome (title, Screen/Files, Activity, and the paused card while the window is visible) is gone (apps/app/screens/glass/ComputerOverlay.tsx).

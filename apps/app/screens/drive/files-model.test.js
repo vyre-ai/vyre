@@ -78,11 +78,11 @@ test("breadcrumbs name the root, then each step, and tapping one goes there", { 
 test("what a source lets you do is stated, so the bar offers only real things", { skip: !strip }, async () => {
   const m = await import("./files-model.ts");
   const can = (/** @type {string} */ root) => m.abilities(root);
-  assert.deepEqual(can("space"), { upload: true, versions: true, move: false, remove: false, download: true, share: true, edit: false });
+  assert.deepEqual(can("space"), { upload: true, versions: true, move: true, remove: true, download: true, share: true, edit: true });
   assert.deepEqual(can("linked"), { upload: true, versions: true, move: true, remove: true, download: true, share: false, edit: true });
   assert.deepEqual(can("box"), { upload: false, versions: false, move: false, remove: false, download: false, share: false, edit: false });
   assert.deepEqual(can("shared"), { upload: false, versions: false, move: false, remove: true, download: false, share: false, edit: false });
-  assert.equal(m.bulkActions("space", 2).map((a) => a.id).join(), "download,share");
+  assert.equal(m.bulkActions("space", 2).map((a) => a.id).join(), "move,download,share,delete");
   assert.equal(m.bulkActions("linked", 2).map((a) => a.id).join(), "move,download,delete");
   assert.equal(m.bulkActions("box", 0).length, 0);
 });

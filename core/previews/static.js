@@ -7,6 +7,7 @@ import fs from "node:fs";
 import path from "node:path";
 import http from "node:http";
 import { build, entryIn, shell, failing, libFile, JSX_EXT } from "./jsx.js";
+import { isOffice, officeHtml } from "./office.js";
 
 const MIME = {
   ".html": "text/html; charset=utf-8", ".htm": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8",
@@ -102,6 +103,12 @@ export function createStatic(o) {
       if (DRAWN[ext] || (ext === ".svg" && url.pathname === "/" && pv.file === f)) {
         const format = DRAWN[ext] || "svg";
         const html = await o.drawn(format, path.basename(f), fs.readFileSync(f, "utf8"));
+        res.writeHead(200, { ...base, "content-type": "text/html; charset=utf-8" });
+        return void res.end(req.method === "HEAD" ? undefined : html);
+      }
+      // Word, Excel and PowerPoint: a page of the file's text, never the zip and never a script (office.js).
+      if (isOffice(ext)) {
+        const html = officeHtml(fs.readFileSync(f), ext);
         res.writeHead(200, { ...base, "content-type": "text/html; charset=utf-8" });
         return void res.end(req.method === "HEAD" ? undefined : html);
       }
