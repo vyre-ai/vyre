@@ -487,7 +487,9 @@ test("daemon: the pre-app pages' relay client (their ../../relay/client/*.js imp
   const nodeOnly = /** @type {any} */ (await get("/relay/client/nodecrypto.js"));
   assert.notEqual(nodeOnly.body, fs.readFileSync(path.join(import.meta.dirname, "..", "relay", "client", "nodecrypto.js"), "utf8"));
   // The pre-app pages carry the same connect-src fix (a page's own fetch/WebSocket to the relay runs from here, not from /relay/client/*.js).
-  const page = /** @type {any} */ (await get("/onboard"));
+  // The owner wizard at /onboard is gone. The sign-in page is the pre-app page that remains.
+  const page = /** @type {any} */ (await get("/person/signin"));
+  assert.equal(page.status, 200);
   assert.ok(page.headers["content-security-policy"].includes("wss://relay.vyre.run"));
 });
 

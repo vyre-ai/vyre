@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6.9
 
+- fix(setup): with the old setup page gone, the relay check reads the sign-in page, and a missing setup folder is not a crash.
 - fix(flows): a wake with no approver carries no person's name, so it does not run as someone else. The editor already says the agent runs with its own access.
 - fix(setup): the old setup page is no longer served. Setup is the app's first run.
 - fix(app): the sample chat and projects read as a poster order, a site refresh and a job, not a dispute or a matter.
