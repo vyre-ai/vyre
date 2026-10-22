@@ -24,7 +24,7 @@
 /** @type {Record<string, ViewDefinition>} */
 export const viewDefs = {
   contact: {
-    plural: "People", titleField: "name", initials: true,
+    plural: "People", titleField: "name",
     list: { columns: ["role", "email", "phone", "rating"], sort: "name" },
     board: { groupBy: "role", card: ["email", "rating"] },
   },

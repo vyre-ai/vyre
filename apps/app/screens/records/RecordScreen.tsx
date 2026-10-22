@@ -131,7 +131,7 @@ export function RecordScreen({ id, onClose, onOpen }: { id: string; onClose?: ()
   const headerNames = (pinned ?? factsOf(def, rec).map(([l]) => def.fields.find((f: any) => f.label === l)?.name).filter(Boolean) as string[]).filter((n) => n !== "ref");
   return (
     <View className="min-h-0 flex-1">
-      <RecordHeader title={title} context={[def.label, space].filter(Boolean).join(" \u00B7 ")} id={idText || undefined} faces={[{ kind: vd.initials ? "person" : "project", id: rec.id, name: title, seed: rec.data?.avatar_seed }]} onBack={back} onChat={() => router.push(`/u/chats/new?about=${encodeURIComponent(rec.urn)}&name=${encodeURIComponent(title)}` as never)} menu={menu} />
+      <RecordHeader title={title} context={[def.label, space].filter(Boolean).join(" \u00B7 ")} id={idText || undefined} faces={vd.initials ? [{ kind: "person", id: rec.id, name: title, seed: rec.data?.avatar_seed }] : undefined} onBack={back} onChat={() => router.push(`/u/chats/new?about=${encodeURIComponent(rec.urn)}&name=${encodeURIComponent(title)}` as never)} menu={menu} />
       {rec.type === "contact" || rec.type === "organization" ? <View className="px-s4 pt-s2"><Roles urn={rec.urn} name={title} onOpen={open} /></View> : null}
       {isShareable(rec.type) ? <View className="px-s4 pt-s2"><ShareControl urn={rec.urn} type={rec.type} record={typeof rec.data?.record === "object" ? rec.data.record?.urn : typeof rec.data?.record === "string" ? rec.data.record : undefined} value={String(rec.data?.visibility ?? "private")} onDone={reload} /></View> : null}
       <View className="px-s4 pt-s2"><QuickActions email={email || undefined} urn={rec.urn} onLogged={() => setLogged((n) => n + 1)} /></View>
