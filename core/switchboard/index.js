@@ -44,7 +44,7 @@ import { cardsFor, ownerChain } from "../../lib/record-cards.js";
 import { lentSpawnFor, lentOf, carryOn, lentYield, lentDrain, lentReturn, lentOfferedFor, lentSteadyFor, lentBlocks, lentHolder, lentControl, modelForAsker, hopPersonOf, personOfMeta, personOfChain, lentRowFor, takeBackFor } from "../../lib/lent-placement.js";
 import { memberKey, lendTurn } from "./member-key.js";
 import { modelNames, keyOfAccount, MODEL_LISTING_PROVIDERS } from "../../lib/model-names.js";
-import { registerEdits } from "./edits.js"; import { pickChat, pickOver } from "./picks.js"; import { carryFor, summarisedLine } from "./carry.js";
+import { registerEdits } from "./edits.js"; import { pickChat, pickOver } from "./picks.js"; import { carryFor, summarisedLine } from "./carry.js"; import { createTurnTail } from "./turn-tail.js"; import { retryOrFresh } from "./retry-fresh.js";
 import { isPerson } from "../../lib/caller.js";
 import { pruneInbox } from "./inbox-prune.js";
 import { memberListFilter, launchPersonOf, startedBy } from "./member-list.js";
@@ -435,7 +435,7 @@ export class Switchboard {
    *           prune?: (thread: string, before: number) => void, run?: typeof defaultRun, bin?: string,
    *           transcripts?: string[], naming?: (id: string, ours: number[]) => number[], isClaude?: (pid: number) => boolean,
    *           sdk?: { module: any, bin: string|null }|null, idleMs?: number, maxLive?: number, subreaper?: string|null, uid?: number, gid?: number,
-   *           auth?: (o: { agent?: string|null }) => Promise<{ auth: string, env?: Record<string,string>, fallback?: any }|null> }} deps
+   *           auth?: (o: { agent?: string|null }) => Promise<{ auth: string, env?: Record<string,string>, fallback?: any }|null>, now?: () => number, later?: (fn: () => void, ms: number) => any, cancel?: (t: any) => void }} deps
    */
   constructor(deps) {
     this.deps = deps;
@@ -476,7 +476,7 @@ export class Switchboard {
     this.shellContext = new Map();
     /** A thread running one turn on another provider (threads.send {provider}): where it goes back to, and what was said meanwhile. @type {Map<string, any>} */
     this.once = new Map();
-    /** @type {Map<string, { token: () => any, end: () => Promise<any>, turn: boolean, asker: string | null }>} each thread's current kernel session (its own, or the current chat turn's) */ this.ksCur = new Map(); this.turnSpace = new Map(); /** @type {Map<string, string>} thread -> the TEAM Space its current chat turn belongs to (none for the home's own) */
+    /** @type {Map<string, { token: () => any, end: () => Promise<any>, turn: boolean, asker: string | null }>} each thread's current kernel session (its own, or the current chat turn's) */ this.ksCur = new Map(); this.turnSpace = new Map(); /** @type {Map<string, string>} thread -> the TEAM Space its current chat turn belongs to (none for the home's own) */ this.turnTail = createTurnTail(this);
     /** @type {Map<string, Promise<any>>} the tail of each thread's chat sends, so they run one at a time */ this.sendChain = new Map();
     /** @type {Map<string, string | null>} who asked the chat turn now running on a thread, whether or not the kernel let their session open: nobody else's message joins it */ this.turnAsker = new Map();
     /** @type {Map<string, Promise<any>>} a thread's hop back in flight: the next person's turn is judged only after it has finished (revertSettled in asker-account.js) */ this.reverting = new Map();
@@ -1555,7 +1555,7 @@ export class Switchboard {
     const foreignOpts = foreign ? { floor, memory, ...(sock ? { mcpServers: [{ name: "vyre", command: process.execPath, args: [MCP_SERVER], env: Object.entries(mcpEnv).map(([name, value]) => ({ name, value: String(value) })) }] } : {}) } : {};
     const how = { ...foreignOpts, ...(this.libSeed && this.libSeed.get(id) ? { librarySeed: this.libSeed.get(id) } : {}), ...(o.sandboxSpawn ? { sandboxSpawn: o.sandboxSpawn } : {}), ...(o.lentSpawn ? { lentSpawn: o.lentSpawn } : {}), subreaper: this.deps.subreaper || null, ...(this.deps.uid != null ? { uid: this.deps.uid, gid: this.deps.gid } : {}), ...(account ? { account } : {}),
       onSpawn: g => { state.group = g; this.groups.set(g.pgid, g.sid); } };
-    const on = { ...how, onMessage: m => { state.heard = true; if (state.startWatch) { clearTimeout(state.startWatch); state.startWatch = null; } this.touch(id, state); if (!state.pidSet && state.proc && state.proc.pid) { state.pidSet = true; this.set(id, { pid: state.proc.pid }); } this.onMessage(id, state, scrubOut(m)); }, onExit: (code, signal, stderr, moved) => this.onExit(id, state, code, signal, stderr, moved) };
+    const on = { ...how, onMessage: m => { state.heard = true; if (state.startWatch) { clearTimeout(state.startWatch); state.startWatch = null; } this.touch(id, state); if (!state.pidSet && state.proc && state.proc.pid) { state.pidSet = true; this.set(id, { pid: state.proc.pid }); } return this.turnTail.deliver(id, state, scrubOut(m)); }, onExit: (code, signal, stderr, moved) => this.onExit(id, state, code, signal, stderr, moved) };
     // The Agent SDK when it is loaded (ADR 0030), else the CLI runner: the same protocol, so the
     // same stream reaches onMessage either way.
     const other = o.provider && o.provider !== "claude" && this.deps.providers ? this.deps.providers.get(o.provider) : null;
@@ -2324,8 +2324,8 @@ export class Switchboard {
     const ran = Boolean(st.turn); st.turn = null;
     this.resumeTried.delete(id);
     if (ran && (!this.live.has(id) || this.live.get(id) === st)) this.turnAsker.delete(id);   // only a turn that ran, and is the one running now, clears its asker: a stopped turn's late finish, or a launch with queued rows and no turn yet (resumeQueued), never wipes the asker of the turn about to be written
-    // A chat turn's kernel session ends shortly after the turn (a grace for the stream to close its reply) or when the next send opens its own, whichever is first: it cannot carry on to another turn.
-    { const k = this.ksCur.get(id); if (k && k.turn) { const t = setTimeout(() => { if (this.ksCur.get(id) === k) void this.endKernelSession(id, "30 s after its turn ended"); }, 30_000); t.unref?.(); } }
+    // A chat turn's kernel session stays up while the process is still producing events, and ends 30 s after the last one (or sooner, when the next send opens its own).
+    this.turnTail.arm(id);
     this.releaseSlots(id, st);
     if (this.live.get(id) !== st || st.stopping) return;
     // One turn on another provider is over: the session goes back to its own, and carries what was said.
@@ -4020,7 +4020,7 @@ export default {
       idleMs: cfg.idle_minutes * 60_000, maxLive: cfg.max_live, auth, providers: ctx.providers, accountEnv, accountHome, owner: () => (ctx.kernel ? String(ctx.kernel.owner || "") : null), membershipOf: async (/** @type {string} */ p) => (ctx.kernel && typeof ctx.kernel.membership === "function" ? ctx.kernel.membership(p) : null),
       // Each session's own socket (option A): always with "on", with the spawner under "auto".
       // Through the spawner it goes in the box's shared folder; else a private one of this user's.
-      kernelSession: ctx.kernelSession || null,
+      kernelSession: ctx.kernelSession || null, ...(ctx.config && ctx.config.sessions && ctx.config.sessions.clock && typeof ctx.config.sessions.clock === "object" ? { now: ctx.config.sessions.clock.now, later: ctx.config.sessions.clock.later, cancel: ctx.config.sessions.clock.cancel } : {}),
       // One Chat: makes the chat a run with none of its own lives in (the daemon, under the home owner's chain).
       chatFor: ctx.chatFor || null,
       // A record tag (# in the composer) is read under the sender's own chain, in this Space only.
@@ -4696,7 +4696,7 @@ export default {
       async (i, { caller, idempotencyKey, peer }) => {
         guard(caller, "retry messages");
         if (!queuesFor(caller)) throw Object.assign(new Error("only a person's surface can retry a message"), { code: "denied" });
-        return sb.editRetry(i.thread, i.message || null, null, { restore: i.restore || "conversation", surface: surfaceOf(i, caller), author: authorOf(peer), admin: isAdminCall(peer), ...(idempotencyKey ? { uuid: keyUuid(String(caller || ""), String(idempotencyKey)) } : {}) });
+        return retryOrFresh(sb, i.thread, i.message || null, { restore: i.restore || "conversation", surface: surfaceOf(i, caller), author: authorOf(peer), admin: isAdminCall(peer), ...(idempotencyKey ? { uuid: keyUuid(String(caller || ""), String(idempotencyKey)) } : {}) });
       });
 
     tool("threads.branch", "Branch from any point: a new thread with the conversation up to (not including) a message or a turn, named \"<name> (branch)\", in the same folder, that the original never sees; taint flags carry over as a fork's do. at: a message uuid or a turn id (thread.turn's turn); none branches from the live end. Refused with unsupported when the provider cannot fork or go back. A person's surface only.",

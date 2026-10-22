@@ -5,6 +5,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 ## 0.6.9
 
 - fix(app): a paired server that does not answer no longer holds up the others. Each ask of every server waits at most 4 seconds, the live servers' answers are used, and the silent one is remembered as offline for a minute so it is not asked on every call. A call for the Space showing goes straight to its server. The switcher shows "Not answering" under that Space, and choosing it says so. Remove this Space from this computer drops the pairing, the kept shell, the kept Spaces and the saved root, then switches to the next Space. Settings, Devices and computers lists the paired servers even when one is offline, with the same Remove (apps/app/src/real/server-wait.ts, apps/app/src/real/space-servers.ts, apps/app/src/real/drop-space.ts).
+- fix(switchboard): a chat turn's kernel session stays open while Claude Code is still producing events. It ends 30 s after the last event of the process, not 30 s after the first result. A frame that arrives for a session ended moments ago reopens that session for the same person and is delivered (core/switchboard/turn-tail.js).
+- fix(switchboard): Try again after a dropped reply resends the last message the person typed, on a fresh kernel session, when the chat's message id is not a transcript uuid or that message is the first of the session. The chat stream's hold on the keyboard yields to that retry; a terminal or another person still refuses it. When the transcript has no such line, the last turn the thread recorded is sent (core/switchboard/retry-fresh.js).
+- fix(stream): a new working turn clears a reply that was dropped for want of a session, so Try again can show the answer (core/stream/group.js).
 
 ## 0.6.8
 

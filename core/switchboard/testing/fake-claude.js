@@ -32,6 +32,7 @@
 //   "vyre <tool> <json>"  calls a vyred tool the way the MCP server does inside this thread
 //                   (caller mcp:agent:<VYRE_AGENT>, or mcp), and says the JSON it got back
 //   "recall"        says which process answers (side, pid) and every earlier prompt of this session, read back from its own transcript file: a chat that moved computers still has them
+//   "research the pine site" / "research the cedar site"   echoes, then after .vyre-tail appears in the working folder emits a fetch and more text, once per process
 //   anything else   echoes the prompt back in a few deltas
 // FAKE_GOLDEN_FILE (and FAKE_GOLDEN_DIR): every turn is answered from the recorded model instead (core/sessions/testing/golden.js).
 // FAKE_CLAUDE_LOG, when set, gets one line per launch with argv and credential kind.
@@ -623,6 +624,24 @@ async function turn(prompt, uuid = null) {
   return result(true, `echo: ${p}${tag}`);
 }
 
+// A test holds the process after the result, then asks for one more fetch and a few more words.
+const TAIL_WORD = { "research the pine site": "pineanswer", "research the cedar site": "cedaranswer" };
+let tailed = false;
+async function tailAfter(/** @type {any} */ prompt) {
+  const word = TAIL_WORD[String(prompt).trim()];
+  if (!word || tailed) return;
+  tailed = true;
+  const file = path.join(process.cwd(), ".vyre-tail");
+  const deadline = Date.now() + 60_000;
+  while (!fs.existsSync(file)) {
+    if (Date.now() > deadline) return;
+    await sleep(20);
+  }
+  await useTool("WebFetch", { url: "https://pine.example/notes", prompt: "read the page" }, { run: () => ({ content: "a page of notes" }) });
+  await say(word);
+  result(true, word);
+}
+
 let queue = Promise.resolve();
 readline.createInterface({ input: process.stdin }).on("line", line => {
   let m; try { m = JSON.parse(line); } catch { return; }
@@ -700,7 +719,7 @@ readline.createInterface({ input: process.stdin }).on("line", line => {
     queue = queue.then(async () => {
       busy = true; took = m.uuid ? [m.uuid] : [];
       turnUuid = m.uuid || null;
-      try { await turn(text, m.uuid || null); } finally { busy = false; }
+      try { await turn(text, m.uuid || null); await tailAfter(text); } finally { busy = false; }
       // Steered words the turn never reached (an interrupt, a turn with no reply left) run next.
       if (folds.length) { const f = folds; folds = []; queue = queue.then(async () => { busy = true; took = f.map(x => x.uuid).filter(Boolean); try { await turn(f.map(x => x.text).join("\n\n")); } finally { busy = false; } }); }
     });

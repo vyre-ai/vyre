@@ -563,7 +563,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
         // A status is not shown in the group (SKIP) but it ends the turn: the turn's own handle closes and thinking that never became a reply is dropped.
         if (s.kind === "status") {
           const st = s.data && s.data.state;
-          if (st === "working") m.running = true;
+          if (st === "working") { m.running = true; if (m.dead) { m.dead = false; m.refused = new Set(); m.buf = new Map(); } }
           else if (st) {
             await endTurn(m);
             // a turn ends when the thread leaves working (for waiting, done, failed, stopped); "starting" is not its end

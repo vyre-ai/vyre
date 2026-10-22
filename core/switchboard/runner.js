@@ -93,17 +93,18 @@ export function answerLine(requestId, decision, input, message, extra = {}) {
  * Start one session. Calls onMessage for every parsed stdout line and onExit once.
  * @param {{ bin: string, args: string[], cwd: string, env: Record<string, string|undefined>, subreaper?: string|null, uid?: number, gid?: number,
  *           onSpawn?: (g: { pid: number, pgid: number, sid: number }) => void,
- *           onMessage: (m: any) => void, onExit: (code: number|null, signal: string|null, stderr: string) => void }} o
+ *           onMessage: (m: any) => void | Promise<void>, onExit: (code: number|null, signal: string|null, stderr: string) => void }} o
  */
 export function run(o) {
   // Its own group and session, under the subreaper where there is one (core/sessions/spawn.js).
   const child = spawnSession(o.bin, o.args, { cwd: o.cwd, env: o.env, subreaper: o.subreaper, uid: o.uid, gid: o.gid, account: o.account, onSpawn: o.onSpawn, sandboxSpawn: /** @type {any} */ (o).sandboxSpawn, lentSpawn: /** @type {any} */ (o).lentSpawn, ...(/** @type {any} */ (o).librarySeed ? { seed: /** @type {any} */ (o).librarySeed } : {}) });
-  let buf = "", err = "", exited = false, n = 0;
+  let buf = "", err = "", exited = false, n = 0, reading = false;
   /** @type {Map<string, { resolve: (r: any) => void, reject: (e: Error) => void }>} control requests Vyre sent, waiting for their answer */
   const asked = new Map();
-  child.stdout.setEncoding("utf8");
-  child.stdout.on("data", chunk => {
-    buf += chunk;
+  // A line whose handler returns a promise (a kernel session reopened for a late frame) holds the
+  // rest of the buffer until it settles, so the next line is not delivered before that session exists.
+  const takeLine = () => {
+    if (reading) return;
     let i;
     while ((i = buf.indexOf("\n")) >= 0) {
       const line = buf.slice(0, i); buf = buf.slice(i + 1);
@@ -116,9 +117,18 @@ export function run(o) {
         if (m.response.subtype === "error") a.reject(new Error(String(m.response.error || "Claude Code refused it"))); else a.resolve(m.response.response || {});
         continue;
       }
-      try { o.onMessage(m); } catch {}
+      let waited = /** @type {any} */ (null);
+      try { waited = o.onMessage(m); } catch { waited = null; }
+      if (waited && typeof waited.then === "function") {
+        reading = true;
+        const next = () => { reading = false; takeLine(); };
+        waited.then(next, next);
+        return;
+      }
     }
-  });
+  };
+  child.stdout.setEncoding("utf8");
+  child.stdout.on("data", chunk => { buf += chunk; takeLine(); });
   // Only the tail is kept: enough to say why a session died, never a growing buffer.
   child.stderr.setEncoding("utf8");
   child.stderr.on("data", c => { err = (err + c).slice(-2000); });

@@ -90,7 +90,7 @@ export function run(sdk, o) {
   /** @type {import("node:child_process").ChildProcess|null} */ let child = null;
   let err = "", exited = false, n = 0, code = /** @type {number|null} */ (null), sig = /** @type {string|null} */ (null);
   let pumped = false, died = false;
-  const say = m => { try { o.onMessage(m); } catch {} };
+  const say = (/** @type {any} */ m) => { try { const w = o.onMessage(m); return w && typeof w.then === "function" ? w.catch(() => {}) : w; } catch { return undefined; } };
   const done = () => { if (exited || !pumped || !(died || !child)) return; exited = true; o.onExit(code, sig, err, /** @type {any} */ (child) && /** @type {any} */ (child).moved); };
 
   const canUseTool = (tool, toolInput, opts) => new Promise(resolve => {
@@ -126,7 +126,7 @@ export function run(sdk, o) {
   catch (e) { err = /** @type {Error} */ (e).message; pumped = true; died = true; queueMicrotask(done); return stub(); }
 
   (async () => {
-    try { for await (const m of q) say(m); }
+    try { for await (const m of q) { const w = say(m); if (w && typeof w.then === "function") await w.catch(() => {}); } }
     catch (e) { err = (err + "\n" + String(/** @type {any} */ (e)?.message || e)).slice(-2000); }
     pumped = true;
     // The child may already be gone, or never have started (a missing binary).
