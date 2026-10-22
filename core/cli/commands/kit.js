@@ -13,7 +13,7 @@ import { call } from "../../daemon/client.js";
 import { ensureUp } from "../daemonctl.js";
 import { out, dim, beacon, signal } from "../style.js";
 import { json, emit, failTool, UsageError, parse, fail, usage, exitFor, nextFor, EXIT } from "../kit.js";
-import { checkSource, looksLikeSource } from "../../lib/kit-source.js";
+import { checkSource, looksLikeSource } from "../../../lib/kit-source.js";
 import { readKit, tokenRef, vaultToken } from "../kit-source.js";
 
 export default {
