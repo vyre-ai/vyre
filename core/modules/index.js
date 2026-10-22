@@ -1665,7 +1665,7 @@ export class Registry {
     const presence = this.deps.presence;
     const isOut = (/** @type {string} */ n) => Boolean((this.tools.get(n) || {}).outward);
     const moment = momentOf(tool, isOut);
-    // The person's own switch (Settings > Privacy: confirm.pairing, confirm.vault, confirm.outward, on by default): with one off, that person's OWN call for that moment goes through without the yes. Only a
+    // The person's own switch (Settings > Privacy: confirm.pairing, "presence.confirm_vault", "presence.confirm_outward", on by default): with one off, that person's OWN call for that moment goes through without the yes. Only a
     // person's own caller counts (never a model, an agent, a module or a guest: those are held or refused as before), and only the three moments; making or handing over an owner has no switch.
     const switchedOff = Boolean(moment && isPerson(String(caller)) && this.deps.config && this.deps.config.confirm && (moment === "pair" ? this.deps.config.confirm.pairing : moment === "vault" ? this.deps.config.confirm.vault : moment === "outward" ? this.deps.config.confirm.outward : true) === false);
     const noDevice = !switchedOff && !(def.core && coreHolder.link) && await this.noPresenceDevice(caller, meta, tool, input); if (switchedOff || noDevice) meta = { ...meta, presence: { method: switchedOff ? "switch" : "no-device", keyId: null } }; // the owner's ruling; a caller's meta.presence is never read

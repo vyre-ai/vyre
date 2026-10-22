@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6.9
 
+- fix(settings): the vault yes and the outward yes stay on the Privacy page. Each one is a presence setting, so Settings can show it, and turning it off still lets only your own request through (core/presence/module.json).
 - fix(sign-in): a name that is not listed yet does not stop the first run. The page stays online and says the name is not reachable yet, and Vyre tries the listing again on the next unlock (apps/app/src/identity/claim-space.js, apps/app/screens/first-run/FirstRun.tsx).
 - fix(settings): What my agents can see sits on What agents may do, with Outside, Spend and Permissions. The old page opens that one (apps/app/screens/assistants/AssistantAccess.tsx).
 - fix(sidebar): Design changes is in the sidebar for an owner. Anyone else does not see it (lib/sidebar/model.js).
