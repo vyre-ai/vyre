@@ -325,6 +325,14 @@
    "module": "chrome",
    "reason": "read-only: nothing is changed in the page; an agent caller needs the person's grant (requireGrant) first, the URL floor refuses blind pages, and a screenshot is refused when a password or one-time-code field shows (the box-side hands-chrome snapshot and screenshot are the same: an agent reads only its own computer)"
   },
+  "computers.agent.file.make": {
+   "module": "computers",
+   "reason": "own-computer check: the body lets an agent write only its own folder (agentClaim) and refuses any other caller unless that person may edit the agent (mayUse); the path stays inside the agent's home"
+  },
+  "computers.agent.terminal.run": {
+   "module": "computers",
+   "reason": "own-computer check: the body lets an agent type one command into its own desk Terminal (agentClaim) and refuses any other caller unless that person may edit the agent (mayUse)"
+  },
   "computers.checkout": {
    "module": "computers",
    "reason": "own-computer scope: resolve() lets an agent name only its own computer and refuses any other (the assistant may name another); a stop or restart removes no data (the home volume stays)"

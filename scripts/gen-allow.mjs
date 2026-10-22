@@ -426,6 +426,9 @@ export const DECLARED_SINCE = Object.freeze({
   "onboard.github.start": "d14c56ec8@16 Oct 2026",
   "onboard.join.read": "d14c56ec8@16 Oct 2026",
   "onboard.space.poll": "d14c56ec8@16 Oct 2026",
+  // 22 Oct 2026: an agent types into its own desk Terminal and writes a file in its own folder. The body checks the caller is that agent and refuses any other unless the person may edit the agent.
+  "computers.agent.file.make": "d86de6507@22 Oct 2026",
+  "computers.agent.terminal.run": "d86de6507@22 Oct 2026",
 });
 
 /** The guard of a DECLARED tool test/reach-anyone.json has no line for. */
