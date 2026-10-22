@@ -4,7 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6.9
 
-- fix(computers): a computers test starts kit's thread only when that test needs the thread. Starting a session in every boot held a process and a watcher, and the file was still inside its last boot when its time limit ended (core/computers/computers.test.js).
+- fix(computers): a computers test starts kit's thread only when that test needs the thread. The default-config endpoint does, because its thread field is a string. Starting a session in every boot held a process and a watcher, and the file was still inside its last boot when its time limit ended (core/computers/computers.test.js).
 - fix(flows): the schedule checklist waits until the run leaves running before it says the Flow is done. The slip existing only means the run has started (test/flows-core-checklist.test.js).
 - perf: an Office preview loads pizzip when a Word, Excel or PowerPoint file is opened, not when the daemon starts, so the idle heap stays under its budget (core/previews/office.js).
 - feat(onboard): the photo step after a Space is online takes a photo from this computer. Choose a photo centre-crops it, scales it down on this computer and saves it as the member photo of this Space, the same save Your profile uses. On a GitHub sign-in that photo is shown, with Use my GitHub photo. Skip for now goes on. The address field is gone, and the first run no longer says a photo is an https address. A GitHub photo is still kept only when it is a GitHub avatar address (apps/app/screens/first-run/AfterSpace.tsx, after-space-photo.js, apps/app/src/state/profiles.ts).

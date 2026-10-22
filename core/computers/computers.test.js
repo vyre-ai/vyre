@@ -593,8 +593,8 @@ test("computers: the person renames an agent's computer, it shows in the list an
 });
 
 test("computers: with the default config an agent's endpoint, checkout and helper never create or join browser-shared, and agentd is not used (fail closed until 0.6.2)", async t => {
-  // no browse and no agentUsers: the shipped default
-  const s = await boot(t, { computers: { driver: "fake", sweepMs: 0, waitMs: 100 } });
+  // no browse and no agentUsers: the shipped default. endpoint's thread is a string, so kit's session is up.
+  const s = await boot(t, { session: true, computers: { driver: "fake", sweepMs: 0, waitMs: 100 } });
   const { browseMode } = await import("../../lib/browser-access.js");
   assert.equal(browseMode(undefined), "desktop");
   assert.equal(browseMode({}), "desktop");
