@@ -2,7 +2,7 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
-## 0.6.9
+## 0.6.8
 
 - feat(onboard): the photo step after a Space is online takes a photo from this computer. Choose a photo centre-crops it, scales it down on this computer and saves it as the member photo of this Space, the same save Your profile uses. On a GitHub sign-in that photo is shown, with Use my GitHub photo. Skip for now goes on. The address field is gone, and the first run no longer says a photo is an https address. A GitHub photo is still kept only when it is a GitHub avatar address (apps/app/screens/first-run/AfterSpace.tsx, after-space-photo.js, apps/app/src/state/profiles.ts).
 - fix(records): contacts show no avatar, in the list or on the record page; other records show none either unless their type asks for a face (apps/app/ui/views/view-defs.js, screens/records/RecordScreen.tsx).
@@ -92,8 +92,6 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - chore(design): picture references for Home on a quiet day and a busy day, at app and phone width, in both themes (design-refs).
 - fix(records): Twenty is removed. Records live only in the kernel's own SQLite store. `vyre status` says "records: Vyre store · N records". A server that still has `VYRE_STORE=auto` or `twenty` starts on SQLite and logs "records: Twenty is gone; this Space starts on the Vyre store, empty". `vyre update` removes that server's old Twenty containers and volumes. Nothing is copied across.
 - fix(install): the installer's last line is still the next step. The dry run does not name an internal part. The unused per-Space cap left by the old record stacks is gone.
-
-## 0.6.8
 
 - fix(app): with two servers paired, an id never listed yet goes to the server of the Space showing, for every tool. 0.6.7 did this only for work.chat, threads and stream tools, so a new thread with an agent (work.agent.thread.new: a chat with an agent, Home's Ask) was still refused with "Vyre does not know which Space this belongs to". Only with no Space showing is it refused (apps/app/src/real/server-route.js).
 - fix(doctor): `vyre doctor` no longer stops with "Cannot access 'lines' before initialization": the log summary's variable shadowed the check printer (core/cli/commands/doctor.js).
