@@ -43,7 +43,7 @@ test("settings is You, the Space, Devices and Vyre with nothing behind an Advanc
   assert.deepEqual(g.map((x) => x.title), ["You", "Juniper Studio", "Devices", "Vyre"]);
   assert.ok(g.every((x) => !("advanced" in x)), "no Advanced group: the owner found half-built pages there (owner, 20 Oct)");
   assert.ok(g.flatMap((x) => x.rows).every((r) => r[2].startsWith("/u/")));
-  assert.deepEqual(g.map((x) => x.rows.length), [5, 6, 2, 2], "a short list an owner reads in one look");
+  assert.deepEqual(g.map((x) => x.rows.length), [5, 7, 2, 2], "a short list an owner reads in one look");
 });
 
 test("Skills and plugins is one row, opening the library with its own Personal and Space switch", () => {
@@ -59,6 +59,8 @@ test("settings hides what a role cannot use", () => {
   assert.ok(!hrefs("temp").includes("/u/settings/assistant-access"), "a temp member is not offered what agents may do");
   assert.ok(hrefs("member").includes("/u/spaces"));
   assert.ok(hrefs("temp").includes("/u/sidebar"), "everyone arranges their own sidebar");
+  assert.ok(hrefs("admin").includes("/u/settings/landing"), "an owner or an admin sets the Space's first page");
+  assert.ok(!hrefs("member").includes("/u/settings/landing"), "a member does not set the Space's first page");
   // the archived pages, shown with Labs on, keep their role limits
   assert.ok(hrefs("admin", true).includes("/u/settings/audit"));
   assert.ok(!hrefs("member", true).includes("/u/settings/audit"));

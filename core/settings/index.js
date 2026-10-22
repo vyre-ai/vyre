@@ -46,7 +46,7 @@ const str = { type: "string" };
 // unknown group goes last under its own name.
 export const GROUPS = [
   ["models", "Models and thinking"], ["permissions", "Permissions"], ["sessions", "Sessions"], ["teammates", "Teammates"],
-  ["notifications", "Notifications"], ["tips", "Tips"], ["appearance", "Appearance"], ["planner", "Planner"], ["memory", "Memory"], ["vault", "Vault"], ["files", "Files and terminal"],
+  ["notifications", "Notifications"], ["tips", "Tips"], ["appearance", "Appearance"], ["spaces", "Space"], ["planner", "Planner"], ["memory", "Memory"], ["vault", "Vault"], ["files", "Files and terminal"],
   ["tools", "Tools"], ["updates", "Updates"], ["devices", "Devices"], ["assistant", "Assistant"],
 ];
 

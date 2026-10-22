@@ -3,11 +3,13 @@
 
 import spaces from "./index.js";
 import { registerPairInstall } from "./pair-install.js";
+import { registerLanding } from "./landing.js";
 
 export default {
   async start(/** @type {any} */ ctx) {
     const handle = await spaces.start(ctx);
     registerPairInstall(ctx);
+    registerLanding(ctx);
     return handle;
   },
 };

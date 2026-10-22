@@ -533,6 +533,11 @@
    {
     "name": "spaces.sweep",
     "reach": "modules"
+   },
+   {
+    "name": "spaces.check",
+    "effect": "read",
+    "reach": "modules"
    }
   ]
  },
@@ -587,5 +592,19 @@
    "bundle": true
   }
  },
- "teaches": {}
+ "teaches": {},
+ "settings": [
+  {
+   "key": "spaces.landing",
+   "group": "spaces",
+   "label": "First page for each role",
+   "help": "The page each role opens on when they sign in to this Space. A role with no page here opens Home.",
+   "type": "object",
+   "levels": ["account"],
+   "apply": "live",
+   "check": {
+    "tool": "spaces.check"
+   }
+  }
+ ]
 }

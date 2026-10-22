@@ -1,6 +1,6 @@
 import { SessionNotice } from "./SessionNotice";
 import { ApprovalSheet } from "./ApprovalSheet";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Platform } from "react-native";
 import { usePathname, useRouter } from "expo-router";
 import { sectionOf, stepSection } from "../build/sections.js";
@@ -27,6 +27,7 @@ import { startKeepingMyLook, useMyLook } from "../../src/state/my-look";
 import { lockIdentity } from "../unlock/real.js";
 import { lockChanged } from "../../src/shell/lock-setting";
 import { setScheme } from "../settings/appearance";
+import { landingRoute, shouldLand } from "../../src/shell/landing";
 
 /** The frame of /u: the rail or tab bar, the space switcher, and the showing space's look applied to the theme. */
 export function UiShell({ children }: { children: React.ReactNode }) {
@@ -110,6 +111,20 @@ export function UiShell({ children }: { children: React.ReactNode }) {
   const go = (href: string) => router.push(href as never);
   const { panel, id: panelId } = usePanel(go);
   useEffect(() => { setSpace(themeFor(space, looks)); }, [space, look, looks, setSpace]);
+  // The Space's first page for this person's role (the setting spaces.landing): once the Space and
+  // the role are known, the app replaces the route with it. The screen is already drawn, so the
+  // route changes behind it. A route the person chose is never taken away.
+  const landing = landingRoute(showing?.landing, showing?.role ?? "");
+  const opened = useRef<string | null>(null);
+  if (opened.current === null) opened.current = path;
+  const moved = useRef(false);
+  const landed = useRef(false);
+  useEffect(() => { if (path !== opened.current) moved.current = true; }, [path]);
+  useEffect(() => {
+    if (landed.current || !shouldLand({ path, landing, moved: moved.current })) return;
+    landed.current = true;
+    router.replace(landing as never);
+  }, [path, landing, router]);
   return (
     <Shell {...nav} recent={recent} current={path} onNavigate={(href) => (href === "/u/search" ? openFind() : go(href))} onSearch={openFind} onTheme={(v) => { if (!allowsMock()) setScheme(v).catch(() => showToast("The theme changed here, but it could not be saved.")); }} onLock={() => { void lockIdentity().then((r: { ok: boolean; message?: string }) => { if (r.ok) lockChanged(); else showToast(r.message ?? "That did not go through."); }); }} onSignOut={allowsMock() ? undefined : () => { void signOut(); }} panel={panel} spaces={DATA.spaces} space={space} onSpace={setShowing} user={{ name: DATA.me.name, sub: DATA.me.vyreName, look: ownLook || myLook || undefined }}>
       <SessionNotice />

@@ -2,6 +2,10 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## 0.6.4
+
+- feat(spaces): a Space's first page for each role. The setting spaces.landing (the spaces module declares it, the settings hub keeps it at account level, so on a Space's own server it is that Space's value) holds one route per role: owner, admin, member, guest. An owner or an admin sets it in Settings, Space, First page for each role, choosing from the built-in places and the Space's own screens. The value is checked before it is stored (the module's own tool, spaces.check: a role that is not one of ours, or a route that is not a page of the app, is refused in plain words and the value that was there stays). The app opens the page for the person's role when they sign in to that Space, and Home when the role has no page of its own. An agent proposes the same setting through settings.request, which asks the person first.
+
 ## 0.6.3
 
 - feat(vault): an item's page has Used with, the hosts its secrets may go to (read with vault.use.find, changed with vault.use.set; the hosts written on the item stay, the ones you allow can be removed), next to its plain fields and Allowed in scripts. No second store. Merged the train's placeholder review fixes with the simple Vault; the four reds of run 39350707365 fixed in place: vault.templates and vault.template.suggest in the presence list, hooks.flow tools in the door's owner list, the web-address bind in kernel/flows/runner.js back to its size, the web-address approver check reads roleAtLeast, and read-tools.generated.js named as a tool-name list.

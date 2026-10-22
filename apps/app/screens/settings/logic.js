@@ -48,7 +48,7 @@ export const PRIVACY_ROWS = [
 ];
 
 /** Rows only an owner or admin can use (DESIGN-spaces-first.md, roles): People and roles, sealing policy, and the archived Audit and Groups when Labs shows them. */
-const ADMIN_ROWS = ["/u/settings/audit", "/u/settings/roles", "/u/settings/groups", "/u/settings/customize", "/u/settings/privacy", "/u/kits", "/u/settings/engineer", "/u/playbooks"];
+const ADMIN_ROWS = ["/u/settings/audit", "/u/settings/roles", "/u/settings/groups", "/u/settings/customize", "/u/settings/privacy", "/u/settings/landing", "/u/kits", "/u/settings/engineer", "/u/playbooks"];
 /** Rows a temp member has no use for: they see only the projects named, so the space-wide places stay out of Settings. */
 const NOT_FOR_TEMP = ["/u/memory", "/u/flows", "/u/settings/seeing", "/u/settings/rules", "/u/settings/assistant-access"];
 
@@ -77,6 +77,7 @@ function all(/** @type {string} */ space) {
     ] },
     { title: space, rows: [
       ["Look and name", "Switch Space, and change a Space's name, colour and logo", "/u/spaces", "space"],
+      ["First page for each role", "The page each role opens on when they sign in to this Space", "/u/settings/landing", "pin"],
       ["People and roles", "Who is in this Space and what each person can do, see and use", "/u/settings/roles", "users"],
       ["Skills and plugins", "Yours and the Space's; members draft, admins approve for everyone", "/u/skills", "box"],
       ["Connections", "Link services, Google and GitHub", "/u/connections", "link"],

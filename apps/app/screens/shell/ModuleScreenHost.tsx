@@ -15,7 +15,8 @@ import { openExternal } from "../../src/shell/open-external";
  */
 export function ModuleScreenHost({ module, screen, q }: { module: string; screen: string; q?: string }) {
   const { modules, loaded } = useSidebar();
-  const drawn = (modules as { module: string; screens: { id: string; view?: boolean }[] }[]).find((m) => m.module === module)?.screens.find((s) => s.id === screen)?.view;
+  // The Space's own screens are views of the module "space" (core/views): Vyre draws them itself, so they are not on a module's own origin.
+  const drawn = module === "space" ? true : (modules as { module: string; screens: { id: string; view?: boolean }[] }[]).find((m) => m.module === module)?.screens.find((s) => s.id === screen)?.view;
   const plain = drawn ? null : screenUrl(modules as never, module, screen);
   const label = modules.find((m) => m.module === module)?.screens.find((s) => s.id === screen)?.label ?? screen;
   const [url, setUrl] = useState<string | null>(null);
