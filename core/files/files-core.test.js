@@ -1,7 +1,7 @@
 // @ts-check
 // Lines 25 to 29 together, on one real daemon: the Space's folders and a project show in Files and a folder moves and renames;
 // a file shared with another person is listed and read by them; a file's earlier version is restored and read back;
-// a second writer waits, then is told who holds the file. A Space file or folder delete still waits for the outward yes.
+// a second writer waits, then is told who holds the file. A Space file delete is refused (no drive.delete grant) and the bytes stay.
 import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -60,12 +60,13 @@ test("a Space folder moves and renames, a share is listed by the other person, a
   await ok("files.drive.space.rename", { path: "North/Archive", name: "Kept" });
   assert.equal(text(await ok("files.drive.space.read", { path: "North/Kept/brief.txt" })), "kept");
 
+  // The owner role has no drive.delete grant (kernel/grants/roles.js), so the kernel answers not_found and the bytes stay. An outward yes cannot finish it: the gateway does not take an approval on drive.delete.
   const fileDel = await own("files.drive.space.delete", { path: "North/Kept/brief.txt" });
-  assert.equal(fileDel.error && fileDel.error.code, "needs_approval", JSON.stringify(fileDel));
+  assert.equal(fileDel.error && fileDel.error.code, "not_found", JSON.stringify(fileDel));
   assert.equal(text(await ok("files.drive.space.read", { path: "North/Kept/brief.txt" })), "kept");
   const folderDel = await ok("files.drive.space.delete", { path: "North/Kept" });
   assert.equal(folderDel.deleted, 0, JSON.stringify(folderDel));
-  assert.equal(folderDel.code, "needs_approval");
+  assert.equal(folderDel.code, "not_found");
   assert.equal(text(await ok("files.drive.space.read", { path: "North/Kept/brief.txt" })), "kept");
 
   await ok("files.drive.upload", { path: "North/versions.txt", base64: b64("alpha") });
