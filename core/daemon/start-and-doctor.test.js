@@ -13,7 +13,6 @@ import * as config from "../config/index.js";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const MAIN = path.join(HERE, "main.js");
 const BIN = path.resolve(HERE, "../../bin/vyre");
-const FAKE_TAILSCALE = path.join(HERE, "..", "..", "web", "test", "fake-tailscale.js");
 
 /** @param {string} root @param {string[]} args */
 const doctor = (root, args) => new Promise(res => {
@@ -25,7 +24,7 @@ const doctor = (root, args) => new Promise(res => {
 test("start and doctor: the real daemon's start log has no warnings, and doctor counts only what happens after warmup", { timeout: 180_000 }, async t => {
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ machine: "server", transcripts: [], vault: { keystore: "file" } }));
-  const env = { ...process.env, VYRE_HOME: root, VYRE_NO_DIALOGS: "1", ...(fs.existsSync(FAKE_TAILSCALE) ? { VYRE_TAILSCALE_BIN: FAKE_TAILSCALE } : {}) };
+  const env = { ...process.env, VYRE_HOME: root, VYRE_NO_DIALOGS: "1" };
   const child = spawn(process.execPath, [MAIN], { env, stdio: ["ignore", "ignore", "pipe"] });
   let stderr = "";
   child.stderr.on("data", d => { stderr += d; });

@@ -273,17 +273,33 @@ test("install-box.sh: dry run lists every change and makes none", t => {
   for (const c of r.calls) assert.match(c, READ_ONLY, `mutating call in a dry run: ${c}`);
 });
 
+/** Ubuntu and Debian install Docker from apt with no question. Every other system still offers Docker's own script. */
+const aptOs = () => {
+  try {
+    const id = /(?:^|\n)ID=(?:"([^"]+)"|(\S+))/.exec(fs.readFileSync("/etc/os-release", "utf8"));
+    const name = (id && (id[1] || id[2]) || "").trim();
+    return name === "ubuntu" || name === "debian";
+  } catch { return false; }
+};
+
 test("install-box.sh: missing Docker is offered, and --yes installs it (dry run shows how)", t => {
   const r = runScript(t, ["--dry-run", "--yes"], { docker: null });
   assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stdout, /^would run: sudo sh -c 'curl -fsSL https:\/\/get\.docker\.com \| sh'$/m);
+  if (aptOs()) assert.match(r.stdout, /^would install Docker from Docker's apt repository for (ubuntu|debian) /m);
+  else assert.match(r.stdout, /^would run: sudo sh -c 'curl -fsSL https:\/\/get\.docker\.com \| sh'$/m);
   assert.ok(!r.calls.some(c => c.startsWith("curl")));
 });
 
-test("install-box.sh: without --yes and no terminal, it prints the Docker command and stops", t => {
+test("install-box.sh: without --yes and no terminal, Ubuntu and Debian still plan the apt install, and any other system prints the Docker command and stops", t => {
   const r = runScript(t, ["--dry-run"], { docker: null });
-  assert.equal(r.status, 1);
-  assert.match(r.stdout, /^ {2}curl -fsSL https:\/\/get\.docker\.com \| sh$/m);
+  if (aptOs()) {
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /^would install Docker from Docker's apt repository for (ubuntu|debian) /m);
+    assert.doesNotMatch(r.stdout, /\[y\/N\]/);
+  } else {
+    assert.equal(r.status, 1);
+    assert.match(r.stdout, /^ {2}curl -fsSL https:\/\/get\.docker\.com \| sh$/m);
+  }
   assert.ok(!r.calls.some(c => c.startsWith("curl")));
 });
 

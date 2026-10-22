@@ -6,8 +6,14 @@
 // is still starting (a container stopped right after a restart) waits for start to settle and
 // then drains like any other stop, instead of the signal killing it half started (ADR 0029, R7).
 
-import "../quiet.js"; // before node:sqlite is linked: drop only its experimental-feature line
 import { installCrashHandler } from "./crash.js";
+
+// Same drop as core/quiet.js. It lives in this file so the daemon does not import another part, and it runs before the daemon's own code is loaded.
+const emitWarning = process.emitWarning;
+/** @type {any} */ (process).emitWarning = function (/** @type {any} */ warning, /** @type {any[]} */ ...rest) {
+  if (String((warning && warning.message) || warning).startsWith("SQLite is an experimental feature")) return;
+  return emitWarning.call(process, warning, ...rest);
+};
 
 // An uncaught error or rejection: log the stack, exit non-zero, and let the supervisor restart us.
 installCrashHandler();
