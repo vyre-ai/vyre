@@ -20,11 +20,12 @@ test("servers: each row names its server and the Space on it, with the same tag 
   assert.equal(rows[1].active, false);
 });
 
-test("servers: a server that did not answer says Offline and keeps its Space's name from the last time", () => {
+test("servers: a server that did not answer says Not answering and keeps its Space's name from the last time", () => {
   const rows = serverRows({ pairings, spaces, offline: ["boxb"], active: "boxa" });
   assert.equal(rows[1].offline, true);
   assert.equal(rows[1].space, "Northwind");
-  assert.match(rows[1].sub, /Offline/);
+  assert.equal(rows[1].spaceId, "spc_bbbbbbbbbbbb");
+  assert.match(rows[1].sub, /Not answering/);
 });
 
 test("servers: a server with no Space listed yet says so, not a blank", () => {

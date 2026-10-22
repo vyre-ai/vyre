@@ -20,8 +20,17 @@ async function hostIdentity(): Promise<IdentityRow | null> {
     return s?.exists ? { exists: true, name: s.username ?? undefined, ...(s.display ? { label: s.display } : {}) } : null;
   } catch { return null; }
 }
-/** The shell's data from the box. The person's name comes from the box's identity, else from this computer's own, so the foot never reads "You" for someone with a name. */
+/** The shell's data from the box. The person's name comes from the box's identity, else from this computer's own, so the foot never reads "You" for someone with a name. A Space whose server did not answer, or whose pairing is already gone, is marked so the switcher can say so. */
 export async function loadReal(): Promise<ShellData> {
   const r = await source.load();
-  return shellFrom(r.spaces, pickIdentity(r.identity, r.identity?.name || r.identity?.label ? null : await hostIdentity()));
+  const data = shellFrom(r.spaces, pickIdentity(r.identity, r.identity?.name || r.identity?.label ? null : await hostIdentity()));
+  try {
+    const { markQuietSpaces, keptBoxes } = await import("../../src/real/drop-space");
+    const { offlineServers } = await import("../../src/real/space-servers");
+    const { listPairings } = await import("../../src/api/relay");
+    const { hostStore } = await import("../../src/host/host-store");
+    const paired = await listPairings().then((rows) => rows.map((p) => p.box)).catch(() => null);
+    const boxes = await hostStore.load().then((k) => keptBoxes(k)).catch(() => ({}));
+    return { ...data, spaces: markQuietSpaces(data.spaces, offlineServers(), boxes, paired) };
+  } catch { return data; }
 }

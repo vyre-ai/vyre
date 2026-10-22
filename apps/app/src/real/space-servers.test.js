@@ -163,6 +163,92 @@ test("one server that never answers its chat list holds the list back only for t
   m.setPorts(null);
 });
 
+/** One server never answers spaces.list. The call is recorded before it waits, so a later quiet skip is visible. */
+function hangSpaces(/** @type {ReturnType<typeof wire>} */ w) {
+  w.ports.peerCall = async (/** @type {string} */ tool, /** @type {any} */ input, /** @type {string | undefined} */ box) => {
+    w.sent.push([box, tool, input]);
+    if (box === "boxb") return new Promise(() => {});
+    if (tool === "spaces.list") return [{ id: "spc_aaaaaaaaaaaa", label: "Cedar" }];
+    return { ok: true };
+  };
+}
+
+test("a server that never answers does not hold the others: Spaces and a call for the Space showing come back within 5 seconds, and the silent one stays quiet", { skip: !strip, timeout: 20_000 }, async () => {
+  const m = await load();
+  const w = wire({});
+  hangSpaces(w);
+  m.setPorts(/** @type {any} */ (w.ports));
+  try {
+    const t0 = Date.now();
+    const spaces = await m.listAllSpaces();
+    const route = await m.routeCall({ tool: "vault.list", input: {}, showing: "spc_aaaaaaaaaaaa" });
+    const took = Date.now() - t0;
+    assert.ok(took < 5000, `came back in ${took} ms`);
+    assert.ok(spaces?.some((s) => s.id === "spc_aaaaaaaaaaaa" && s.server === "boxa"), "the live server's Space");
+    assert.deepEqual(route, { box: "boxa" });
+    assert.ok(m.offlineServers().includes("boxb"), "the silent server is marked");
+    const asked = w.sent.filter((x) => x[0] === "boxb").length;
+    await m.listAllSpaces();
+    assert.equal(w.sent.filter((x) => x[0] === "boxb").length, asked, "a quiet server is not asked again");
+  } finally { m.setPorts(null); }
+});
+
+test("a call for the Space showing does not wait on a server that never answers", { skip: !strip, timeout: 20_000 }, async () => {
+  const m = await load();
+  const w = wire({});
+  hangSpaces(w);
+  m.setPorts(/** @type {any} */ (w.ports));
+  try {
+    const t0 = Date.now();
+    const route = await m.routeCall({ tool: "vault.list", input: {}, showing: "spc_aaaaaaaaaaaa" });
+    const took = Date.now() - t0;
+    assert.ok(took < 1500, `the showing Space waited ${took} ms`);
+    assert.deepEqual(route, { box: "boxa" });
+  } finally { m.setPorts(null); }
+});
+
+test("a quiet server is asked again once its minute has passed", { skip: !strip, timeout: 20_000 }, async () => {
+  const m = await load();
+  const w = wire({});
+  hangSpaces(w);
+  let now = 1_000_000;
+  m.setPorts(/** @type {any} */ (w.ports));
+  m.setServerClock(() => now);
+  try {
+    await m.listAllSpaces();
+    assert.ok(m.offlineServers().includes("boxb"));
+    const asked = w.sent.filter((x) => x[0] === "boxb").length;
+    now += m.QUIET_FOR_MS - 1000;
+    await m.listAllSpaces();
+    assert.equal(w.sent.filter((x) => x[0] === "boxb").length, asked, "still quiet before the minute");
+    now += 1000;
+    const t0 = Date.now();
+    await m.listAllSpaces();
+    assert.ok(Date.now() - t0 < 5000, "the ask after the minute still has a limit");
+    assert.ok(w.sent.filter((x) => x[0] === "boxb").length > asked, "asked again after the minute");
+  } finally { m.setPorts(null); }
+});
+
+test("a server that answers with a tool error is not remembered as offline", { skip: !strip }, async () => {
+  const m = await load();
+  const w = wire({});
+  w.ports.peerCall = async (/** @type {string} */ tool, /** @type {any} */ input, /** @type {string | undefined} */ box) => {
+    w.sent.push([box, tool, input]);
+    if (box === "boxb") throw Object.assign(new Error("bad"), { code: "bad_input" });
+    if (tool === "spaces.list") return [{ id: "spc_aaaaaaaaaaaa", label: "Cedar" }];
+    return { ok: true };
+  };
+  m.setPorts(/** @type {any} */ (w.ports));
+  try {
+    const spaces = await m.listAllSpaces();
+    assert.ok(spaces?.some((s) => s.id === "spc_aaaaaaaaaaaa"));
+    assert.deepEqual(m.offlineServers(), []);
+    const asked = w.sent.filter((x) => x[0] === "boxb").length;
+    await m.listAllSpaces();
+    assert.ok(w.sent.filter((x) => x[0] === "boxb").length > asked, "a tool error is asked again");
+  } finally { m.setPorts(null); }
+});
+
 test("a chat just made on a server is known to be there without asking", { skip: !strip }, async () => {
   const m = await load();
   const w = wire({});

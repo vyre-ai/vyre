@@ -12,14 +12,21 @@ async function readAll(): Promise<Record<string, string>> {
   } catch { return {}; }
 }
 
-export async function keepRootPublic(space: string, rootPublic: string): Promise<void> {
-  if (!space || !rootPublic) return;
+/** Every saved root, by space id. Empty when nothing is kept. */
+export async function readRoots(): Promise<Record<string, string>> { return readAll(); }
+
+/** Replace the saved roots. A write that fails leaves the previous ones. */
+export async function writeRoots(all: Record<string, string>): Promise<void> {
   try {
-    const all = { ...(await readAll()), [space]: rootPublic };
     const raw = JSON.stringify(all);
     if (Platform.OS === "web") { if (typeof localStorage !== "undefined") localStorage.setItem(KEY, raw); return; }
     await (await import("expo-secure-store")).setItemAsync(KEY, raw);
   } catch { /* nothing kept: the record at the directory still carries it */ }
+}
+
+export async function keepRootPublic(space: string, rootPublic: string): Promise<void> {
+  if (!space || !rootPublic) return;
+  await writeRoots({ ...(await readAll()), [space]: rootPublic });
 }
 
 export async function rootPublicOf(space: string): Promise<string | null> { return (await readAll())[space] ?? null; }

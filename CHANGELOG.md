@@ -2,6 +2,10 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## 0.6.9
+
+- fix(app): a paired server that does not answer no longer holds up the others. Each ask of every server waits at most 4 seconds, the live servers' answers are used, and the silent one is remembered as offline for a minute so it is not asked on every call. A call for the Space showing goes straight to its server. The switcher shows "Not answering" under that Space, and choosing it says so. Remove this Space from this computer drops the pairing, the kept shell, the kept Spaces and the saved root, then switches to the next Space. Settings, Devices and computers lists the paired servers even when one is offline, with the same Remove (apps/app/src/real/server-wait.ts, apps/app/src/real/space-servers.ts, apps/app/src/real/drop-space.ts).
+
 ## 0.6.8
 
 - fix(computers): a computers test starts kit's thread only when that test needs the thread. The default-config endpoint does, because its thread field is a string. Starting a session in every boot held a process and a watcher, and the file was still inside its last boot when its time limit ended (core/computers/computers.test.js).

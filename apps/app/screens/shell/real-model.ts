@@ -2,7 +2,7 @@
 import { isBasicRow } from "./basic.js";
 import type { ShellSpace } from "@vyre/ui";
 
-export type SpaceRow = { id: string; name: string; label?: string; displayName?: string; status?: string; role?: string; tier?: "basic" | "cloud"; time_zone?: string | null; who?: string; setup?: { who?: string; picks?: { who?: string } } | null };
+export type SpaceRow = { id: string; name: string; label?: string; displayName?: string; status?: string; role?: string; tier?: "basic" | "cloud"; time_zone?: string | null; who?: string; server?: string; setup?: { who?: string; picks?: { who?: string } } | null };
 export type IdentityRow = { exists?: boolean; name?: string; label?: string; pending?: boolean };
 export type Me = { name: string; sub: string; vyreName: string };
 export type ShellData = { me: Me; spaces: ShellSpace[] };
@@ -19,8 +19,11 @@ export const spaceSub = (s: SpaceRow): string => (s.status && s.status !== "done
 /** A space whose creation failed or was cancelled never got a home, so it is not listed (DESIGN-spaces-first.md, "A server step that fails"). */
 export const isListed = (s: SpaceRow): boolean => s.status !== "failed" && s.status !== "cancelled";
 
+/** A paired server's id on a row. A web address is the host's own field and is not a server id. */
+const serverOf = (s: SpaceRow): string => { const v = typeof s.server === "string" ? s.server.trim() : ""; return v && !/^https?:/i.test(v) ? v : ""; };
+
 export function spacesFrom(rows: SpaceRow[]): ShellSpace[] {
-  const own = rows.filter(isListed).map((s) => ({ id: s.id, name: spaceName(s), tag: placeTag(s), sub: spaceSub(s), ...(/\.vyre\.run$/i.test(String(s.name)) ? { address: String(s.name) } : {}), ...(isBasicRow(s) ? { basic: true } : {}), ...(!isBasicRow(s) && typeof s.time_zone === "string" && s.time_zone ? { zone: s.time_zone } : {}) }));
+  const own = rows.filter(isListed).map((s) => ({ id: s.id, name: spaceName(s), tag: placeTag(s), sub: spaceSub(s), ...(/\.vyre\.run$/i.test(String(s.name)) ? { address: String(s.name) } : {}), ...(isBasicRow(s) ? { basic: true } : {}), ...(!isBasicRow(s) && typeof s.time_zone === "string" && s.time_zone ? { zone: s.time_zone } : {}), ...(serverOf(s) ? { server: serverOf(s) } : {}) }));
   return own;
 }
 

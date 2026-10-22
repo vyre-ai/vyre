@@ -1,6 +1,7 @@
 // @ts-check
 // The Space switcher (the footer row of the sidebar, and the title row on a phone) and the account menu (your face at the foot of the sidebar). Pure: which rows each shows and where
 // each goes. The menus draw these with the library's Menu; the routes are the screens that already exist.
+import { NOT_ANSWERING } from "../../src/real/not-answering.js";
 
 /** Where each action opens. Space settings is the Look and name page; Invite people is the People invite. */
 export const SWITCHER_HREF = Object.freeze({ create: "/onboard?path=create", join: "/onboard?path=join", invite: "/u/wink/invite", settings: "/u/spaces" });
@@ -8,11 +9,12 @@ export const ACCOUNT_HREF = Object.freeze({ profile: "/u/settings/profile", ai: 
 
 /**
  * The Spaces, in the order given, with a check on the one showing and its shortcut (Cmd 1 to Cmd 9). There is no "All spaces": a person is in exactly one Space at a time.
- * @param {{ id: string, name: string }[]} spaces @param {string} current
- * @returns {{ id: string, name: string, on: boolean, shortcut: string }[]}
+ * A Space whose server did not answer carries the muted line and can be removed from this computer.
+ * @param {{ id: string, name: string, quiet?: boolean }[]} spaces @param {string} current
+ * @returns {{ id: string, name: string, on: boolean, shortcut: string, note: string, remove: boolean }[]}
  */
 export function switcherRows(spaces, current) {
-  return spaces.map((s, i) => ({ id: s.id, name: s.name, on: s.id === current, shortcut: i < 9 ? `Cmd ${i + 1}` : "" }));
+  return spaces.map((s, i) => ({ id: s.id, name: s.name, on: s.id === current, shortcut: i < 9 ? `Cmd ${i + 1}` : "", note: s.quiet ? NOT_ANSWERING : "", remove: Boolean(s.quiet) }));
 }
 
 /** The Space a Cmd 1 to Cmd 9 key picks, or "" when there is none. @param {{ id: string }[]} spaces @param {string} key */

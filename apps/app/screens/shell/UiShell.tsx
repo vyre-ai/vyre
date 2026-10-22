@@ -20,6 +20,7 @@ import { call, listen, signIn, signOut } from "../../src/api/box";
 import { viewCache } from "../../src/state/cache";
 import { setNowScope } from "../../ui/tasks/scope";
 import { spaceForKey } from "../../ui/shell/switcher-model.js";
+import { NOT_ANSWERING_SAY } from "../../src/real/not-answering.js";
 import { GATE_BUDGET_MS, SHELL_KEY, packShell, unpackShell } from "./shell-cache.js";
 import { useProfiles } from "../../src/state/profiles";
 import { startSpace } from "./real-model";
@@ -90,7 +91,7 @@ export function UiShell({ children }: { children: React.ReactNode }) {
       if (e.key.toLowerCase() === "n") { e.preventDefault(); router.push("/u/chats/new-thread" as never); return; }
       // Cmd 1 to Cmd 9 pick the Space in that place of the footer menu
       const to = spaceForKey(DATA.spaces, e.key);
-      if (to) { e.preventDefault(); setShowing(to); }
+      if (to) { e.preventDefault(); if (DATA.spaces.some((s) => s.id === to && s.quiet)) { showToast(NOT_ANSWERING_SAY); return; } setShowing(to); }
     };
     window.addEventListener("keydown", on);
     return () => window.removeEventListener("keydown", on);
@@ -134,7 +135,7 @@ export function UiShell({ children }: { children: React.ReactNode }) {
   useEffect(() => { setNowScope(space); }, [space]);
   useEffect(() => { setSpace(themeFor(space, looks)); }, [space, look, looks, setSpace]);
   return (
-    <Shell {...nav} onNewChat={() => router.push("/u/chats/new-thread" as never)} recent={recent} current={path} onNavigate={(href) => (href === "/u/search" ? openFind() : go(href))} onSearch={openFind} onTheme={(v) => { if (!allowsMock()) setScheme(v).catch(() => showToast("The theme changed here, but it could not be saved.")); }} onLock={() => { void lockIdentity().then((r: { ok: boolean; message?: string }) => { if (r.ok) lockChanged(); else showToast(r.message ?? "That did not go through."); }); }} onSignOut={allowsMock() ? undefined : () => { void signOut(); }} panel={panel} spaces={DATA.spaces} space={space} onSpace={setShowing} user={{ name: DATA.me.name, sub: DATA.me.vyreName, look: ownLook || myLook || undefined }}>
+    <Shell {...nav} onNewChat={() => router.push("/u/chats/new-thread" as never)} recent={recent} current={path} onNavigate={(href) => (href === "/u/search" ? openFind() : go(href))} onSearch={openFind} onTheme={(v) => { if (!allowsMock()) setScheme(v).catch(() => showToast("The theme changed here, but it could not be saved.")); }} onLock={() => { void lockIdentity().then((r: { ok: boolean; message?: string }) => { if (r.ok) lockChanged(); else showToast(r.message ?? "That did not go through."); }); }} onSignOut={allowsMock() ? undefined : () => { void signOut(); }} panel={panel} spaces={DATA.spaces} space={space} onSpace={(id) => { if (DATA.spaces.some((s) => s.id === id && s.quiet)) { showToast(NOT_ANSWERING_SAY); return; } setShowing(id); }} onQuiet={() => showToast(NOT_ANSWERING_SAY)} onRemoveSpace={(id) => { void import("../../src/real/drop-space").then((m) => m.removeFromComputer({ space: id })).catch(() => showToast("That Space could not be removed from this computer.")); }} user={{ name: DATA.me.name, sub: DATA.me.vyreName, look: ownLook || myLook || undefined }}>
       <SessionNotice />
       {gate === "asking" ? <LoadingState rows={3} /> : gate === "out" ? (
         <EmptyState title="Sign in to Vyre" body="Nobody is signed in on this device yet." action={{ label: "Sign in", onPress: () => { void signIn(); } }} />

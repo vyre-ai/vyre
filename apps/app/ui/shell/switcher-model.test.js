@@ -33,6 +33,20 @@ test("the theme choices are Light, Dark and Match this computer, with Appearance
   assert.deepEqual(THEME_CHOICES.map(([v, l]) => `${v}:${l}`), ["paper:Light", "dark:Dark", "system:Match this computer"]);
 });
 
+test("a Space whose server is not answering carries the muted line and can be removed", () => {
+  const rows = switcherRows([{ id: "spc_aaaaaaaaaaaa", name: "Cedar", quiet: true }, { id: "spc_bbbbbbbbbbbb", name: "Birch" }], "spc_bbbbbbbbbbbb");
+  assert.equal(rows[0].note, "Not answering");
+  assert.equal(rows[0].remove, true);
+  assert.equal(rows[1].note, "");
+  assert.equal(rows[1].remove, false);
+  const shell = fs.readFileSync(new URL("./Shell.tsx", import.meta.url), "utf8");
+  assert.match(shell, /r\.note/);
+  assert.match(shell, /onRemoveSpace/);
+  assert.match(shell, /onQuiet/);
+  const menu = fs.readFileSync(new URL("../components/Menu.tsx", import.meta.url), "utf8");
+  assert.match(menu, /i\.note/);
+});
+
 test("the account menu's top: the name, then the username", () => {
   assert.deepEqual(accountHeader({ name: "Tess", sub: "tess.vyre.run" }), { name: "Tess", handle: "@tess" });
   assert.deepEqual(accountHeader({ name: "", sub: "" }), { name: "You", handle: "" });

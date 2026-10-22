@@ -25,8 +25,15 @@ export default function ServersScreen({ embedded = false }: { embedded?: boolean
     setErr("");
     if (peerWanted()) {
       const { listAllSpaces, offlineServers } = await import("../../src/real/space-servers");
-      const [pairings, active, spaces] = await Promise.all([listPairings(), loadPairing(), listAllSpaces().catch(() => null)]);
-      setRows(serverRows({ pairings, spaces: spaces ?? (await tool<any[]>("spaces.list").catch(() => [])), offline: offlineServers(), active: active?.box ?? null }));
+      const [pairings, active] = await Promise.all([listPairings(), loadPairing()]);
+      let spaces: any[] = [];
+      let offline: string[] = [];
+      try {
+        const listed = await listAllSpaces().catch(() => null);
+        spaces = listed ?? (await tool<any[]>("spaces.list").catch(() => [])) ?? [];
+        offline = offlineServers();
+      } catch { /* a server that did not answer still leaves its pairing on the list */ }
+      setRows(serverRows({ pairings, spaces, offline, active: active?.box ?? null }));
       return;
     }
     const d = await tool<{ servers?: { id: string; name: string }[] }>("spaces.servers").catch(() => null);
@@ -52,11 +59,21 @@ export default function ServersScreen({ embedded = false }: { embedded?: boolean
     } finally { setConnecting(false); void load(); }
   };
   const foundList = foundRows(found);
+  const dropServer = (r: { key: string; spaceId: string; offline: boolean }) => {
+    void (async () => {
+      if (fromList.includes(r.key)) {
+        await import("../../src/real/space-list-app").then((m) => m.removeFromList(r.key));
+        refreshFromList();
+      }
+      if (r.offline) await import("../../src/real/drop-space").then((m) => m.removeFromComputer({ box: r.key, space: r.spaceId || undefined }));
+      void load();
+    })();
+  };
   return (
     <EmbedPage embedded={embedded} title="Servers" sub={serversLine(rows?.length ?? 0)} back="/u/settings">
       {err ? <Card flush><ErrorState title="Servers did not load" reason={err} retry={() => { void within(load()).catch((e) => setErr(e instanceof Error ? e.message : "Servers did not load.")); }} /></Card> : null}
       {rows && rows.length ? (
-        <Card flush>{rows.map((r) => <Row key={r.key} title={r.name} sub={fromList.includes(r.key) ? `Connected to ${r.name} from your list. ${r.sub}` : r.sub} end={fromList.includes(r.key) ? <Button label="Remove" onPress={() => void import("../../src/real/space-list-app").then((m) => m.removeFromList(r.key)).then(() => { refreshFromList(); void load(); })} /> : r.active && rows.length > 1 ? <Chip>Main</Chip> : undefined} />)}</Card>
+        <Card flush>{rows.map((r) => <Row key={r.key} title={r.name} sub={fromList.includes(r.key) ? `Connected to ${r.name} from your list. ${r.sub}` : r.sub} end={r.offline || fromList.includes(r.key) ? <Button label="Remove" onPress={() => dropServer(r)} /> : r.active && rows.length > 1 ? <Chip>Main</Chip> : undefined} />)}</Card>
       ) : rows ? (
         <Card><EmptyState title="No server yet" body={serversLine(0)} /></Card>
       ) : null}

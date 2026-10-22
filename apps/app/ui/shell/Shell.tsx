@@ -7,6 +7,7 @@ import { Icon, type IconName } from "../components/Icon";
 import { Avatar } from "../components/Avatar";
 import { SpaceSwitcherTitle } from "../components/SpaceSwitcherTitle";
 import { ACCOUNT_HREF, THEME_CHOICES, accountHeader, switcherActions, switcherRows } from "./switcher-model.js";
+import { REMOVE_SPACE } from "../../src/real/not-answering.js";
 import { markRef, spaceRef } from "../marks/useMark";
 import { Menu, type MenuItem } from "../components/Menu";
 import { Row } from "../components/Row";
@@ -33,7 +34,7 @@ export type NavItem = Omit<PureItem, "icon"> & { icon: IconName };
 export type NavGroup = { name: string; items: NavItem[] };
 /** The places the shell draws: main, then each named group, then More, then the bottom. Groups are the ones a person named in the sidebar editor (screens/shell/sidebar). */
 export type NavDef = { items: NavItem[]; more: NavItem[]; bottom: NavItem[]; groups?: NavGroup[] };
-export type ShellSpace = { id: string; name: string; sub: string; /** The Space's address (name.vyre.run), when it has one. */ address?: string; /** The small tag that says where it lives: "Personal - Home", "Personal - Cloud" or the team space's name (placeTag). */ tag?: string; /** The space's own logo (an image the person uploaded); without one the tile is a monogram of its initials. */ logo?: string | null; /** A personal space with no server: Records, flows and the planner need a server (screens/shell/basic.js). */ basic?: boolean; /** The space's home time zone (an IANA name), when it has one; times that belong to the space also show in it. */ zone?: string };
+export type ShellSpace = { id: string; name: string; sub: string; /** The Space's address (name.vyre.run), when it has one. */ address?: string; /** The small tag that says where it lives: "Personal - Home", "Personal - Cloud" or the team space's name (placeTag). */ tag?: string; /** The space's own logo (an image the person uploaded); without one the tile is a monogram of its initials. */ logo?: string | null; /** A personal space with no server: Records, flows and the planner need a server (screens/shell/basic.js). */ basic?: boolean; /** The space's home time zone (an IANA name), when it has one; times that belong to the space also show in it. */ zone?: string; /** The paired server, when this Space is on one. */ server?: string; /** The server did not answer, or its pairing is already gone. */ quiet?: boolean };
 export type ShellProps = NavDef & {
   /** The path now showing (usePathname). */
   current: string;
@@ -41,6 +42,10 @@ export type ShellProps = NavDef & {
   spaces: ShellSpace[];
   space: string;
   onSpace: (id: string) => void;
+  /** A Space whose server is not answering: say so, and do not switch. */
+  onQuiet?: (id: string) => void;
+  /** Drop that Space from this computer: the pairing, the kept shell, the kept Spaces and the saved root. */
+  onRemoveSpace?: (id: string) => void;
   user: { name: string; sub?: string; /** How the person is drawn when they picked a look (a seed like s3~c5), else from their name. */ look?: string };
   /** What the sidebar becomes inside a place (its list with Back); null or absent is the main sidebar. Built by the caller from the path (ui/shell/sidebar-stack.js). */
   panel?: PanelDef | null;
@@ -61,8 +66,8 @@ export type ShellProps = NavDef & {
   children: React.ReactNode;
 };
 
-function SpaceSwitcher({ spaces, space, onSpace, onOpen, compact }: Pick<ShellProps, "spaces" | "space" | "onSpace"> & { onOpen?: (href: string) => void; compact?: boolean }) {
-  return <SpaceSwitcherTitle spaces={spaces} space={space} onSpace={onSpace} onOpen={onOpen} compact={compact} />;
+function SpaceSwitcher({ spaces, space, onSpace, onOpen, compact, onQuiet, onRemoveSpace }: Pick<ShellProps, "spaces" | "space" | "onSpace" | "onQuiet" | "onRemoveSpace"> & { onOpen?: (href: string) => void; compact?: boolean }) {
+  return <SpaceSwitcherTitle spaces={spaces} space={space} onSpace={onSpace} onOpen={onOpen} compact={compact} onQuiet={onQuiet} onRemoveSpace={onRemoveSpace} />;
 }
 
 type RailProps = ShellProps;
@@ -111,7 +116,12 @@ function accountItems(p: ShellProps, theme: string): MenuItem[] {
   const cur = showingOf(p);
   const acts = switcherActions(cur);
   const rows = switcherRows(p.spaces, cur?.id ?? "");
-  const items: MenuItem[] = rows.map((r) => ({ id: `space:${r.id}`, label: r.name, selected: r.on, shortcut: r.shortcut, onPress: () => p.onSpace(r.id), lead: <SpaceTile space={{ id: r.id, name: r.name }} size={20} /> }));
+  const items: MenuItem[] = rows.map((r) => {
+    const item: MenuItem = { id: `space:${r.id}`, label: r.name, selected: r.on, shortcut: r.shortcut, onPress: () => (r.remove ? p.onQuiet?.(r.id) : p.onSpace(r.id)), lead: <SpaceTile space={{ id: r.id, name: r.name }} size={20} /> };
+    if (r.note) item.note = r.note;
+    if (r.remove) item.menu = [{ id: `drop:${r.id}`, label: REMOVE_SPACE, onPress: () => p.onRemoveSpace?.(r.id) }];
+    return item;
+  });
   items.push({ id: "add", label: "Add a Space", lead: lead("plus"), onPress: () => {}, sub: acts.add.map((a) => ({ id: `add:${a.id}`, label: a.label, lead: lead(a.id === "create" ? "plus" : "link"), onPress: () => p.onNavigate(a.href) })) });
   acts.own.forEach((a, i) => items.push({ id: `own:${a.id}`, label: a.label, shortcut: a.shortcut || undefined, divider: i === 0, lead: lead(a.id === "invite" ? "users" : "settings"), onPress: () => p.onNavigate(a.href) }));
   items.push(
@@ -288,7 +298,7 @@ function PhoneShell(p: ShellProps) {
       {/* The switcher shows on the tab bar's own places only; a page opened from More (Vault, Drive, Settings, Spaces) is pushed and has its own title row. */}
       {isTopLevel(p.current, all) && !inMore ? (
         <View className="flex-row items-center justify-between px-s4">
-          <SpaceSwitcher spaces={p.spaces} space={p.space} onSpace={p.onSpace} onOpen={p.onNavigate} compact />
+          <SpaceSwitcher spaces={p.spaces} space={p.space} onSpace={p.onSpace} onOpen={p.onNavigate} onQuiet={p.onQuiet} onRemoveSpace={p.onRemoveSpace} compact />
           <PhoneAccount p={p} />
         </View>
       ) : null}

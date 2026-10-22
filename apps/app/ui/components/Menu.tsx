@@ -14,12 +14,44 @@ export type MenuItem = {
   /** A hairline above this item, to start a new group of choices. */ divider?: boolean;
   /** When two items may share a label (two Spaces with one name). */ id?: string;
   /** Shown at the right, muted ("Cmd 1"). */ shortcut?: string;
+  /** A second muted line under the label. Absent on an ordinary row, so that row is drawn as it always was. */ note?: string;
+  /** A small menu beside the row. The row itself still presses. Used when a Space is not answering, so Remove sits beside the words. */ menu?: MenuItem[];
   /** Choices that open beside this one: the item becomes a row with a chevron and nothing happens on its own press. */ sub?: MenuItem[];
 };
 
 /** One choice, or a row that opens a submenu: the same height, padding and gaps for both. */
 function Choice({ i, map, color, scheme }: { i: MenuItem; map: any; color: any; scheme: "dark" | "paper" }) {
   const rowStyle = { minHeight: px(map, "--control-sm"), flexDirection: "row" as const, alignItems: "center" as const, gap: px(map, "--s-3"), borderRadius: px(map, "--r-row"), paddingHorizontal: px(map, "--s-3") };
+  // A note or a beside-menu is only a Space that is not answering. An ordinary row, including one that opens a submenu, is drawn below exactly as before.
+  if (i.note || (i.menu && i.menu.length)) {
+    const body = (
+      <>
+        {i.lead ?? null}
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text tone={i.danger ? "err" : "default"} numberOfLines={1}>{i.label}</Text>
+          {i.note ? <Text size="caption" tone="faint" numberOfLines={1}>{i.note}</Text> : null}
+        </View>
+        {i.shortcut ? <Text size="caption" tone="faint">{i.shortcut}</Text> : null}
+        {i.selected ? <Icon name="check" size={16} tone="text" /> : null}
+      </>
+    );
+    if (!i.menu || !i.menu.length) return <P.Item onPress={i.onPress} style={rowStyle}>{body}</P.Item>;
+    return (
+      <View style={{ flexDirection: "row", alignItems: "center" }}>
+        <P.Item onPress={i.onPress} style={{ ...rowStyle, flex: 1 }}>{body}</P.Item>
+        <P.Sub>
+          <P.SubTrigger accessibilityLabel={i.menu[0]?.label ?? "More"} style={{ minHeight: rowStyle.minHeight, alignItems: "center", justifyContent: "center", paddingHorizontal: px(map, "--s-2") }}>
+            <Icon name="more" size={16} tone="label" />
+          </P.SubTrigger>
+          <P.Portal>
+            <P.SubContent style={{ ...elevation(scheme, 2), zIndex: 1001, minWidth: px(map, "--s-12") * 4, borderRadius: px(map, "--r-card"), borderWidth: 1, borderColor: color["edge-strong"], backgroundColor: color["surface-3"], padding: px(map, "--s-1") }}>
+              {i.menu.map((c) => <Choice key={c.id ?? c.label} i={c} map={map} color={color} scheme={scheme} />)}
+            </P.SubContent>
+          </P.Portal>
+        </P.Sub>
+      </View>
+    );
+  }
   // The theme's colour as a style, never a class: the menu is portalled outside the themed view, where a class only has the custom properties on <html>.
   const inner = (
     <>

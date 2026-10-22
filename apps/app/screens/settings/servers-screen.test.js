@@ -32,9 +32,11 @@ test("Servers is folded into Devices and computers: off the Settings list and of
   assert.match(spaces, /<MyCloudCard/, "the add-a-server door stays reachable from Look and name");
 });
 
-test("servers screen: a server connected from the list says so and has a Remove", () => {
+test("servers screen: a server connected from the list says so and has a Remove, and a server that is not answering has the same Remove", () => {
   assert.match(src, /Connected to \$\{r\.name\} from your list/);
   assert.match(src, /label="Remove"/);
+  assert.match(src, /removeFromComputer/);
+  assert.match(src, /r\.offline \|\| fromList\.includes\(r\.key\)/);
 });
 
 test("the chain pairing is off by default: a listed server answers server_not_ready until the server side is signed", () => {

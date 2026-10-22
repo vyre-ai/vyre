@@ -91,6 +91,16 @@ test("a space is never called by its id: its name, label or address; Personal fo
   assert.equal(spaceNameOf({ id: "spc_1", displayName: "spc_9zk4", label: "Juniper Studio" }), "Juniper Studio");
 });
 
+test("a Space keeps its server id, and a web address is not one", async () => {
+  const { spacesFrom } = await import("./real-model.ts");
+  const rows = spacesFrom([
+    { id: "spc_aaaaaaaaaaaa", name: "cedar.vyre.run", role: "owner", status: "done", server: "boxa" },
+    { id: "spc_bbbbbbbbbbbb", name: "birch.vyre.run", role: "owner", status: "done", server: "https://birch.vyre.run" },
+  ]);
+  assert.equal(rows[0].server, "boxa");
+  assert.equal(rows[1].server, undefined);
+});
+
 test("the switcher: Personal, then a team space with its Cloud tag; nobody sees Basic, Pro or an id", async () => {
   const { spacesFrom } = await import("./real-model.ts");
   const rows = spacesFrom([
