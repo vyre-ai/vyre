@@ -1,20 +1,20 @@
 // "What my assistant may do" in Settings (G23): one switch for each area, the tools turned off one by one, and one place to turn a tool off. Only the person changes it; the assistant is refused what is off.
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { View } from "react-native";
-import { useRouter } from "expo-router";
 import { Banner, Button, Card, Divider, ErrorState, Field, Row, Switch, Text, showToast } from "@vyre/ui";
 import { Group, Page, Sec } from "../places/Frame";
 import { tool } from "../../src/real/box";
 import { within } from "../../src/state/kept-model.js";
 import { PermissionsScreen, SpendScreen } from "../settings/LimitsScreens";
 import OutsideScreen from "../settings/OutsideScreen";
+import { SeeingScreen } from "../settings/PrivacyScreens";
 import { agentCards, areaLine, offTitle, pickerGroups, refusal, stateFrom, summary, switchCall, toolCall, type AccessState } from "./access-model.js";
 
 /** The page, drawn from a state (the gallery draws it from a sample). */
 export function AccessView({ s, busy, problem, typed, setTyped, onSwitch, onTurnOffTool, onTurnOnTool, more, onOpen, agents, catalog, onTurnOff, sections }: {
   s: AccessState; busy: boolean; problem: string; typed: string; setTyped: (v: string) => void;
   onSwitch: (id: string, on: boolean) => void; onTurnOffTool: () => void; onTurnOnTool: (name: string) => void;
-  /** Outside, spend and permissions, drawn here instead of as their own pages. */ sections?: ReactNode;
+  /** Outside, what agents can see, spend and permissions, drawn here instead of as their own pages. */ sections?: ReactNode;
   /** Each agent, as a small card that opens its own page in Apps (the agent's permissions live there; this page keeps what every agent may do). */ agents?: { name: string; title: string; sub: string; href: string }[];
   /** What commands.list says, for the picker of tools to turn off; with onTurnOff (one tool or a family by its id). */ catalog?: unknown; onTurnOff?: (id: string) => void;
   /** The other pages that decide what agents may do, led to from here so this is the one place to look. */ more?: { title: string; sub: string; href: string }[]; onOpen?: (href: string) => void;
@@ -89,12 +89,7 @@ function TurnOffPicker({ catalog, advanced, setAdvanced, off, busy, onPick, type
   );
 }
 
-const MORE = [
-  { title: "What my agents can see", sub: "Choose, Space by Space, what your agents may read", href: "/u/settings/seeing" },
-];
-
 export function AssistantAccessScreen() {
-  const router = useRouter();
   const [s, setS] = useState<AccessState | null>(null);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState("");
@@ -121,7 +116,7 @@ export function AssistantAccessScreen() {
   };
   if (!s) return <Page title="What agents may do" back="/u/settings">{slow ? <Card flush><ErrorState title="What agents may do did not load" reason={slow} retry={load} /></Card> : <Text tone="label">This server does not keep these settings yet.</Text>}</Page>;
   return (
-    <AccessView agents={agents} catalog={catalog} onTurnOff={(id) => void run({ tool: "assistant.access.narrow", input: { tools: [id] } }, "Turned off.")} more={MORE} onOpen={(href) => router.push(href as never)} sections={<><Sec title="Outside"><OutsideScreen embedded /></Sec><Sec title="Spend"><SpendScreen embedded /></Sec><Sec title="Permissions"><PermissionsScreen embedded /></Sec></>} s={s} busy={busy} problem={problem} typed={typed} setTyped={setTyped}
+    <AccessView agents={agents} catalog={catalog} onTurnOff={(id) => void run({ tool: "assistant.access.narrow", input: { tools: [id] } }, "Turned off.")} sections={<><Sec title="Outside"><OutsideScreen embedded /></Sec><Sec title="What my agents can see"><SeeingScreen embedded /></Sec><Sec title="Spend"><SpendScreen embedded /></Sec><Sec title="Permissions"><PermissionsScreen embedded /></Sec></>} s={s} busy={busy} problem={problem} typed={typed} setTyped={setTyped}
       onSwitch={(id, on) => void run(switchCall(id, on))}
       onTurnOffTool={() => { const c = toolCall(typed) as { problem?: string; tool?: string; input?: Record<string, unknown> }; if (c.problem || !c.tool) { setProblem(c.problem ?? ""); return; } setTyped(""); void run({ tool: c.tool, input: c.input ?? {} }, "Turned off for your agent."); }}
       onTurnOnTool={(name) => void run({ tool: "assistant.access.restore", input: { tools: [name] } })} />

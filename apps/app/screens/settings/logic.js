@@ -88,7 +88,7 @@ function all(/** @type {string} */ space) {
       ["People and roles", "Who is here, their roles, the rules and the groups", "/u/settings/roles", "users"],
       ["Invites and lending", "Invite someone, or lend a computer for a while", "/u/wink", "wink"],
       ["Agents' computers and limits", "What runs for this Space, and the limits on it", "/u/settings/system", "laptop"],
-      ["What agents may do", "Outside, spend and permissions, in one place", "/u/settings/assistant-access", "shield"],
+      ["What agents may do", "Outside, what they can see, spend and permissions, in one place", "/u/settings/assistant-access", "shield"],
       ["Skills and plugins", "Yours and the Space's; members draft, admins approve", "/u/skills", "board"],
       ["Apps", "The modules installed on this Space", "/u/settings/apps", "grid"],
       ["Kits", "Install a kit to add types and ways of working", "/u/kits", "kits"],
