@@ -13,7 +13,9 @@ function escapeHtml(s: string): string {
 
 async function inflate(bytes: Uint8Array): Promise<string> {
   if (typeof DecompressionStream !== "function") throw new Error("no inflate");
-  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+  const copy = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(copy).set(bytes);
+  const stream = new Blob([copy]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
   return new Response(stream).text();
 }
 

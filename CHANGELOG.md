@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6.9
 
+- fix(files): a PowerPoint preview inflates each slide from its own bytes, which the app typecheck accepts (apps/app/ui/files/PptxDom.tsx).
 - fix(files): a file that is not shared says to ask the person who has it (core/files/with-me.js).
 - fix(files): Shared with me stays the person's own decision. A phone reaches those tools as its paired device, and a refusal says what to do next (core/files/with-me.js).
 - feat(files): a Space folder can be moved and renamed in Files, and an agent's folder can be moved, renamed and deleted on that agent's computer. Deleting a Space file is refused: the owner role has no drive.delete grant, so the file stays (core/files, apps/app/screens/drive).
