@@ -109,8 +109,8 @@ const withSources = (store, rows) => {
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
   async start(ctx) {
-    // Where each Kit on this Space came from (core/flows/sources.js): the module's own table, its rows a pointer beside the kernel's own install record.
-    ctx.store.migrate([...SOURCE_MIGRATIONS]);
+    // Where each Kit on this Space came from (core/flows/sources.js): the module's own table, its rows a pointer beside the kernel's own install record. A step that cannot run right now (the database is busy with the kernel's own work) must not take the module down: the table is made again when it is first needed.
+    try { ctx.store.migrate([...SOURCE_MIGRATIONS]); } catch (e) { ctx.log(`kit sources: the table is not made yet: ${/** @type {Error} */ (e).message}`); }
     const hostOf = (/** @type {any} */ input) => {
       const h = ctx.flowsHost;
       if (!h) throw refuse("Flows run only where the kernel is on", "unavailable");

@@ -31,6 +31,9 @@ const until = async (/** @type {() => Promise<any>} */ f, /** @type {string} */ 
 /** The kernel's own stand-in proof, as the other Kit tests use it. */
 const presence = () => { const used = new Set(); return { check: async (/** @type {any} */ q) => (q.chain && q.proof && q.proof.op === q.op && canonical(q.proof.fields) === canonical(q.fields) && !used.has(q.proof.n) && (used.add(q.proof.n), true) ? null : "wrong_proof") }; };
 
+/** What the daemon said about its modules, so a failure carries the daemon's own words. */
+const daemonSaid = (/** @type {string[]} */ lines) => lines.filter(l => /flows|module|migrat/i.test(l)).join(" | ");
+
 test("vyre kit lists the library, and vyre kit deploy law-firm proposes the base Kit and then the law firm Kit, each for a yes", { timeout: 120_000 }, async t => {
   process.env.VYRE_SEAL_DEV = "1";
   process.env.VYRE_KERNEL_PATH_RULE = "1";
@@ -64,7 +67,8 @@ test("vyre kit deploy <file> proposes a card, the Space keeps where it came from
   t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [], vault: { keystore: "file" }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
-  const d = await start({ root, log: () => {}, kernel: true, kernelPresence: presence() });
+  const lines = /** @type {string[]} */ ([]);
+  const d = await start({ root, log: (m, x) => lines.push(String(m) + (x ? " " + JSON.stringify(x) : "")), kernel: true, kernelPresence: presence() });
   t.after(() => d.stop());
 
   const file = path.join(root, "demo-kit.json");
@@ -72,7 +76,7 @@ test("vyre kit deploy <file> proposes a card, the Space keeps where it came from
 
   // a Kit from a file: a card is proposed, and nothing is installed until the owner says yes
   const dep = /** @type {any} */ (await run(root, ["kit", "deploy", file, "--json"]));
-  assert.equal(dep.code, 0, dep.out);
+  assert.equal(dep.code, 0, dep.out + " :: " + daemonSaid(lines));
   const said = JSON.parse(dep.out);
   assert.equal(said.source, file, "the source is the file the Kit was read from");
   assert.equal(said.steps.length, 1);
@@ -89,24 +93,24 @@ test("vyre kit deploy <file> proposes a card, the Space keeps where it came from
   await until(async () => {
     const l = /** @type {any} */ (await run(root, ["kit", "--json"]));
     return (JSON.parse(l.out).space_kits || []).find((/** @type {any} */ r) => r.id === "demo-kit" && r.status === "installed");
-  }, "the Kit to install");
+  }, "the Kit to install :: " + daemonSaid(lines));
 
   // the Space keeps where the Kit came from, and which version it is at
   const list = /** @type {any} */ (await run(root, ["kit", "--json"]));
   const mine = (JSON.parse(list.out).space_kits || []).find((/** @type {any} */ r) => r.id === "demo-kit");
-  assert.ok(mine, list.out);
+  assert.ok(mine, list.out + " :: " + daemonSaid(lines));
   assert.equal(mine.source, file);
   assert.equal(Number(mine.version), 1);
 
   // the same version again: refused, and not tried a second time
   const same = /** @type {any} */ (await run(root, ["kit", "deploy", file, "--json"]));
-  assert.equal(same.code, 1, same.out);
+  assert.equal(same.code, 1, same.out + " :: " + daemonSaid(lines));
   assert.match(same.out, /already installed/);
 
   // a higher version: proposed again, for the owner's yes
   fs.writeFileSync(file, JSON.stringify(kit(2)));
   const higher = /** @type {any} */ (await run(root, ["kit", "deploy", file, "--json"]));
-  assert.equal(higher.code, 0, higher.out);
+  assert.equal(higher.code, 0, higher.out + " :: " + daemonSaid(lines));
   assert.match(higher.out, /waiting for your yes/);
   assert.equal(JSON.parse(higher.out).source, file);
 });

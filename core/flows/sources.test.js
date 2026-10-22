@@ -6,7 +6,7 @@ import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
-import { MIGRATIONS, rememberSource, forgetSource, sourcesFor } from "./sources.js";
+import { MIGRATIONS, ensureTable, rememberSource, forgetSource, sourcesFor } from "./sources.js";
 
 /** A store with the table made, as the module makes it. */
 const store = () => {
@@ -16,7 +16,7 @@ const store = () => {
 };
 
 test("the table is the module's own, named with its prefix", () => {
-  assert.match(MIGRATIONS[0], /CREATE TABLE flows_kit_sources/);
+  assert.match(MIGRATIONS[0], /CREATE TABLE IF NOT EXISTS flows_kit_sources/);
   assert.equal(MIGRATIONS.length, 1);
 });
 
@@ -40,4 +40,12 @@ test("a store with no table yet has no sources, and a write that fails does not 
   const empty = { db: { prepare: () => { throw new Error("no table yet"); } } };
   assert.equal(sourcesFor(empty).size, 0);
   rememberSource(empty, "demo-kit", 1, "/tmp/demo-kit.json");
+});
+
+test("the table is made when it is needed, and the numbered step never fails on it twice", () => {
+  const said = /** @type {string[]} */ ([]);
+  const s = { db: { exec: (/** @type {string} */ sql) => { said.push(sql); }, prepare: () => ({ all: () => [] }) } };
+  assert.equal(ensureTable(s), true);
+  assert.match(said[0], /CREATE TABLE IF NOT EXISTS flows_kit_sources/);
+  assert.equal(MIGRATIONS[0], said[0], "the numbered step is the same statement");
 });

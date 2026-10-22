@@ -11,20 +11,34 @@
 
 /**
  * The module's own store: the rows it keeps beside the kernel's own records.
- * @typedef {{ db: { prepare(sql: string): { run(...args: any[]): any, all(...args: any[]): any[] } } }} SourceStore
+ * @typedef {{ db: { exec(sql: string): void, prepare(sql: string): { run(...args: any[]): any, all(...args: any[]): any[] } } }} SourceStore
  */
 
-/** The steps that made the table. Append only: a released step never moves. */
-export const MIGRATIONS = [`
-  CREATE TABLE flows_kit_sources (
+/**
+ * The table this module keeps: where each Kit came from. IF NOT EXISTS, so the step can be run
+ * again without failing and the table can be made at the moment it is first needed.
+ */
+const TABLE_SQL = `CREATE TABLE IF NOT EXISTS flows_kit_sources (
     kit_id TEXT PRIMARY KEY,
     version INTEGER NOT NULL,
     source TEXT NOT NULL,
     at INTEGER NOT NULL
-  );
-`];
+  )`;
+
+/** The steps that made the table. Append only: a released step never moves. */
+export const MIGRATIONS = [TABLE_SQL];
 
 const TABLE = "flows_kit_sources";
+
+/**
+ * The table, made when it is not there yet. The module's own numbered step makes it when the
+ * module starts; this makes it again if that step could not run (the database was busy with the
+ * kernel's own work), so the pointer is kept either way.
+ * @param {SourceStore} store
+ */
+export function ensureTable(store) {
+  try { store.db.exec(TABLE_SQL); return true; } catch { /* the table cannot be made right now */ return false; }
+}
 
 /**
  * Remember where a Kit was proposed from. A later proposal from another place replaces it: the
@@ -35,6 +49,7 @@ const TABLE = "flows_kit_sources";
  */
 export function rememberSource(store, kitId, version, source, log) {
   try {
+    ensureTable(store);
     store.db.prepare(`INSERT INTO ${TABLE} (kit_id, version, source, at) VALUES (?, ?, ?, ?) ON CONFLICT(kit_id) DO UPDATE SET version = excluded.version, source = excluded.source, at = excluded.at`)
       .run(String(kitId), Number(version) || 0, String(source), Date.now());
   } catch (e) {
@@ -60,6 +75,7 @@ export function sourcesFor(store) {
   /** @type {Map<string, { source: string, version: number }>} */
   const out = new Map();
   try {
+    ensureTable(store);
     for (const r of /** @type {any[]} */ (store.db.prepare(`SELECT kit_id, version, source FROM ${TABLE}`).all())) {
       out.set(String(r.kit_id), { source: String(r.source), version: Number(r.version) || 0 });
     }

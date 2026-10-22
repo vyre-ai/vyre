@@ -23,53 +23,74 @@ export default {
     const { flags, pos } = parse(args, { values: ["token"], cmd: "kit" });
     const up = await ensureUp();
     if (!up.ok) { out(beacon("  vyred did not start") + dim(` · its output is in ${up.log}`)); return 1; }
-    const lib = await call("flows.kit.library", {});
-    if (lib.error) return failTool(lib.error);
-    const kits = /** @type {any[]} */ (lib.data.kits);
-    const have = await call("flows.kit.list", {});
-    // A Kit that was taken away is not on this Space any more.
-    const rows = /** @type {any[]} */ ((have.error ? [] : (have.data.kits || have.data || [])).filter((/** @type {any} */ k) => k.status !== "removed"));
-    const installed = new Map(rows.filter((/** @type {any} */ k) => !k.status || k.status === "installed").map((/** @type {any} */ k) => [k.id ?? k.kit_id, k]));
-    if (pos[0] !== "deploy") {
-      if (json()) return emit({ kits: kits.map(k => ({ ...k, installed: installed.has(k.id) })), space_kits: rows.map(row => ({ id: row.id ?? row.kit_id, version: row.version, status: row.status, source: row.source || null })) });
-      for (const k of kits) out(`  ${k.id.padEnd(18)} ${installed.has(k.id) ? signal("installed") : dim("not installed")}  ${dim(k.description)}`);
-      if (rows.length) {
-        out(dim("\n  on this Space:"));
-        for (const r of rows) {
-          const bits = [`version ${r.version}`, r.status || "installed"];
-          if (r.source) bits.push(`from ${r.source}`);
-          out(`  ${String(r.id ?? r.kit_id ?? "").padEnd(18)} ${dim(bits.join(" "))}`);
-        }
-      }
-      out(dim("\n  vyre kit deploy <kit> puts one on this Space"));
-      return 0;
+    if (pos[0] === "deploy") {
+      const what = pos[1];
+      if (!what) throw new UsageError("vyre kit deploy <kit>");
+      // A path or an address is a Kit to install from; a plain word is one of the Kits this build ships.
+      if (looksLikeSource(what)) return deployFrom(what, flags.token ? String(flags.token) : "");
+      return deployLibrary(what);
     }
-    const what = pos[1];
-    if (!what) throw new UsageError("vyre kit deploy <kit>");
-    // A path or an address is a Kit to install from; a plain word is one of the Kits this build ships.
-    if (looksLikeSource(what)) return deployFrom(what, flags.token ? String(flags.token) : "");
-    const id = what;
-    const want = kits.find(k => k.id === id);
-    if (!want) { out(beacon(`  no Kit ${id}`) + dim(` · ${kits.map(k => k.id).join(", ") || "this build ships none"} · or give the file or address of a Kit`)); return 1; }
-    /** @type {{ kit: string, ok: boolean, said: string, task?: string }[]} */ const steps = [];
-    for (const k of [...want.requires.map((/** @type {string} */ r) => kits.find(x => x.id === r)).filter(Boolean), want]) {
-      const have1 = installed.get(k.id);
-      if (have1 && Number(have1.version) >= Number(k.version)) { steps.push({ kit: k.id, ok: true, said: `already installed (version ${have1.version})` }); continue; }
-      const got = await call("flows.kit.library.get", { id: k.id });
-      if (got.error) { steps.push({ kit: k.id, ok: false, said: String(got.error.message || got.error.code) }); break; }
-      const r = await call("flows.kit.propose", { kit: got.data.kit });
-      if (r.error) { steps.push({ kit: k.id, ok: false, said: String(r.error.message || r.error.code) }); break; }
-      const d = r.data;
-      steps.push(d && d.ok === false ? { kit: k.id, ok: false, said: `not proposed: ${(d.errors || []).map((/** @type {any} */ e) => e.message).join("; ")}` } : { kit: k.id, ok: true, said: "its card is waiting for your yes", task: d && d.task });
-      if (d && d.ok === false) break;
-    }
-    const failed = steps.some(r => !r.ok);
-    if (json()) { emit({ kit: id, steps }); return failed ? 1 : 0; }
-    for (const r of steps) out(`  ${r.ok ? signal("waiting") : beacon("failed")} ${r.kit}: ${dim(r.said)}`);
-    if (!failed && steps.some(r => /waiting/.test(r.said))) out(dim("  next: vyre needs"));
-    return failed ? 1 : 0;
+    return listKits();
   },
 };
+
+/**
+ * The Kits on offer, and the ones on this Space: each with the version it is at and where it came
+ * from.
+ */
+async function listKits() {
+  const lib = await call("flows.kit.library", {});
+  if (lib.error) return failTool(lib.error);
+  const kits = /** @type {any[]} */ (lib.data.kits);
+  const have = await call("flows.kit.list", {});
+  // A Kit that was taken away is not on this Space any more.
+  const rows = /** @type {any[]} */ ((have.error ? [] : (have.data.kits || have.data || [])).filter((/** @type {any} */ k) => k.status !== "removed"));
+  const installed = new Map(rows.filter((/** @type {any} */ k) => !k.status || k.status === "installed").map((/** @type {any} */ k) => [k.id ?? k.kit_id, k]));
+  if (json()) return emit({ kits: kits.map(k => ({ ...k, installed: installed.has(k.id) })), space_kits: rows.map(row => ({ id: row.id ?? row.kit_id, version: row.version, status: row.status, source: row.source || null })) });
+  for (const k of kits) out(`  ${k.id.padEnd(18)} ${installed.has(k.id) ? signal("installed") : dim("not installed")}  ${dim(k.description)}`);
+  if (rows.length) {
+    out(dim("\n  on this Space:"));
+    for (const r of rows) {
+      const bits = [`version ${r.version}`, r.status || "installed"];
+      if (r.source) bits.push(`from ${r.source}`);
+      out(`  ${String(r.id ?? r.kit_id ?? "").padEnd(18)} ${dim(bits.join(" "))}`);
+    }
+  }
+  out(dim("\n  vyre kit deploy <kit> puts one on this Space"));
+  return 0;
+}
+
+/**
+ * A Kit of the library: propose it, and the Kit it needs first, each for the owner's yes.
+ * @param {string} id the Kit's id
+ */
+async function deployLibrary(id) {
+  const lib = await call("flows.kit.library", {});
+  if (lib.error) return failTool(lib.error);
+  const kits = /** @type {any[]} */ (lib.data.kits);
+  const have = await call("flows.kit.list", {});
+  const rows = /** @type {any[]} */ (have.error ? [] : (have.data.kits || have.data || []));
+  const installed = new Map(rows.filter((/** @type {any} */ k) => !k.status || k.status === "installed").map((/** @type {any} */ k) => [k.id ?? k.kit_id, k]));
+  const want = kits.find(k => k.id === id);
+  if (!want) { out(beacon(`  no Kit ${id}`) + dim(` · ${kits.map(k => k.id).join(", ") || "this build ships none"}, or give the file or address of a Kit`)); return 1; }
+  /** @type {{ kit: string, ok: boolean, said: string, task?: string }[]} */ const steps = [];
+  for (const k of [...want.requires.map((/** @type {string} */ r) => kits.find(x => x.id === r)).filter(Boolean), want]) {
+    const have1 = installed.get(k.id);
+    if (have1 && Number(have1.version) >= Number(k.version)) { steps.push({ kit: k.id, ok: true, said: `already installed (version ${have1.version})` }); continue; }
+    const got = await call("flows.kit.library.get", { id: k.id });
+    if (got.error) { steps.push({ kit: k.id, ok: false, said: String(got.error.message || got.error.code) }); break; }
+    const r = await call("flows.kit.propose", { kit: got.data.kit });
+    if (r.error) { steps.push({ kit: k.id, ok: false, said: String(r.error.message || r.error.code) }); break; }
+    const d = r.data;
+    steps.push(d && d.ok === false ? { kit: k.id, ok: false, said: `not proposed: ${(d.errors || []).map((/** @type {any} */ e) => e.message).join("; ")}` } : { kit: k.id, ok: true, said: "its card is waiting for your yes", task: d && d.task });
+    if (d && d.ok === false) break;
+  }
+  const failed = steps.some(r => !r.ok);
+  if (json()) { emit({ kit: id, steps }); return failed ? 1 : 0; }
+  for (const r of steps) out(`  ${r.ok ? signal("waiting") : beacon("failed")} ${r.kit}: ${dim(r.said)}`);
+  if (!failed && steps.some(r => /waiting/.test(r.said))) out(dim("  next: vyre needs"));
+  return failed ? 1 : 0;
+}
 
 /**
  * A Kit from a file on this computer or from an https address: read it here, propose it, and leave
