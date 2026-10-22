@@ -50,6 +50,8 @@ export type ChatStore = {
   typing(): void;
   /** Teach the chat names a frame did not carry (who is in it, the model slots). */
   learnNames(list: { id: string; name: string }[]): void;
+  /** A read of who is in the chat. A removal that never arrives as a frame takes it out of search, and a read that lists you puts it back. */
+  noteChatRead(read: { me: string | null; got: unknown; err: { code?: string; message?: string } | null }): void;
   /** Send to chosen assistants (two or more make a fan-out). Falls back to a plain send when the source cannot. */
   sendTo(text: string, o: { to: string[]; fanout: boolean; parent?: string; replyTo?: string; mode?: "steer" | "queue"; mentions?: { kind: string; id: string; name: string }[]; attachments?: Attached[] }): Promise<string | null>;
   /** Social actions; each is a no-op when the source does not have it. */

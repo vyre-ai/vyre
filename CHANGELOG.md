@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6.9
 
+- fix(chat): the open chat records that you were removed from it, so it leaves search (apps/app/src/chat/store.ts).
 - fix(chat): the confirm card still names the Claude account from the login file on this computer (core/sessions/identity.js).
 - fix(sign-in): an invite the home answers as missing says it cannot be used, the same as a door that will not admit you (core/spaces/spaces.test.js).
 - chore(docs): Terms is in the site footer, and a vault item's title is in the tool reference (site/, docs/reference/tools.md).
