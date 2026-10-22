@@ -6,8 +6,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 const strip = Boolean(/** @type {any} */ (process.features).typescript);
-const S1 = { id: "spc_a", name: "juniperdev.vyre.run", label: "juniperdev", displayName: "Juniper Studio", status: "done", role: "owner" };
-const S2 = { id: "spc_b", name: "mine.vyre.run", label: "mine", status: "done", role: "member" };
+const S1 = { id: "spc_a", name: "juniperdev.vyre.run", label: "juniperdev", displayName: "Juniper Studio", status: "done", role: "owner", role_key: "owner" };
+const S2 = { id: "spc_b", name: "mine.vyre.run", label: "mine", status: "done", role: "member", role_key: "member" };
 const ID = { exists: true, name: "devbox.vyre.run", label: "devbox", pending: false };
 
 /** @param {any} spaces @param {any} id */
@@ -26,7 +26,7 @@ test("one space is the whole switcher; two get All spaces first; names and roles
   const { shellFrom } = await import("./real-model.ts");
   const load = async (/** @type {any} */ sp, /** @type {any} */ id) => { const r = await shellSource(/** @type {any} */ (box(sp, id))).load(); return shellFrom(r.spaces, r.identity); };
   const one = await load({ data: [S1] }, { data: ID });
-  assert.deepEqual(one.spaces, [{ id: "spc_a", name: "Juniper Studio", tag: "Juniper Studio", sub: "Owner", role: "owner" }], "the tag is the space's own name");
+  assert.deepEqual(one.spaces, [{ id: "spc_a", name: "Juniper Studio", tag: "Juniper Studio", sub: "Owner", role: "owner", role_key: "owner" }], "the tag is the space's own name");
   const two = await load({ data: [S1, S2] }, { data: ID });
   assert.deepEqual(two.spaces.map((s) => [s.id, s.name, s.sub]), [["all", "All spaces", "One list, everything"], ["spc_a", "Juniper Studio", "Owner"], ["spc_b", "mine", "Member"]]);
 });

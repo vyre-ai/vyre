@@ -11,7 +11,7 @@ import { start } from "../daemon/index.js";
 import { call } from "../daemon/client.js";
 import { validate } from "../modules/index.js";
 import { tempHome } from "../../test/helpers.js";
-import { KEY, ROLE_IDS, landingProblems, landingValue } from "./landing.js";
+import { KEY, ROLE_IDS, landingProblems, landingValue, roleKey } from "./landing.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const manifest = JSON.parse(fs.readFileSync(path.join(HERE, "module.json"), "utf8"));
@@ -37,6 +37,12 @@ test("spaces: the manifest is valid and declares the first page for each role as
 test("spaces: the roles are the four a person sees, and the kernel's temp is the guest", () => {
   assert.deepEqual([...ROLE_IDS], ["owner", "admin", "member", "guest"]);
   assert.deepEqual(landingProblems({ owner: "/u/now", admin: "/u/chats", member: "/u/records/contact", guest: "/u/now" }), []);
+  assert.equal(roleKey("owner"), "owner");
+  assert.equal(roleKey("admin"), "admin");
+  assert.equal(roleKey("member"), "member");
+  assert.equal(roleKey("temp"), "guest", "the kernel's temp is the person-facing guest");
+  assert.equal(roleKey("manager"), null, "a role with no key of its own has no first page");
+  assert.equal(roleKey(""), null);
 });
 
 test("spaces: a value that is not a set of first pages is refused, with the next step", () => {

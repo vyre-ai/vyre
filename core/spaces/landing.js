@@ -18,6 +18,19 @@ export const KEY = "spaces.landing";
 /** The roles a person may set a first page for, in the catalogue's order. */
 export const ROLE_IDS = Object.freeze(BUILTIN_VIEW.map((r) => r.id));
 
+/** The setting key for a kernel role: the kernel's temp is the person-facing guest. */
+const KEY_OF = new Map(BUILTIN_VIEW.map((r) => [r.kernel, r.id]));
+
+/**
+ * The key a kernel role has in the first pages, or null: a role with no key of its own (a
+ * manager) opens Home, and so has no first page.
+ * @param {string} role
+ * @returns {string | null}
+ */
+export function roleKey(role) {
+  return KEY_OF.get(String(role || "")) ?? null;
+}
+
 /**
  * The problems with a proposed value, in plain words with the next step. Empty means it may be
  * stored: the value is a set of first pages, one route for each role, and nothing else.

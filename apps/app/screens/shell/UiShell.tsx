@@ -114,7 +114,7 @@ export function UiShell({ children }: { children: React.ReactNode }) {
   // The Space's first page for this person's role (the setting spaces.landing): once the Space and
   // the role are known, the app replaces the route with it. The screen is already drawn, so the
   // route changes behind it. A route the person chose is never taken away.
-  const landing = landingRoute(showing?.landing, showing?.role ?? "");
+  const landing = landingRoute(showing?.landing, showing?.role_key ?? "");
   const opened = useRef<string | null>(null);
   if (opened.current === null) opened.current = path;
   const moved = useRef(false);

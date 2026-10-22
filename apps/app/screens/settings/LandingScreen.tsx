@@ -1,12 +1,12 @@
 // Settings, First page for each role: the page each role opens on when they sign in to this Space.
 // The value is the setting spaces.landing (the settings hub keeps it, at account level): a route per
-// role, and a role with no route of its own opens Home.
+// role, and a role with no route of its own opens Home. The roles come from the box (roles.catalogue),
+// so the app carries no role list of its own.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { View } from "react-native";
 import { Banner, Card, Divider, ErrorState, LoadingState, Row, Select, Text, showToast } from "@vyre/ui";
 import { Page } from "../places/Frame";
 import { PLACES, moduleHref } from "../../../../lib/sidebar/model.js";
-import { BUILTIN_VIEW } from "../../../../lib/roles/catalogue.js";
 import { keys } from "./keys";
 import { refusal } from "./keys-model.ts";
 import { tool } from "../../src/real/box";
@@ -20,16 +20,25 @@ const HOME = "/u/now";
 /** The Space's own screens are views of the module "space", so the app draws them itself. */
 const SPACE = "space";
 
+/** A role as the box names it for a person. */
+type Role = { id: string; label: string; description?: string };
+
 /** Settings, First page for each role: one picker per role, and the pages a role may open on. */
 export function LandingScreen() {
   const [value, setValue] = useState<Record<string, string> | null>(null);
+  const [roles, setRoles] = useState<Role[]>([]);
   const [screens, setScreens] = useState<{ id: string; title: string }[]>([]);
   const [err, setErr] = useState("");
   const load = useCallback(() => {
     setErr("");
-    Promise.all([keys.one(KEY), tool<{ screens?: { id: string; title: string }[] }>("design.screens", {}).catch(() => null)])
-      .then(([k, s]) => {
+    Promise.all([
+      keys.one(KEY),
+      tool<{ builtin?: Role[] }>("roles.catalogue", {}).catch(() => null),
+      tool<{ screens?: { id: string; title: string }[] }>("design.screens", {}).catch(() => null),
+    ])
+      .then(([k, r, s]) => {
         setValue(k && k.value && typeof k.value === "object" && !Array.isArray(k.value) ? (k.value as Record<string, string>) : {});
+        setRoles(Array.isArray(r?.builtin) ? r.builtin : []);
         setScreens(Array.isArray(s?.screens) ? s.screens : []);
       })
       .catch((e) => setErr(refusal(e)));
@@ -52,9 +61,9 @@ export function LandingScreen() {
       <Banner>Everyone in this Space opens the page set for their role. You can change it at any time.</Banner>
       {err ? <Card flush><ErrorState title="This did not load" reason={err} retry={load} /></Card> : null}
       {!value && !err ? <LoadingState rows={4} /> : null}
-      {value ? (
+      {value && roles.length ? (
         <Card flush>
-          {BUILTIN_VIEW.map((role, i) => (
+          {roles.map((role, i) => (
             <View key={role.id}>
               {i ? <Divider /> : null}
               <View className="gap-s2 p-s3">
@@ -65,7 +74,7 @@ export function LandingScreen() {
           ))}
         </Card>
       ) : null}
-      {value && !options.length ? <Text size="caption" tone="label">There are no pages to choose from yet.</Text> : null}
+      {value && !roles.length ? <Text size="caption" tone="label">There are no roles to set a page for here.</Text> : null}
     </Page>
   );
 }

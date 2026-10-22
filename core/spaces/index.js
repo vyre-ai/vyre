@@ -37,7 +37,7 @@
 // secret ever returned is the recovery code of a new identity, once, in that one reply. The pairing code is shown to the person on
 // purpose (the device displays it) and is kept as a hash.
 
-import { registerGroups } from "./groups.js"; import { registerAddAgent } from "./add-agent.js"; import { registerNames } from "./names.js"; import { landingValue } from "./landing.js"; import { sameWords, triesCounter, WORDS_REFUSED, TOO_MANY } from "../../lib/spaces/invite-words.js";
+import { registerGroups } from "./groups.js"; import { registerAddAgent } from "./add-agent.js"; import { registerNames } from "./names.js"; import { landingValue, roleKey } from "./landing.js"; import { sameWords, triesCounter, WORDS_REFUSED, TOO_MANY } from "../../lib/spaces/invite-words.js";
 import { exportBundle, enrol as enrolBundle, enrolled as bundleEnrolled } from "../../lib/space-bundle.js";
 import crypto from "node:crypto";
 import { devKindSwitch, isReleaseBuild } from "../../lib/release-build.js";
@@ -1415,7 +1415,7 @@ export default {
     const zoneOf = async (id) => { const v = await kv.get(`zone/${id}`); return v && typeof v.zone === "string" && validZone(v.zone) ? v.zone : null; };
     const listSpaces = async (/** @type {any} */ i0, /** @type {any} */ meta0) => {
       const rows = await listSpacesRaw(i0, meta0); const landing = await landingValue(ctx);
-      return Promise.all(rows.map(async (/** @type {any} */ r) => ({ ...r, time_zone: await zoneOf(r.id), ...(r.member === true ? {} : { landing }) })));
+      return Promise.all(rows.map(async (/** @type {any} */ r) => ({ ...r, time_zone: await zoneOf(r.id), role_key: roleKey(r.role), ...(r.member === true ? {} : { landing }) })));
     };
     /** The person's own (home) space always carries a name to show: label "personal", and the display name the tier gives it (the app words it from `tier`). */
     /** Where the Personal space points after an upgrade: `upgraded_to` is My Cloud's id, and the row says it is frozen. */

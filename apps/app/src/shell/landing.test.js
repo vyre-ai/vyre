@@ -2,11 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { HOME, ROLE_IDS, landingRoute, shouldLand } from "./landing.js";
-
-test("the roles a page may be set for are the four a person sees", () => {
-  assert.deepEqual([...ROLE_IDS], ["owner", "admin", "member", "guest"]);
-});
+import { HOME, landingRoute, shouldLand } from "./landing.js";
 
 test("a member lands on the page set for members", () => {
   assert.equal(landingRoute({ member: "/u/chats" }, "member"), "/u/chats");
@@ -17,12 +13,12 @@ test("a role with no page set opens Home", () => {
   assert.equal(landingRoute({ member: "/u/chats" }, "owner"), null, "the owner has no page of their own");
   assert.equal(landingRoute({}, "member"), null);
   assert.equal(landingRoute(undefined, "member"), null);
+  assert.equal(landingRoute({ member: "/u/chats" }, ""), null, "no role, no page");
 });
 
-test("the kernel's temp is the guest, and a role with no key of its own opens Home", () => {
-  assert.equal(landingRoute({ guest: "/u/files" }, "temp"), "/u/files");
-  assert.equal(landingRoute({ member: "/u/chats" }, "manager"), null, "a role with no key has no page");
-  assert.equal(landingRoute({ member: "/u/chats" }, ""), null);
+test("the guest lands on the page set for the guest, which is the key the server sends for the kernel's temp role", () => {
+  assert.equal(landingRoute({ guest: "/u/files" }, "guest"), "/u/files");
+  assert.equal(landingRoute({ member: "/u/chats" }, "manager"), null, "a role with no key of its own has no page");
 });
 
 test("a value that is not a page of the app is not a landing", () => {
