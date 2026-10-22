@@ -12,7 +12,7 @@ import { agentPathOf, NOT_IN_DRIVE } from "./agent-folder.js";
 const obj = (/** @type {any} */ props = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties: props, ...(required.length ? { required } : {}) });
 const str = { type: "string" };
 const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
-const CALLERS = ["cli", "local", "deck", "capsule", "mobile", "device"];
+const CALLERS = ["cli", "local", "deck", "capsule", "device"];
 const PERSON = /^per_[A-Za-z0-9]{8,64}$/;
 
 export const WITH_MIGRATIONS = [
@@ -23,7 +23,7 @@ export const WITH_MIGRATIONS = [
 function personOf(chain) {
   const h = chain && Array.isArray(chain.hops) ? chain.hops[0] : null;
   const id = h && h.actor && h.actor.kind === "person" ? String(h.actor.id) : "";
-  if (!id) throw refuse("this call is not from a signed-in person", "denied");
+  if (!id) throw refuse("this call is not from a signed-in person. Sign in, then try again.", "denied");
   return id;
 }
 
@@ -81,10 +81,10 @@ export function registerWithMe(ctx) {
     obj({ space: str, path: str }, ["path"]), async (i, meta) => {
       let p; try { p = safePath(String(i.path ?? "")); } catch { throw refuse("that is not a path in the Drive", "bad_input"); }
       const d = await door.open(i, meta);
-      if (!d.gateway.drive) throw refuse("this Space has no Drive yet", "unavailable");
+      if (!d.gateway.drive) throw refuse("this Space has no Drive yet; ask the owner or an admin of the Space", "unavailable");
       const me = personOf(d.chain);
       const row = open().prepare("SELECT path FROM files_with WHERE space = ? AND path = ? AND with_person = ?").get(d.space, p, me);
-      if (!row) throw refuse("that file is not shared with you", "not_found");
+      if (!row) throw refuse("that file is not shared with you. Ask the person who has it to share it with files.with.share.", "not_found");
       const bytes = await d.gateway.drive.get(d.chain, p, { maxBytes: MAX_UPLOAD });
       if (bytes.length > MAX_UPLOAD) throw refuse(`a file here is at most ${MAX_UPLOAD / 1048576} MB to download in one call`, "too_large");
       return { path: p, size: bytes.length, base64: Buffer.from(bytes).toString("base64") };

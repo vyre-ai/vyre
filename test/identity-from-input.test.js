@@ -41,6 +41,7 @@ const RULES = /** @type {[RegExp, string, "target"|"lookup"|"designation"|"narro
   [/^roles\.assign$/, "person", "target", "the person who is given a role; an owner or admin only, and the kernel's grants check the caller's own chain may set that role"],
   [/^roles\.tools$/, "person", "lookup", "whose tools to list: the caller's own by default, anyone's only for an owner or admin (refused for others in the tool)"],
   [/^work\.project\.level$/, "person", "target", "the person whose seat on the project changes; person-only reach, and the project team engine checks the caller's own chain may set it"],
+  [/^files\.with\.share$/, "person", "target", "the other member the file is shared with; the caller is the chain's person, and the tool refuses sharing with yourself"],
 ]);
 
 test("every identity-looking field on a tool a person or model can reach is reviewed, and every review is still true", { timeout: 180_000 }, async t => {
