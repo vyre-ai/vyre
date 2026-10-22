@@ -50,7 +50,7 @@ test("typed cells: the table has the title first, the line and money for a phone
   assert.equal(content.total, 2);
   assert.deepEqual(content.columns.find(c => c.id === "role").options, ["Client", "Referrer"]);
   assert.equal(content.rows[0].cells._title.v, "Dana 1");
-  assert.equal(content.rows[0].cells._title.initials, true, "Contact is a person-like type: a tile of initials before the name");
+  assert.equal(content.rows[0].cells._title.initials, undefined, "a contact shows no initials tile");
 });
 
 // The order is the list view's: the same records through the old pipeline (filterRows, sortRows over the record) and the new one (the cells' own sort keys) come out in the same order,
