@@ -12,9 +12,9 @@ Release 0.5.1. Updated 2026-10-22. Source: https://github.com/vyre-ai/vyre. Lice
 - Playbooks are project templates: stages, the tasks in each stage, who does each task, and when a stage counts as done. Each kind of work can run as its own track, with its own Playbook and Flows over shared records.
 - Records: contacts, projects, tasks and your own record types, with fields in named groups, tags, saved views, Excel or CSV import, and CSV export from the web app. Fields marked sealed show an agent a placeholder, never the value.
 - Documents fill your own Word templates from a record and the records linked to it, as Word or PDF. Signing sends a document for signature from a record; the signer needs no account, and the signed copy files back on the record.
-- Files: one Files place for the Space, with linked Google Drive and Dropbox folders read through each person's own account.
+- Files: agent folders and Space folders, Shared with me, Office previews and earlier versions, plus linked Google Drive and Dropbox folders read through each person's own account.
 - The Vault holds passwords, API keys, logins with one-time codes, cards, notes and SSH keys, in groups, shared as Can use or Can edit. Agents use a credential without seeing it.
-- Sites: an agent builds a site, previews it at a private address, and puts it live on one yes from you.
+- A project's site: an agent builds a site, previews it at a private address, and puts it live on one yes from you. Sites is not a place in the sidebar.
 - Needs you is one place for approvals, asks and stuck tasks. Teams get roles, per-project seat levels and invites with a role.
 - Everything that leaves your server (an email, a payment, a deletion, a published page) waits at the Gate for a person to approve the exact words. An agent can ask and cannot approve.
 - Architecture: see https://vyre.run/architecture/ and https://vyre.run/docs/project/ARCHITECTURE.
@@ -102,17 +102,16 @@ Connecting a stack: Vyre can be extended by integrating your Zoho, QuickBooks, R
 ## Where it runs
 - Server: Linux with Docker Compose 2.24 or newer, or a Mac that stays on. Installed in /srv/vyre by one line, curl -fsSL vyre.run/i | sh, which the Vyre app shows. Images are pulled by digest after their signatures are checked. Updates are signed with a pinned key; a box refuses unsigned, tampered or older releases. Stable never takes a prerelease.
 - Mac: the Vyre app in its own window, from the GitHub release (Vyre-aarch64.dmg or Vyre-x86_64.dmg). Not yet signed with an Apple Developer ID, so it opens once with Open Anyway. Needs macOS 14 or newer.
-- Windows: Vyre, a tray app with an Alt+Space panel, installed with VyreSetup.exe from the GitHub release. Not Authenticode-signed yet, so Windows asks for "More info", then "Run anyway". Signs in with your Vyre's address, your username and your master password. The server does not run on Windows yet.
-- Phone: the Vyre app, sideloaded (the Android APK from the release, or an iPhone build installed with Xcode), signed in with your Vyre's address, your username and your master password, with Face ID or a fingerprint. A removed phone wipes itself.
+- Windows: Vyre, a tray app with an Alt+Space panel, installed with VyreSetup.exe from the GitHub release. Not Authenticode-signed yet, so Windows asks for "More info", then "Run anyway". Signs in with the Space, your username and your password, or Continue with GitHub. The server does not run on Windows yet.
+- Phone: the Vyre app, sideloaded (the Android APK from the release, or an iPhone build installed with Xcode), signed in with the Space, your username and your password, or Continue with GitHub, with Face ID or a fingerprint. A removed phone wipes itself.
 - Network: built in. Nothing to install or sign in to; the relay carries a connection when a direct path is not possible.
 
 ## Install
-1. Reserve your name at https://vyre.run/setup/ and copy the code it shows.
-2. Install the app from https://github.com/vyre-ai/vyre/releases/latest: Vyre-aarch64.dmg or Vyre-x86_64.dmg on a Mac, VyreSetup.exe on Windows. Both are sideloaded (not signed with a store identity yet).
-3. Open the app, paste the code and save the recovery code.
-4. Choose Join a team, Add a server (a Linux machine, or a Mac that stays on; With Records is recommended) or, on a Mac, Use My Home.
-5. To add a server, run the one line the app shows on it, as yourself: `curl -fsSL https://vyre.run/i | VYRE_CODE=<code from the app> sh`. The server installs Vyre and pairs itself.
-6. On your phone: Vyre-android.apk from the release on Android (sideloaded); iPhone has no App Store app yet. Open Vyre on the phone and sign in with your Vyre's address, your username and your master password.
+1. Install the app from https://github.com/vyre-ai/vyre/releases/latest: Vyre-aarch64.dmg or Vyre-x86_64.dmg on macOS, VyreSetup.exe on Windows. Both are sideloaded (not signed with a store identity yet).
+2. Open the app. Sign in with the Space, your username and your password, or Continue with GitHub. Save the recovery code.
+3. Choose Join a space, or create one on a Linux machine or a computer that stays on. Records live in Vyre's own store. 8 GB of memory is recommended and 4 GB is the least.
+4. To add a server, run the one line the app shows on it, as yourself: `curl -fsSL https://vyre.run/i | VYRE_CODE=<code from the app> sh`. The server installs Vyre and pairs itself. There is no setup page to paste a code into.
+5. On your phone: Vyre-android.apk from the release on Android (sideloaded); iPhone has no App Store app yet. Open Vyre on the phone and sign in with the Space, your username and your password, or Continue with GitHub.
 
 ## What it costs
 Vyre is free and open source. You pay your AI providers (Claude, Codex, Grok, OpenRouter) on your own subscriptions or keys. Your data lives on your devices and on servers you or your team run. Vyre doesn't hold it.
@@ -475,7 +474,7 @@ Yes, one machine that stays on: a Linux server with Docker, or a Mac that stays 
 Yes, as an app on your PC with a tray icon and an Alt+Space panel. The server itself runs on Linux or on a Mac that stays on. The Windows app is not code-signed yet, so Windows asks you to choose “More info”, then “Run anyway”.
 
 ### Does it work on my phone?
-Yes, on Android and iPhone. You install the Vyre app from a file (it is not on a store yet), then open Vyre on the phone and sign in with your Vyre's address, your username and your master password.
+Yes, on Android and iPhone. You install the Vyre app from a file (it is not on a store yet), then open Vyre on the phone and sign in with the Space, your username and your password, or Continue with GitHub.
 
 ### Where does my data live?
 Records, chats, files and the vault stay on your server and your computers. vyre.run holds your name’s DNS record and runs the relay, which carries phone pairing, end-to-end encrypted. Prompts go to your AI provider the way they would from that provider’s own app.

@@ -36,14 +36,14 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`commands`](#commands) | `core/commands` | `box`, `local` | 1 | 0 | none |
 | [`comms`](#comms) | `core/comms` | `box` | 6 | 2 | none |
 | [`computer`](#computer) | `core/computer` | `box`, `local` | 2 | 0 | none |
-| [`computers`](#computers) | `core/computers` | `box` | 38 | 28 | cli, deck |
+| [`computers`](#computers) | `core/computers` | `box` | 40 | 28 | cli, deck |
 | [`connectors`](#connectors) | `core/connectors` | `box`, `local` | 41 | 15 | capsule, cli, deck |
 | [`context`](#context) | `core/context` | `box`, `local` | 2 | 1 | cli |
 | [`design`](#design) | `core/design` | `box`, `local` | 11 | 3 | cli |
 | [`docs`](#docs) | `core/docs` | `box`, `local` | 2 | 0 | cli |
 | [`documents`](#documents) | `core/documents` | `box` | 13 | 4 | none |
 | [`events`](#events) | `core/event-catalog` | `box`, `local` | 1 | 0 | none |
-| [`files`](#files) | `core/files` | `box`, `local` | 75 | 3 | capsule, cli, deck |
+| [`files`](#files) | `core/files` | `box`, `local` | 78 | 3 | capsule, cli, deck |
 | [`flows`](#flows) | `core/flows` | `box`, `local` | 52 | 0 | none |
 | [`gate`](#gate) | `core/gate` | `box`, `local` | 18 | 6 | capsule, cli, deck |
 | [`github`](#github) | `core/github` | `box`, `local` | 35 | 9 | cli, deck |
@@ -350,7 +350,7 @@ Vyre Computer: one front door over the cloud computer, your computers and the sc
 - Folder: `core/computers`, version 0.1.0
 - Runs on: `box`
 - Requires: none
-- Tools: [38](tools.md#computers), 9 of them only for other modules
+- Tools: [40](tools.md#computers), 9 of them only for other modules
 - Emits: [28 events](events.md#computers)
 - Shows on: cli, deck
 - Streams: `glass`, `browser-glass`, `terminal`
@@ -430,7 +430,7 @@ Find, look at and bring over files on this machine and the box, inside the folde
 - Folder: `core/files`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [75](tools.md#files), 1 of them only for other modules
+- Tools: [78](tools.md#files), 1 of them only for other modules
 - Emits: [3 events](events.md#files)
 - Shows on: capsule, cli, deck
 - Needs vault: `dropbox`
