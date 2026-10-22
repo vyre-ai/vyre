@@ -125,7 +125,7 @@ whether the SDK is installed.
 | `driver` | `sdk` | `sdk` | `sdk` runs sessions on the Agent SDK; `cli` on the `claude` command. Until the SDK is installed, sessions run on `claude` either way. |
 | `auth` | `setup-token` | `login` | The Claude sign-in sessions use when no account is named. `setup-token` is the token you gave during setup, kept in the vault; `login` is Claude Code's own sign-in on that machine; `api-key` is the API key in the vault. |
 | `claude` | `bundled` | `installed` | Which Claude Code: the one the SDK ships, the `claude` you installed, or a path. |
-| `idle_minutes` | `10` | `10` | A session nobody is using closes after this long, and comes back on your next message. `0` keeps them open. |
+| `idle_minutes` | `15` | `15` | A session nobody is using closes after this long, and comes back on your next message. `0` keeps them open. |
 | `max_live` | `6` | `0` (none) | At most this many sessions running at once. The one idle longest closes to make room; when all are busy, a new one is refused until one finishes. |
 
 When your Claude subscription's limit is reached and an Anthropic API key is in the vault, a

@@ -57,7 +57,7 @@ export function sessionsConfig(config) {
     driver,
     auth: ["login", "setup-token", "api-key"].includes(s.auth) ? s.auth : box ? "setup-token" : "login",
     claude: typeof s.claude === "string" && s.claude ? s.claude : box ? "bundled" : "installed",
-    idle_minutes: num(s.idle_minutes, 10),
+    idle_minutes: num(s.idle_minutes, 15),
     // a session whose agent says nothing within this long fails instead of sitting in "starting" (0 or absent: 90)
     start_timeout_s: num(s.start_timeout_s, 90),
     max_live: num(s.max_live, box ? 6 : 0),

@@ -1,7 +1,7 @@
 {
   "name": "commands",
   "version": "0.1.0",
-  "apiVersion": 1,
+  "vyre": "1",
   "description": "Every CLI verb the running modules declare, in one list any surface can draw.",
   "roles": ["box", "local"],
   "requires": [],

@@ -8,6 +8,13 @@
 
 import { installCrashHandler } from "./crash.js";
 
+// Same drop as core/quiet.js. It lives in this file so the daemon does not import another part, and it runs before the daemon's own code is loaded.
+const emitWarning = process.emitWarning;
+/** @type {any} */ (process).emitWarning = function (/** @type {any} */ warning, /** @type {any[]} */ ...rest) {
+  if (String((warning && warning.message) || warning).startsWith("SQLite is an experimental feature")) return;
+  return emitWarning.call(process, warning, ...rest);
+};
+
 // An uncaught error or rejection: log the stack, exit non-zero, and let the supervisor restart us.
 installCrashHandler();
 

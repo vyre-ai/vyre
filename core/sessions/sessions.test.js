@@ -53,8 +53,8 @@ const shardTest = (...a) => (dealt++ % SHARDS === SHARD ? test(...a) : undefined
   delete process.env.VYRE_SESSIONS_DRIVER;
   try {
     assert.deepEqual((({ auth, claude, idle_minutes, max_live }) => ({ auth, claude, idle_minutes, max_live }))(sessionsConfig({ role: "box" })),
-      { auth: "setup-token", claude: "bundled", idle_minutes: 10, max_live: 6 });
-    assert.deepEqual((({ auth, claude, max_live }) => ({ auth, claude, max_live }))(sessionsConfig({ role: "local" })), { auth: "login", claude: "installed", max_live: 0 });
+      { auth: "setup-token", claude: "bundled", idle_minutes: 15, max_live: 6 });
+    assert.deepEqual((({ auth, claude, idle_minutes, max_live }) => ({ auth, claude, idle_minutes, max_live }))(sessionsConfig({ role: "local" })), { auth: "login", claude: "installed", idle_minutes: 15, max_live: 0 });
     const c = sessionsConfig({ role: "box", sessions: { driver: "sdk", auth: "api-key", idle_minutes: 0, max_live: 2, claude: "/opt/claude" } });
     assert.deepEqual([c.driver, c.auth, c.idle_minutes, c.max_live, c.claude], ["sdk", "api-key", 0, 2, "/opt/claude"]);
     assert.equal(sessionsConfig({ role: "box", sessions: { auth: "nonsense", idle_minutes: -1 } }).auth, "setup-token");
@@ -278,12 +278,19 @@ for (const driver of ["cli", "sdk"]) {
     const w = await boot(t, { driver, sessions: { idle_minutes: 0.02 } });           // 1.2 s
     const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
     await w.finished(th.id);
+    const live = (await w.internal("threads.pids", {})).data;
+    const pid = Array.isArray(live && live.pids) ? live.pids[0] : null;
+    assert.ok(pid, "the session process is running");
     await w.tool("threads.release", { thread: th.id, surface: "deck" });
     const stopped = await until(async () => (await w.events(th.id)).find(e => e.type === "thread.stopped"), "the idle close");
     assert.equal(stopped.payload.reason, "idle");
     // thread.status: paused, not stopped or failed - nothing wrong happened, threads.send resumes it.
     const paused = (await w.events(th.id)).filter(e => e.type === "thread.status").at(-1);
     assert.equal(paused.payload.status, "paused", JSON.stringify(paused));
+    await until(async () => {
+      const p = (await w.internal("threads.pids", {})).data;
+      return !(p && Array.isArray(p.pids) && p.pids.includes(pid));
+    }, "the session process to stop");
     const before = Date.now();
     await w.tool("threads.send", { thread: th.id, text: "back", surface: "deck" });
     await w.finished(th.id, 2);
@@ -291,7 +298,11 @@ for (const driver of ["cli", "sdk"]) {
     // is Vyre's own spawn/resume overhead against the fake claude, typically 200-300ms; 5s is a
     // generous ceiling that only trips on a real regression, not testbox load noise.
     assert.ok(Date.now() - before < 5000, `resuming after an idle close took ${Date.now() - before}ms`);
-    assert.ok((await w.said(th.id)).includes("echo: back"));
+    const said = await w.said(th.id);
+    assert.ok(said.includes("echo: hello"), said.join(" | "));
+    assert.ok(said.includes("echo: back"));
+    const waking = (await w.events(th.id)).filter(e => e.type === "thread.text" && e.payload && e.payload.notice && e.payload.text === "waking");
+    assert.equal(waking.length, 1, JSON.stringify(waking.map(e => e.payload)));
     const resumed = w.launches().at(-1).argv;
     assert.equal(resumed[resumed.indexOf("--resume") + 1], th.id, "resumed, same session");
   });
@@ -316,6 +327,8 @@ for (const driver of ["cli", "sdk"]) {
     await w.finished(th.id, 2);
     assert.ok(Date.now() - before < 5000, `resuming after a crash took ${Date.now() - before}ms`);
     assert.ok((await w.said(th.id)).includes("echo: back after the crash"));
+    const waking = (await w.events(th.id)).filter(e => e.type === "thread.text" && e.payload && e.payload.notice && e.payload.text === "waking");
+    assert.equal(waking.length, 0, "a crash resume does not say waking");
   });
 
   shardTest(`${driver}: the cap closes the longest-idle session to make room, and refuses when all are busy`, { skip }, async t => {

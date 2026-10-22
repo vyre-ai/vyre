@@ -6,7 +6,7 @@
 // nowhere else. Networking is the Wink module's and the relay's; the socket
 // is always the local way in and never leaves the machine.
 
-import { rawBody, rawBinary, body } from "./request-body.js"; import { timeCalls } from "./slow-calls.js";
+import { rawBody, rawBinary, body } from "./request-body.js"; import { timeCalls, holdUntilUp } from "./slow-calls.js";
 import { memberMcpConfig } from "../../lib/member-mcp.js";
 import { createLimitedGate } from "../modules/device-admin.js";
 import { ZONE_HEADER, zoneFrom } from "../../lib/time/index.js";
@@ -228,10 +228,10 @@ async function startLocked(opts, root, p, release) {
   build();
   const cfg = config.load(root);
   const logFile = path.join(p.logs, new Date().toISOString().slice(0, 10) + ".log");
-  const log = opts.log || ((msg, extra) => {
+  const log = holdUntilUp(opts.log || ((msg, extra) => {
     const line = `${new Date().toISOString()} ${msg}${extra ? " " + JSON.stringify(extra) : ""}\n`;
     try { fs.appendFileSync(logFile, line); } catch {}
-  });
+  }));
   for (const problem of cfg.problems) log("config: " + problem);
 
   const db = open(p.db);

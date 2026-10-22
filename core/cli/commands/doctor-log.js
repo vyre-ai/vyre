@@ -37,19 +37,27 @@ export function summarize(lines, now = Date.now(), windowMs = WINDOW_MS) {
   const errorKinds = new Map(), warningKinds = new Map(), runs = new Map();
   let errors = 0, warnings = 0, retries = 0, starts = 0, seen = 0;
   /** @type {{ tool: string, ms: number }[]} */ const slow = [];
+  /** @type {{ at: number, text: string }[]} */
+  const kept = [];
+  /** @type {number | null} */ let upAt = null;
   for (const line of lines) {
     const m = /^(\d{4}-\d\d-\d\dT[\d:.]+Z) (.*)$/.exec(line);
     if (!m) continue;
     const at = Date.parse(m[1]);
     if (!(at >= since && at <= now)) continue;
     seen++;
-    const text = m[2];
+    kept.push({ at, text: m[2] });
+    // Warmup is everything at or before the latest "vyred <version> up" line. A server that never came up has no such line, so nothing is hidden.
+    if (/^vyred \S+ up /.test(m[2]) && (upAt === null || at >= upAt)) upAt = at;
+  }
+  for (const { at, text } of kept) {
+    const warmed = upAt === null || at > upAt;
     const s = /^warn: slow call (\S+) took (\d+) ms/.exec(text);
-    if (s) { slow.push({ tool: s[1], ms: Number(s[2]) }); continue; }
+    if (s) { if (warmed) slow.push({ tool: s[1], ms: Number(s[2]) }); continue; }
     const run = /^module (\S+) \S+ running/.exec(text);
     if (run) bump(runs, run[1]);
     if (/^vyred \S+ up /.test(text)) starts++;
-    if (/\b(retry|retrying|trying again)\b/i.test(text)) retries++;
+    if (warmed && /\b(retry|retrying|trying again)\b/i.test(text)) retries++;
     if (/^error: /.test(text) || /^module \S+ failed to start/.test(text)) { errors++; bump(errorKinds, kindOf(text.replace(/^error: /, ""))); }
     else if (/^warn: /.test(text)) { warnings++; bump(warningKinds, kindOf(text.slice(6))); }
   }

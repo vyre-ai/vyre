@@ -33,8 +33,10 @@
 # Every downloaded file is checked against SHA256SUMS from the same place, and a file without a
 # line there, or with a different hash, stops the install.
 #
-# It never installs anything without asking, and uses sudo only for what needs root: Docker,
-# the stack folder when its parent is root's, and /usr/local/bin/vyre. Everything lives inside
+# On Ubuntu and Debian, Docker comes from Docker's apt repository with no second question
+# (running this installer is the yes), through sudo when this account is not root. Anywhere
+# else it still asks before Docker's own install script. sudo is only for what needs root:
+# Docker, the stack folder when its parent is root's, and /usr/local/bin/vyre. Everything lives inside
 # main(), called on the last line, so the shell has read the whole script before anything runs:
 # when piped from curl, a command that reads stdin would otherwise eat the rest of the script.
 
@@ -260,10 +262,12 @@ compose_ok() {
   [ "$major" -gt 2 ] || { [ "$major" -eq 2 ] && [ "$minor" -ge 24 ]; }
 }
 
-# docker_apt_install: Docker from Docker's own signed apt repository, for a root run on Ubuntu or Debian (the most common server there is): no question, no piped script.
-# Returns 1 when this is not that kind of server (the caller then keeps the older message), and stops with the log's path when the packages did not install.
+# docker_apt_install: Docker from Docker's own signed apt repository, on Ubuntu or Debian (the most common server there is): no question, no piped script.
+# A root run calls apt directly. Any other account uses sudo (the install line was the yes). VYRE_APT_AS_ROOT=0 forces the direct path, for a test.
+# Returns 1 when this is not that kind of server, or when it is not root and sudo is not there (the caller then keeps the older message). Stops with the log's path when the packages did not install.
 docker_apt_install() {
-  [ "${VYRE_APT_AS_ROOT:-$(id -u)}" = 0 ] || return 1
+  as=${VYRE_APT_AS_ROOT:-$(id -u)}
+  if [ "$as" != 0 ] && [ -z "${SUDO:-}" ]; then return 1; fi
   osr=${VYRE_OS_RELEASE:-/etc/os-release}
   aroot=${VYRE_APT_ROOT:-}   # tests only: a folder standing in for /
   [ -r "$osr" ] || return 1
@@ -275,22 +279,24 @@ docker_apt_install() {
   os_code=$(. "$osr"; if [ "$ID" = ubuntu ]; then printf '%s' "${UBUNTU_CODENAME:-${VERSION_CODENAME:-}}"; else printf '%s' "${VERSION_CODENAME:-}"; fi)
   [ -n "$os_code" ] || return 1
   if [ "$DRY" = 1 ]; then say "would install Docker from Docker's apt repository for $os_id $os_code"; return 0; fi
+  # As root the commands run directly. Otherwise sudo, with no second question.
+  rootdo() { if [ "$as" = 0 ]; then "$@"; else sudo "$@"; fi; }
   dlog=$(mktemp "${TMPDIR:-/tmp}/vyre-docker-install.XXXXXX")
   say "  ${ASH}Installing Docker (about a minute).$RESET"
   if ! {
     export DEBIAN_FRONTEND=noninteractive
-    apt-get update -y && apt-get install -y ca-certificates curl \
-      && install -m 0755 -d "$aroot/etc/apt/keyrings" "$aroot/etc/apt/sources.list.d" \
-      && curl -fsSL "https://download.docker.com/linux/$os_id/gpg" -o "$aroot/etc/apt/keyrings/docker.asc" \
-      && chmod a+r "$aroot/etc/apt/keyrings/docker.asc" \
-      && printf 'deb [arch=%s signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/%s %s stable\n' "$(dpkg --print-architecture)" "$os_id" "$os_code" >"$aroot/etc/apt/sources.list.d/docker.list" \
-      && apt-get update -y \
-      && apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+    rootdo apt-get update -y && rootdo apt-get install -y ca-certificates curl \
+      && rootdo install -m 0755 -d "$aroot/etc/apt/keyrings" "$aroot/etc/apt/sources.list.d" \
+      && rootdo curl -fsSL "https://download.docker.com/linux/$os_id/gpg" -o "$aroot/etc/apt/keyrings/docker.asc" \
+      && rootdo chmod a+r "$aroot/etc/apt/keyrings/docker.asc" \
+      && printf 'deb [arch=%s signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/%s %s stable\n' "$(rootdo dpkg --print-architecture)" "$os_id" "$os_code" | rootdo tee "$aroot/etc/apt/sources.list.d/docker.list" >/dev/null \
+      && rootdo apt-get update -y \
+      && rootdo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
   } >"$dlog" 2>&1; then
     die "Docker did not install. Its own output is in $dlog; after fixing that, run this installer again."
   fi
   rm -f "$dlog"
-  if command -v systemctl >/dev/null 2>&1; then systemctl enable --now docker >/dev/null 2>&1 || true; fi
+  if command -v systemctl >/dev/null 2>&1; then rootdo systemctl enable --now docker >/dev/null 2>&1 || true; fi
   return 0
 }
 

@@ -42,10 +42,10 @@ export const MIGRATIONS = [
   ...DOMAIN_MIGRATIONS,
 ];
 
-/** The catalog: every manifest in catalog/, checked. A manifest that fails the check is left out and said in the log, never half used. @param {(m: string) => void} [log] */
+/** The catalog: every app-module manifest in catalog/, checked. A kit file beside one (*.kit.json) is not a manifest. A manifest that fails the check is left out and said in the log, never half used. @param {(m: string) => void} [log] */
 export function loadCatalog(log = () => {}) {
   /** @type {Map<string, any>} */ const out = new Map();
-  for (const f of fs.readdirSync(CATALOG).filter(x => x.endsWith(".json")).sort()) {
+  for (const f of fs.readdirSync(CATALOG).filter(x => x.endsWith(".json") && !x.endsWith(".kit.json")).sort()) {
     try {
       const m = JSON.parse(fs.readFileSync(path.join(CATALOG, f), "utf8"));
       const problems = checkAppModule(m);
