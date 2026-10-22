@@ -9,6 +9,7 @@
       "get-started/troubleshooting.md"
     ]},
     {"title": "Releases", "pages": ["releases/0.1.0.md", "releases/checklist.md"]}, { "title": "Using Vyre", "pages": [
+      "using/home.md",
       "using/capsule.md",
       "using/chat.md",
       "using/private-chats.md",
@@ -33,10 +34,10 @@
       "using/set-up-with-your-ai.md",
       "using/learning.md",
       "using/watchers.md",
-      "using/planner.md",
       "using/connectors.md",
       "using/computer.md",
       "using/agent-computer.md",
+      "using/files.md",
       "using/documents.md",
       "using/mobile.md",
       "using/windows.md",

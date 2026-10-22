@@ -26,7 +26,7 @@ Every module declares the machines it runs on (`"roles"` in its `module.json`: `
 
 | Runs on | Modules |
 |---|---|
-| Server only | `names` (address and certificates), `network`, `hooks`, `computers`, `glass`, `artifacts`, `releases`, `hands-desktop`, and the box's side of `chrome` |
+| Server only | `names` (address and certificates), `network`, `hooks`, `computers` (an agent's computer: its screen and its files), `artifacts`, `releases`, `hands-desktop`, and the server's side of `chrome` |
 | Mac only | `capsule` (Lumen), `hands` (computer use on macOS), `screen`, `sideview`, `voice`, `apps`, and the Mac's side of `chrome` |
 | Both | most of the rest, including `projects`, `recall`, `memory`, `vault`, `watchers`, `threads`, `sessions`, `agents`, `gate`, `learn`, `harness`, `presence`, `link`, `relay`, `onboard`, `github`, `team`, `spend`, `files`, `push`, `settings` and `update` |
 

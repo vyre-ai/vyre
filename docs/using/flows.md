@@ -36,7 +36,9 @@ A Flow is a list of steps. In plain words, a step can:
 - run one of the tools Vyre or a module offers, such as "send an email";
 - have an assistant read a document, sort it or pull facts out of it, and use only what you allowed it to see.
 
-Open **Flows** in the Vyre app to see yours. Each one shows whether it runs on its own, its run history, and the steps. **See as code** shows the same Flow as text, for people who like that.
+You make a Flow by asking. A Flow an agent writes from a project's chat takes that project's short name when the Flow does not name one, and it shows under the project's Flows. Open the project, then **Flows**. Each one shows whether it runs on its own, its run history, and the steps. **See as code** shows the same Flow as text.
+
+A Flow runs on a schedule, from a webhook, or from a watcher. The webhook page shows the address path, with Copy, even when the server has no public URL yet. A step can have a deadline. When the deadline passes, the Flow takes that step's on timeout path, and you see why. A failed run says why in plain words and offers **Retry**. On an agent step, the failure panel is where you set that deadline.
 
 A run is about the record that started it. Open that record or its project and its timeline lists the run in plain words, next to the emails, tasks and documents: "Welcome the client: done", or "Welcome the client: did not finish".
 
@@ -121,7 +123,7 @@ A stage names an owner. In the law firm Kit the owner is the attorney. The owner
 
 Every task in these stages has a due time. If a task is still open when its due time passes, Vyre puts a new to-do in front of the stage's owner: **Late: Draft the documents**, with a line saying who has had it and for how long. It happens once for that task. The late task stays with the person who had it. The owner decides: nudge them, take it over, or move the date.
 
-Vyre uses the planner's clock for this, the same one that rings your alarms, so there is nothing to set up.
+Vyre uses the same clock that rings your reminders, so there is nothing to set up. The reminder shows on [Home](home.md).
 
 ## What to check when something does not run
 
@@ -134,5 +136,5 @@ Vyre uses the planner's clock for this, the same one that rings your alarms, so 
 
 - [Spaces](spaces.md): where Flows and Kits can live.
 - [Teammates](teammates.md): roles for your assistants, and how to ask one for work.
-- [The planner](planner.md): the clock behind schedules and late tasks.
+- [Home](home.md): tasks, reminders and the clock behind late tasks.
 - [Modules](../MODULES.md): how a module adds its own steps and starting points to Flows.

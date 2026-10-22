@@ -8,7 +8,7 @@ status: draft
 
 # Your first day
 
-Setup left you with a server at your own address, such as `https://alex.vyre.run`, your phone on it, and a Mac paired with it. If Now still shows **Create your assistant**, press it first and give your assistant a name such as `juno`. This page walks through the five things most people do next, each in the fewest steps. Most steps work from the terminal as well as from a screen; both are shown. The examples use a project called `juniper-legal` and an agent called `kit`.
+Setup left you with a server at your own address, such as `https://juniper.vyre.run`, your phone on it, and your computer paired with it. If Home still shows **Create your assistant**, press it first and give your assistant a name such as `juno`. This page walks through the five things most people do next, each in the fewest steps. Most steps work from the terminal as well as from a screen; both are shown. The examples use a project called `juniper-legal` and an agent called `kit`.
 
 ## Check that everything is up
 

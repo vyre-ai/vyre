@@ -195,7 +195,7 @@ const HOME_FAQ = [
   ['Is Vyre free?', 'Yes. Vyre is open source under Apache 2.0. You use your own Claude, Codex, Grok or OpenRouter account, so you pay those providers directly and nobody pays Vyre.'],
   ['Do I need a server?', 'Yes, one machine that stays on: a Linux server with Docker, or a Mac that stays on. Your Mac, your Windows PC and your phone connect to it. Your agents keep working when your laptop is closed.'],
   ['Does it run on Windows?', 'Yes, as an app on your PC with a tray icon and an Alt+Space panel. The server itself runs on Linux or on a Mac that stays on. The Windows app is not code-signed yet, so Windows asks you to choose “More info”, then “Run anyway”.'],
-  ['Does it work on my phone?', 'Yes, on Android and iPhone. You install the Vyre app from a file (it is not on a store yet), then open Vyre on the phone and sign in with your Vyre\'s address, your username and your master password.'],
+  ['Does it work on my phone?', 'Yes, on Android and iPhone. You install the Vyre app from a file (it is not on a store yet), then open Vyre on the phone and sign in with the Space, your username and your password, or Continue with GitHub.'],
   ['Where does my data live?', 'Records, chats, files and the vault stay on your server and your computers. vyre.run holds your name’s DNS record and runs the relay, which carries phone pairing, end-to-end encrypted. Prompts go to your AI provider the way they would from that provider’s own app.'],
   ['Do I need a VPN or another network app?', 'No. Vyre has its own private network built in, so your server, your computers and your phone find each other with nothing to install and nothing to sign in to. Where a direct path is not possible, Vyre’s relay carries the connection, end-to-end encrypted.'],
   ['Does it replace Claude Code, Codex or Grok?', 'No. Vyre runs them with your own accounts and adds records, Flows, a vault, agents with roles and one chat that outlives any one model. You keep using each tool the way you do.'],
@@ -260,7 +260,7 @@ ${agentBand()}
       <div class="piece"><span class="num">03</span>${I.chat}<h3>One group chat</h3><p>Claude, Codex, Grok and OpenRouter answer in the same chat. Give agents roles: a team that does the work, one model that reviews, one that plans.</p><a class="more stretch" href="/agents/">Agents in depth &rarr;</a></div>
       <div class="piece"><span class="num">04</span>${I.stages}<h3>Playbooks and tracks</h3><p>A project template holds stages, the tasks in each and who does each task. Run each kind of work as its own track, with its own Playbook and Flows over shared records.</p></div>
       <div class="piece"><span class="num">05</span>${I.vault}<h3>Vault</h3><p>Passwords, API keys, logins with one-time codes, cards, notes and SSH keys. Share an item as Can use or Can edit. Agents use a credential without seeing it.</p><a class="more stretch" href="/vault/">Vault in depth &rarr;</a></div>
-      <div class="piece"><span class="num">06</span>${I.sites}<h3>Sites</h3><p>An agent builds a site, previews it at a private address and puts it live on your yes. Your own domain shows the DNS record to add.</p></div>
+      <div class="piece"><span class="num">06</span>${I.sites}<h3>Sites</h3><p>An agent builds a site from a project's Site tab, previews it at a private address and puts it live on your yes. Sites is not a place in the sidebar. Your own domain shows the DNS record to add.</p></div>
       <div class="piece"><span class="num">07</span>${I.doc}<h3>Documents</h3><p>Fill your own Word templates from a record and the records linked to it, as Word or PDF. A model never rewrites the document.</p></div>
       <div class="piece"><span class="num">08</span>${I.sign}<h3>Signing</h3><p>Send a document for signature from a record. The signer needs no account, and the signed copy files back on the record.</p></div>
     </div>
@@ -322,7 +322,7 @@ ${agentBand()}
     <div class="feat-copy rv">
       <span class="num">06 &middot; Phone</span>
       <h2 id="ph-h" class="h2">Your pocket, <b>paired with Face ID.</b></h2>
-      <p class="lead">Open Vyre on your phone and sign in with your address, your username and your master password.</p>
+      <p class="lead">Open Vyre on your phone and sign in with the Space, your username and your password, or Continue with GitHub.</p>
       ${list([['Needs rows', 'Approve, deny or answer by swipe. Push tells you when an agent is waiting.'], ['Chats, agents, Find and Drive', 'Browse your shared folders and ask your memory from the same app.'], ['A removed phone wipes itself', 'Remove a device and it is cut off and clears what it kept.']])}
       <p class="sm" style="margin-top:18px">Nothing else to install. <a href="/phone/">More on the phone app</a></p>
     </div>
@@ -558,19 +558,19 @@ devicePage({
   title: 'Vyre for Windows: the Vyre app in your tray',
   desc: 'Vyre for Windows is a tray app with an Alt+Space panel. Pair your PC to your own Vyre server, ask your agents, and map your shared folder as a drive.',
   h1: 'Vyre, <b>in your Windows tray.</b>',
-  lead: 'A tray icon and an Alt+Space panel, connected to your Vyre server. Sign in on the PC with your Vyre\'s address, your username and your master password.',
+  lead: 'A tray icon and an Alt+Space panel, connected to your Vyre server. Sign in on the PC with the Space, your username and your password, or Continue with GitHub.',
   ogSub: 'A tray icon and an Alt+Space panel, connected to your own Vyre server.',
   art: `${appwin('lap-vault', 'The Vyre app in a window on Windows: the vault.')}`,
   what: { h: 'The same window, <b>on your PC.</b>', items: [
     ['A tray app', 'A Vyre icon in your tray, and an Alt+Space panel to ask from.'],
-    ['Sign in with your username and master password', 'Enter your Vyre’s address, then sign in with your username and master password.'],
+    ['Sign in with the Space, your username and your password', 'Or Continue with GitHub. The same password unlocks your vault.'],
     ['Your shared folder as a drive', 'The tray’s “Open Vyre Drive” maps a folder your server shares as a drive letter.'],
     ['Signed updates', 'The app updates itself, only from releases the Vyre key signed, and never to an older version.'],
   ] },
   steps: { h: 'Install the app, <b>then pair your PC.</b>', lead: 'Set up your server first, from the Vyre app (see <a href="/start/">Get started</a>).', items: [
     `<b>Download the installer.</b> <code>VyreSetup.exe</code> comes with each release on <a href="https://github.com/vyre-ai/vyre/releases">GitHub</a>. The installer script checks its SHA-256.`,
     `<b>Run it.</b> The app is not code-signed yet, so Windows asks you to choose “More info”, then “Run anyway”.`,
-    `<b>Sign in on your PC.</b> Open Vyre, enter your Vyre’s address, then sign in with your username and master password.`,
+    `<b>Sign in on your PC.</b> Open Vyre and sign in with the Space, your username and your password, or Continue with GitHub.`,
     `<b>Press Alt+Space.</b> Ask from anywhere, or open the tray icon.`,
   ] },
   needs: [['PC', 'Windows 11'], ['Server', 'A Linux server, or a Mac that stays on'], ['AI', 'One of Claude, Codex, Grok or OpenRouter']],
@@ -578,7 +578,7 @@ devicePage({
   faq: [
     ['Can my Windows PC be the server?', 'Not yet. The server runs on Linux or on a Mac that stays on, and your Windows PC joins a team or connects to that server.'],
     ['Why does Windows warn me?', 'The app is not code-signed yet. The installer script checks its SHA-256, and updates install only when the Vyre release key signed them.'],
-    ['How do I connect a PC?', 'Open Vyre on the PC, enter your Vyre’s address, then sign in with your username and master password.'],
+    ['How do I connect a PC?', 'Open Vyre on the PC and sign in with the Space, your username and your password, or Continue with GitHub.'],
     ['Is there an Alt+Space conflict?', 'The panel opens with Alt+Space. If another app uses that key, change one of them in its settings.'],
   ],
 });
@@ -618,11 +618,11 @@ devicePage({
   title: 'Vyre on your phone: your agents in your pocket',
   desc: 'Put the Vyre app on your Android phone from the release file, or on your iPhone from an Xcode build, then sign in with your address, username and password. Approve and answer from anywhere.',
   h1: 'Your agents, <b>in your pocket.</b>',
-  lead: 'Install the Vyre app from a file, sign in with your address, username and master password, and approve what your agents wait on with Face ID or a fingerprint.',
+  lead: 'Install the Vyre app from a file, sign in with the Space, your username and your password, or Continue with GitHub, and approve what your agents wait on with Face ID or a fingerprint.',
   ogSub: 'Install the Vyre app from a file, sign in, and approve what your agents wait on.',
   art: `<div style="display:flex;justify-content:center">${phoneFrame('ph-chat', 'The Vyre phone app in a chat with an agent.', 'width:min(100%,300px)')}</div>`,
   what: { h: 'Vyre, <b>in your pocket.</b>', items: [
-    ['Now, Chats, Agents, Find, Drive', 'Ask your memory from Find. Browse the folders your server shares from Drive.'],
+    ['Home, Chats, Projects, Records, Files', 'Vault and Settings sit at the foot. Files lists the Space, projects and each agent folder.'],
     ['Needs rows', 'Approve, deny or answer by swipe. Open the app to see what is waiting.'],
     ['A full device', 'A phone paired by scanning makes its own Face ID key at that moment. No code typed on your computer.'],
     ['Face ID only when it matters', 'It is asked for the vault and for sends you did not ask for.'],
@@ -630,7 +630,7 @@ devicePage({
   ] },
   steps: { h: 'Install the file, <b>then sign in.</b>', items: [
     `<b>Install the app.</b> Android: download Vyre-android.apk from the <a href="https://github.com/vyre-ai/vyre/releases/latest">latest release</a> on the phone, open it, and allow installs when Android asks. iPhone: there is no App Store app yet; build the app and install it with Xcode, as the <a href="https://vyre.run/docs/using/mobile">phone guide</a> shows. Both are sideloaded.`,
-    `<b>Sign in.</b> Open Vyre on the phone and sign in with your Vyre's address, your username and your master password.`,
+    `<b>Sign in.</b> Open Vyre on the phone and sign in with the Space, your username and your password, or Continue with GitHub.`,
   ] },
   needs: [['Phone', 'An Android phone, or an iPhone and a Mac with Xcode'], ['Server', 'A Vyre server'], ['Account', 'Your own address, such as you.vyre.run']],
   gapList: { now: ['Android installs from the APK, which is signed with the Vyre Android release key. iPhone installs by building the app with Xcode. Both are sideloaded.', 'Open the app to see what is waiting: notifications to a closed phone app are not set up yet.', 'Chrome control works today.'], next: ['Native push notifications to a closed app, which need Apple and Google push accounts.', 'Screen Share, a live view and computer use on every device.', 'A walk of Face ID pairing and the removed-phone wipe on real iPhones and Androids.'] },
@@ -913,30 +913,28 @@ const START = `
   <div class="wrap">
     <p class="crumbs"><a href="/">Vyre</a> / Get started</p>
     ${eyebrow('Getting started')}
-    <h1 class="display">Start with <b>your name.</b></h1>
-    <p class="lead">Reserve your name, put the Vyre app on your computer, and the app does the rest.</p>
-    <p class="sm" style="max-width:42em">The Mac and Android apps are not signed with a store or Apple identity yet, so you install them from the file (sideload). Every file in a release is checked against a published signature.</p>
+    <h1 class="display">Start with <b>the app.</b></h1>
+    <p class="lead">Put the Vyre app on your computer, then sign in with the Space, your username and your password, or Continue with GitHub.</p>
+    <p class="sm" style="max-width:42em">The computer app and the Android app are not signed with a store identity yet, so you install them from the file (sideload). Every file in a release is checked against a published signature.</p>
   </div>
 </section>
 <section class="sec" style="padding-top:48px"><div class="wrap">
 ${part('00', 'need', 'What you need', `<ul>
-<li>A Mac or a Windows PC for the app.</li>
+<li>A computer for the app. A phone alone cannot start.</li>
 <li>An account with at least one of Claude, Codex, Grok or OpenRouter.</li>
 <li>To add a server: a Linux machine (a cloud machine is fine) or a computer that stays on. It needs 8 GB of memory (4 GB at the least).</li>
 <li>To join a team: the invite your team sent you.</li></ul>`)}
-${part('01', 'name', 'Reserve your name', `<p>Open <a href="/setup/">vyre.run/setup</a>, type the name you want and press <strong>Reserve this name</strong>. The page shows a code that starts with VYRE. Copy it. It is held for you for 24 hours and works once.</p>`)}
-${part('02', 'app', 'Install the app', `<p><strong>Mac:</strong> download <a href="https://github.com/vyre-ai/vyre/releases/latest">Vyre-aarch64.dmg</a> (Apple silicon) or Vyre-x86_64.dmg (Intel), open it and drag Vyre to Applications. Open it once; if macOS says it cannot check the app, choose Open Anyway in System Settings, Privacy and Security. More on the <a href="/mac/">Mac page</a>.</p>
+${part('01', 'name', 'Choose your username', `<p>Open the app. Sign in with the Space, your username and your password, or <strong>Continue with GitHub</strong>. The username is your page at vyre.run/u/your-name. The app shows a recovery code once. Keep it somewhere only you can reach.</p>`)}
+${part('02', 'app', 'Install the app', `<p><strong>macOS:</strong> download <a href="https://github.com/vyre-ai/vyre/releases/latest">Vyre-aarch64.dmg</a> (Apple silicon) or Vyre-x86_64.dmg (Intel), open it and drag Vyre to Applications. Open it once; if macOS says it cannot check the app, choose Open Anyway in System Settings, Privacy and Security.</p>
 <p><strong>Windows:</strong> download VyreSetup.exe from the <a href="https://github.com/vyre-ai/vyre/releases/latest">latest release</a> and run it. If Windows warns that the publisher is unknown, choose <em>More info</em>, then <em>Run anyway</em>. More on the <a href="/windows/">Windows page</a>.</p>`)}
-${part('03', 'code', 'Paste the code', `<p>Open the app, choose <strong>Start</strong> and paste the code. The app makes your key on this computer and shows a recovery code once. Keep it somewhere only you can reach.</p>`)}
-${part('04', 'choose', 'Choose how you will use Vyre', `<ul>
-<li><strong>Join a team.</strong> Paste your team’s invite. You run on their server and need none of your own.</li>
-<li><strong>Add a server.</strong> A machine of your own that stays on: a Linux server, or a computer that stays on. Records live in Vyre's own store on that server.</li>
-<li><strong>Use My Home</strong> (Mac only). Vyre runs on this Mac while it is awake. Add a server later and everything moves across.</li></ul>`)}
-${part('05', 'server', 'Add a server', `<p>The app shows one line. Open a terminal on the server as yourself, not as root, and paste it. It looks like this:</p>
+${part('03', 'choose', 'Choose how you will use Vyre', `<ul>
+<li><strong>Join a space.</strong> Paste the invite. You run on their server and need none of your own.</li>
+<li><strong>Create a space.</strong> A Linux server, or a computer that stays on. Records live in Vyre's own store. 8 GB of memory is recommended, and 4 GB is the least.</li></ul>`)}
+${part('04', 'server', 'Add a server', `<p>The app shows one line. Open a terminal on the server as yourself, not as root, and paste it. It looks like this:</p>
 ${term('curl -fsSL vyre.run/i | VYRE_CODE=… sh', 'curl -fsSL vyre.run/i | VYRE_CODE=… sh')}
-<p>On a Mac that stays on, the app shows the Mac line instead, and the Mac asks for its password once so Vyre can start when the Mac starts. The line works once and expires in 30 minutes.</p>
-<p>The installer checks the release’s signature and sets Vyre up. The server pairs itself. The app finds your server and finishes pairing. You can also open the server's setup page and paste the code the app shows. The page locks after pairing.</p>`)}
-${part('06', 'phone', 'Sign in on your phone', `<p>On Android, download <a href="https://github.com/vyre-ai/vyre/releases/latest">Vyre-android.apk</a> on the phone and open it; allow installs from your browser or Files app when Android asks. On iPhone there is no App Store app yet: you build the app and install it with Xcode. Then open Vyre on the phone and sign in with your Vyre's address, your username and your master password. More on the <a href="/phone/">phone page</a>.</p>`)}
+<p>On macOS the computer asks for its password once so Vyre can start when the computer starts. The line works once and expires in 30 minutes.</p>
+<p>The installer checks the release’s signature and sets Vyre up. The server pairs itself. The app waits until the server is online. There is no setup page to paste a code into. You work in one Space at a time.</p>`)}
+${part('05', 'phone', 'Sign in on your phone', `<p>On Android, download <a href="https://github.com/vyre-ai/vyre/releases/latest">Vyre-android.apk</a> on the phone and open it; allow installs from your browser or Files app when Android asks. On iPhone there is no App Store app yet: you build the app and install it with Xcode. Then open Vyre on the phone and sign in with the Space, your username and your password, or Continue with GitHub. More on the <a href="/phone/">phone page</a>.</p>`)}
 ${part('!', 'not-finished', 'What is not in ' + VERSION, `<ul>
 <li><strong>Real devices.</strong> Nothing has been walked on a real iPhone or Android yet, including Face ID pairing and the removed-phone wipe.</li>
 <li><strong>Screen Share.</strong> Screen Share (live view and computer use) comes later; Chrome control works today.</li>
@@ -991,7 +989,7 @@ ${part('01', 'short', 'The short version', ul([
 ${part('02', 'server', 'Your data stays on your server', `<p>Vyre keeps its data on the machine you installed it on: sessions, memory, project files you chose, the vault, logs and settings. On a Linux server that is a set of Docker volumes; on a Mac that runs Vyre directly it is the <code>~/.vyre</code> folder. The vault is sealed on that machine. Nothing in it is sent to Vyre.</p>
 <p>When an agent works, your server sends the prompt to the AI provider you picked (Claude, Codex, Grok or OpenRouter), under your own account, and that provider's terms and privacy policy apply to it. The sign-in for each AI account stays on your server. Anything else you connect, such as GitHub or Google, is likewise your own account under that service's terms. Your devices and your server reach each other through Vyre's own private network, which is built in; where a direct path is not possible, the relay carries the connection (section 05).</p>
 <p>Voice is the same: when you talk to your assistant, your server sends the audio to the speech service you chose (Deepgram, OpenAI or ElevenLabs) with your own key. When a reply is spoken, your server sends the text of that reply, at most 2,000 characters, to the speech service you chose.</p>
-<p>Where a space lives has a name. Your space on your devices is Personal: it keeps chats and projects on your devices, with an encrypted backup to a team's Cloud. Your space on your own server is My Cloud: it adds Records, flows and Planner, reachable from anywhere. Team spaces run on a server and are tagged Cloud.</p>`)}
+<p>Where a space lives has a name. Your space on your devices is Personal: it keeps chats and projects on your devices, with an encrypted backup to a team's Cloud. Your space on your own server is My Cloud: it adds Records and Flows, reachable from anywhere. Team spaces run on a server and are tagged Cloud. You work in one Space at a time.</p>`)}
 ${part('03', 'memory', 'Your personal memory and assistant', `<p>Your personal memory and your assistant are encrypted with your own key. They can be stored on a Cloud space's server, and the owners and admins of that server cannot read them.</p>
 <p>While your assistant is unlocked, your memory is readable only inside the running program and is never written to disk unencrypted. While your assistant is working on a server you don't own, that server's operator could in principle see what it is working on. To avoid that, run your assistant on your own computer or your own server.</p>
 <p>If you set up My Cloud on your own server, your personal memory can move there.</p>`)}
@@ -1163,9 +1161,9 @@ Release ${VERSION}. Updated ${MODIFIED}. Source: https://github.com/vyre-ai/vyre
 - Playbooks are project templates: stages, the tasks in each stage, who does each task, and when a stage counts as done. Each kind of work can run as its own track, with its own Playbook and Flows over shared records.
 - Records: contacts, projects, tasks and your own record types, with fields in named groups, tags, saved views, Excel or CSV import, and CSV export from the web app. Fields marked sealed show an agent a placeholder, never the value.
 - Documents fill your own Word templates from a record and the records linked to it, as Word or PDF. Signing sends a document for signature from a record; the signer needs no account, and the signed copy files back on the record.
-- Files: one Files place for the Space, with linked Google Drive and Dropbox folders read through each person's own account.
+- Files: agent folders and Space folders, Shared with me, Office previews and earlier versions, plus linked Google Drive and Dropbox folders read through each person's own account.
 - The Vault holds passwords, API keys, logins with one-time codes, cards, notes and SSH keys, in groups, shared as Can use or Can edit. Agents use a credential without seeing it.
-- Sites: an agent builds a site, previews it at a private address, and puts it live on one yes from you.
+- A project's site: an agent builds a site, previews it at a private address, and puts it live on one yes from you. Sites is not a place in the sidebar.
 - Needs you is one place for approvals, asks and stuck tasks. Teams get roles, per-project seat levels and invites with a role.
 - Everything that leaves your server (an email, a payment, a deletion, a published page) waits at the Gate for a person to approve the exact words. An agent can ask and cannot approve.
 - Architecture: see ${SITE}/architecture/ and https://vyre.run/docs/project/ARCHITECTURE.
@@ -1179,17 +1177,16 @@ ${llmsDocs(SITE)}
 ## Where it runs
 - Server: Linux with Docker Compose 2.24 or newer, or a Mac that stays on. Installed in /srv/vyre by one line, curl -fsSL vyre.run/i | sh, which the Vyre app shows. Images are pulled by digest after their signatures are checked. Updates are signed with a pinned key; a box refuses unsigned, tampered or older releases. Stable never takes a prerelease.
 - Mac: the Vyre app in its own window, from the GitHub release (Vyre-aarch64.dmg or Vyre-x86_64.dmg). Not yet signed with an Apple Developer ID, so it opens once with Open Anyway. Needs macOS 14 or newer.
-- Windows: Vyre, a tray app with an Alt+Space panel, installed with VyreSetup.exe from the GitHub release. Not Authenticode-signed yet, so Windows asks for "More info", then "Run anyway". Signs in with your Vyre's address, your username and your master password. The server does not run on Windows yet.
-- Phone: the Vyre app, sideloaded (the Android APK from the release, or an iPhone build installed with Xcode), signed in with your Vyre's address, your username and your master password, with Face ID or a fingerprint. A removed phone wipes itself.
+- Windows: Vyre, a tray app with an Alt+Space panel, installed with VyreSetup.exe from the GitHub release. Not Authenticode-signed yet, so Windows asks for "More info", then "Run anyway". Signs in with the Space, your username and your password, or Continue with GitHub. The server does not run on Windows yet.
+- Phone: the Vyre app, sideloaded (the Android APK from the release, or an iPhone build installed with Xcode), signed in with the Space, your username and your password, or Continue with GitHub, with Face ID or a fingerprint. A removed phone wipes itself.
 - Network: built in. Nothing to install or sign in to; the relay carries a connection when a direct path is not possible.
 
 ## Install
-1. Reserve your name at ${SITE}/setup/ and copy the code it shows.
-2. Install the app from https://github.com/vyre-ai/vyre/releases/latest: Vyre-aarch64.dmg or Vyre-x86_64.dmg on a Mac, VyreSetup.exe on Windows. Both are sideloaded (not signed with a store identity yet).
-3. Open the app, paste the code and save the recovery code.
-4. Choose Join a team, Add a server (a Linux machine, or a Mac that stays on; With Records is recommended) or, on a Mac, Use My Home.
-5. To add a server, run the one line the app shows on it, as yourself: \`curl -fsSL https://vyre.run/i | VYRE_CODE=<code from the app> sh\`. The server installs Vyre and pairs itself.
-6. On your phone: Vyre-android.apk from the release on Android (sideloaded); iPhone has no App Store app yet. Open Vyre on the phone and sign in with your Vyre's address, your username and your master password.
+1. Install the app from https://github.com/vyre-ai/vyre/releases/latest: Vyre-aarch64.dmg or Vyre-x86_64.dmg on macOS, VyreSetup.exe on Windows. Both are sideloaded (not signed with a store identity yet).
+2. Open the app. Sign in with the Space, your username and your password, or Continue with GitHub. Save the recovery code.
+3. Choose Join a space, or create one on a Linux machine or a computer that stays on. Records live in Vyre's own store. 8 GB of memory is recommended and 4 GB is the least.
+4. To add a server, run the one line the app shows on it, as yourself: \`curl -fsSL https://vyre.run/i | VYRE_CODE=<code from the app> sh\`. The server installs Vyre and pairs itself. There is no setup page to paste a code into.
+5. On your phone: Vyre-android.apk from the release on Android (sideloaded); iPhone has no App Store app yet. Open Vyre on the phone and sign in with the Space, your username and your password, or Continue with GitHub.
 
 ## What it costs
 Vyre is free and open source. You pay your AI providers (Claude, Codex, Grok, OpenRouter) on your own subscriptions or keys. Your data lives on your devices and on servers you or your team run. Vyre doesn't hold it.

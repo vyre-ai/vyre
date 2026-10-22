@@ -435,7 +435,7 @@ Tools: `threads.start`, `threads.send`, `threads.stream`, `threads.lease`, `thre
 
 Each agent gets a container with a desktop, Chrome and a terminal. Screens come from a shared
 pool and are checked out only while an agent needs to look at something; idle containers are
-frozen. Glass streams a screen to the Vyre app and supports take-over.
+frozen. The agent's computer streams a screen to the Vyre app and supports take-over.
 
 ### 7.10 Names and network · workstream
 
@@ -501,10 +501,10 @@ The Harness also ships:
 |---|---|---|
 | CLI | `vyre`: home, projects, threads, context, up, status | `core/cli` |
 | Lumen | Control-Control command bar on the Mac: talk to the assistant, to any agent, or to any session | `local/capsule` |
-| Vyre app | One Expo app: the web build at `<you>.vyre.run/app/`, iPhone and Android. Now, Projects, Memory, Agents, Vault, Settings | `apps/app` |
-| Glass | An agent's screen, live, with take-over | `apps/app/screens/glass` + `core/computers` |
+| Vyre app | One Expo app: the web build at `<you>.vyre.run/app/`, iPhone and Android. Home, Chats, Projects, Records, Files, Vault and Settings | `apps/app` |
+| The agent's computer | An agent's screen, live, with take-over | `apps/app/ui/chat/AgentComputerPane.tsx` + `core/computers` |
 | Chat | Vyre's own chat layer: projects, then sessions, each session the terminal mirrored as a readable conversation (tool calls folded, diffs, asks and held items inline), on phone and computer, driving the same Claude Code sessions as the terminal. No third-party chat server. | `apps/app/src/chat` |
-| Phone | Now, approvals, drafts, Glass, Ask | the Vyre app on iPhone and Android |
+| Phone | Home, approvals, drafts, the agent's computer, Ask | the Vyre app on iPhone and Android |
 
 Every surface talks to vyred's API. None reads the store directly.
 
@@ -581,7 +581,7 @@ Enforced outside the model, in the Rules and the Gate. None can be switched off.
 | **M5** | Box | `vyre up` on a Linux server; paired over the built-in network; `<you>.vyre.run` resolves privately with HTTPS. |
 | **M6** | Switchboard and app | Headless threads streamed to the Vyre app; Now and Projects working. |
 | **M7** | Lumen | Ported from the current Mac app onto vyred's API. |
-| **M8** | Computers and Glass | An agent's desktop, live, with take-over. |
+| **M8** | Computers | An agent's desktop, live, with take-over. |
 | **M9** | Chat, Gate, phone | Vyre Chat (projects, sessions, the terminal mirrored) on phone and computer; the Gate holding sends. |
 
 ---

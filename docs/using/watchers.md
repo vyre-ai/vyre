@@ -18,7 +18,7 @@ agent, and you make either one only by asking that agent in its chat.
 
 Both run for the person who asked, on that person's own AI account (Claude, Codex, Grok,
 OpenRouter or a key, from Settings, AI accounts). Neither ever runs on the owner's account for
-someone else. You see them on the agent's page under Apps, Agents, and in the agent's panel beside
+someone else. You see them on the agent's page, and in the agent's panel beside
 a chat, under **Routines and watchers**, with Pause, Resume, Run now and Delete. There is no form:
 to change one, ask the agent again. Flows do not show watchers.
 
@@ -161,7 +161,7 @@ lists every watcher's items.
 > One of its files changed after you turned it on. Dry-run it again with
 > `vyre watchers test <name>`, check the items, then `vyre watchers create <name>`.
 
-In the Vyre app, an agent's page (under **Apps**, **Agents**) and its panel beside a chat list its
+In the Vyre app, an agent's page and its panel beside a chat list its
 Routines and Watchers, with Pause, Resume, Run now and Delete. Filed items appear in the project and in its memory room.
 
 ## Which surface does what

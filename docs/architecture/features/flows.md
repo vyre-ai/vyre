@@ -19,7 +19,10 @@ Every step goes through the kernel as the approver's narrowed chain, so a Flow r
 - The builder opens with "When does this start?" choices: A record is created, A record is created or updated, A record is removed, A record moves to a stage, A person signs up, A form is submitted, On a schedule, Something happens in Vyre, Something new arrives, Someone runs it.
 - "What should happen next?" opens a searchable step palette in groups: Logic (If / else, For each, Side by side, Wait, Wait for someone's yes), Records (Find records, Look up one record, Keep only some of a list, Create a record, Update a record, Find or create a record, Remove a record, Move to a stage), Calculate (Formula), Send (Send an email, Send a text), Web, AI (Hand to an agent, Sort into groups, Pull out facts) and Work (Assign a task, Start a project, Run another flow).
 - Text boxes take tokens such as `{client.first_name}`, `{now}` and `{today}`, with an offset (`{appointment_at - 1 day}`) and a format (`as date`, `as time`, `as weekday`, `as weekdaytime`, `as iso`). A token can reach through links to other records, as in `{matter.client.phone}`. The builder turns tokens into expressions.
-- A run page shows "Step by step" with each step's status (Done, Failed, Waiting, Waiting for a person, Not reached), when a wait wakes, "Version approved by" the approver's name, and a "Retry this run" button for a failed run.
+- A Flow an agent writes from a project's chat takes that project's short name when the Flow does not name one, so it shows under the project's Flows. You make one by asking.
+- The webhook panel shows the address path, with Copy, even when the server has no public URL yet.
+- A step can have a deadline. When it passes, the Flow takes that step's on timeout path, and the person sees why. An agent step can set that deadline in the failure panel.
+- A run page shows "Step by step" with each step's status (Done, Failed, Waiting, Waiting for a person, Not reached), when a wait wakes, "Version approved by" the approver's name, and **Retry**. A failed run says why in plain words and still offers Retry.
 - A Flow holds anything that needs a person in Needs you. See [Tasks and Needs you](./tasks-and-needs-you.md) and [Gate](./gate.md).
 
 ## How it works

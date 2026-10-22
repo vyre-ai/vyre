@@ -134,7 +134,7 @@ clipboard watcher (a Swift helper, polling the pasteboard every 750 ms) measured
 Wake timing leaves out the hotkey's own double-tap window (about 450 ms, by design) and the
 first show after launch (about 721 ms).
 
-### The app and Glass
+### The app and the agent's computer
 
 - `apps/app/screens/glass/state.ts` lets go of the screen when the tab is hidden, keeping the last
   frame, and asks for a fresh ticket when the tab is visible again.

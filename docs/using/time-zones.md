@@ -44,4 +44,4 @@ Say what a schedule does about the times it missed: `catch_up: once` (the defaul
 ## Next
 
 - [Spaces](spaces.md): what a space is.
-- [Planner](planner.md): reminders and to-dos.
+- [Home](home.md): reminders and to-dos.

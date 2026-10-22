@@ -18,24 +18,17 @@ People and agents share chats, records, files, a vault, Flows and projects. Any 
 
 The fastest path, in order:
 
-1. [Install](get-started/install.md): put Vyre on a Linux server and your Mac. From the Mac it is one command.
-2. [Your first day](get-started/first-day.md): open Lumen, start a thread in a project, launch an agent, store a secret, find something from last week.
+1. [Install](get-started/install.md): put the Vyre app on your computer, then sign in with the Space, your username and your password, or Continue with GitHub.
+2. [Home](using/home.md): the first place. Then [your first day](get-started/first-day.md): start a thread, launch an agent, store a secret, find something from last week.
 
-On a Mac, the install starts here:
-
-```
-npm install -g https://vyre.run/box/vyre.tgz
-vyre up
-```
-
-Vyre is not on npm yet, so the package comes from vyre.run. `vyre up` asks where Vyre should run; pick a server and give it the address you SSH to (for example `alex@192.0.2.10`). If something stops you, see [Troubleshooting](get-started/troubleshooting.md). No Docker on the server? See [Without Docker](get-started/without-docker.md).
+The app shows one line to run on the server. If something stops you, see [Troubleshooting](get-started/troubleshooting.md). No Docker on the server? See [Without Docker](get-started/without-docker.md).
 
 ## Who each section is for
 
 | Section | For | What is in it |
 | --- | --- | --- |
 | [Get started](get-started/install.md) | users | Install, onboarding, the first day, fixes for common failures. |
-| [Using Vyre](using/capsule.md) | users | One page per surface and feature: Lumen, the Vyre app, Chat, the CLI, projects and threads, agents, the vault, memory, watchers, connectors, your private network, the phone, looking after the box. |
+| [Using Vyre](using/home.md) | users | One page per surface: Home, Chats, Projects, Records, Files, the agent's computer, Flows, the vault, and the rest. |
 | [Concepts](concepts/box-and-mac.md) | users, builders | The ideas the rest leans on: the box and the Mac, your private network, presence, the security floor, modules. |
 | [Build on Vyre](build/module-contract.md) | builders, agents | The module contract, tools and events, writing a module, the MCP hub. |
 | [Reference](reference/cli.md) | everyone | Generated from the code: every [command](reference/cli.md), [tool](reference/tools.md), [event](reference/events.md), [config key](reference/config.md) and [module](reference/modules.md). |

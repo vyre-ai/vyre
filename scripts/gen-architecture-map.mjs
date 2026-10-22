@@ -188,7 +188,7 @@ export const MODULES = {
   "local/hands-chrome-mac": ["mac", "Deep control of your own Chrome through the Vyre extension."],
   "local/hands-mac": ["mac", "Computer use on macOS through the accessibility tree."],
   "local/screen-mac": ["mac", "Screen context on macOS: front app, window, URL, visible text."],
-  "local/sideview": ["mac", "A session on the left and Chrome or Glass beside it, tiled."],
+  "local/sideview": ["mac", "A session on the left and Chrome beside it, tiled."],
   "local/voice": ["mac", "Push-to-talk for Lumen with a speech provider."],
   "modules/hands-chrome": ["outside", "Chrome control for an agent's computer, over one long-lived connection."],
   "modules/hands-desktop": ["outside", "An agent's hands on a Linux desktop, through the accessibility tree."],

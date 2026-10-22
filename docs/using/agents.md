@@ -162,8 +162,9 @@ look at something; an idle computer is frozen and its home volume stays. Compute
 that can run containers; on one that cannot, `computers.list` reports driver `none`.
 
 Turn it on with `computer: true` on `agents.create` or `agents.update`, or **Give kit a
-computer** (with the agent's name) in the **Computer** section of its page in the Vyre app. Screen Share, which lets
-you watch the screen and take over the keyboard, comes in 0.3.1.
+computer** (with the agent's name) in the **Computer** section of its page in the Vyre app. Watching the screen, Take over and Sign in privately are in [An agent's computer](agent-computer.md).
+
+An agent that sits idle for 15 minutes sleeps. Its process stops. The next message resumes the same conversation, with one short line that says waking.
 
 Two rules hold for every computer:
 

@@ -22,7 +22,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/images/readme/now.webp" width="880" alt="The Now screen in Vyre: what needs you today, agents that are stuck and why, approvals waiting with their exact words, and what agents are doing now.">
+  <img src="docs/images/readme/now.webp" width="880" alt="Home in Vyre: what needs you today, agents that are stuck and why, approvals waiting with their exact words, and what agents are doing now.">
 </p>
 
 In an AI-native team, people set the direction and make the calls, and agents do the work: they draft, track, follow up and keep every job moving. Vyre gives both one place to work together, on servers the team owns, where anything that leaves the team waits for a person's yes.
@@ -31,19 +31,21 @@ Your people, your agents and the work they share live on a server you own and on
 
 **See your business on Vyre.** Give your AI agent [this prompt](docs/for-agents/PROMPT.md). It sends the agent to [one page for agents](docs/for-agents/START-HERE.md), which tells it to read these docs, ask a few short questions, draw your business as an AI-native version of itself (members, records, Playbooks, Flows, agents, approvals), and offer to set Vyre up for you. The same prompt, tailored by a short form, is at [vyre.run/map](https://vyre.run/map/).
 
-## What you get in 0.5
+## What you get
 
-- **People and agents in the same chats.** @ a teammate or an agent, # a record, a file or a project, and keep one thread with exact recall of anything said before. Anyone in the Space can make an agent and share it with a person or a role as use-only or full.
+The sidebar has five places: Home, Chats, Projects, Records and Files. Vault and Settings sit at the foot. You work in one Space at a time. The menu at the foot switches Space. Sign in is the Space, your username and your password, or Continue with GitHub.
+
+- **People and agents in the same chats.** @ a teammate or an agent, # a record, a file or a project. Every chat with an agent is one of that agent's threads. The Threads tab lists them, and the sidebar keeps one row per agent. Anyone in the Space can make an agent and share it with a person or a role as use-only or full. An agent idle for 15 minutes sleeps. The next message resumes the same conversation, with one short line that says waking.
 - **Agents that wake on a task and finish it.** Give a task to an agent, or let a Flow's agent step do it. The agent wakes with the task, the record and the Flow it came from. It ends the task as done, hands it on, or marks it stuck with a plain reason. A task is never left open in silence.
 - **One instructions file per agent and per project.** Each has one `AGENTS.md` that every model reads (a `CLAUDE.md` beside it only points at it). Type @ or # in the editor to reference a person, a record or a file by its address. Every session reads the file natively.
 - **Flows that do the same thing every time.** A Flow starts from a person, a schedule (with business hours, holidays and a rule for missed runs), a change to a record, a stage, a form or a link, or a watcher. Steps include find, create, update, find-or-create, wait (for a time, a date or an event), ask, assign, call a connected service, and run an agent. A step that gives work to a person or an agent can name an assignee, an approver and followers. Text in a step fills in values, and dates read well: `{today}`, `{now}`, and offsets such as `{after.starts_at - 1 day as date}`, with a date picker to insert them. A person approves a Flow before it runs, and a run has its own page.
 - **Playbooks.** A template for a kind of project: stages, tasks per stage, who does each task, and when a stage counts as done. A project can start from a Playbook and link a record.
-- **Records.** Contacts, projects, tasks and your own record types, with fields in named groups, tags on records, projects and chats, saved views, Excel or CSV import on every list, and CSV export from the web app (a cell that would run as a formula in Excel is quoted). Each record type shows the template token of every field, by group, with a copy button. Fields marked sealed show an agent a placeholder, never the value.
+- **Records.** Contacts, projects, tasks and your own record types live in Vyre's own store, with fields in named groups, tags, saved views, Excel or CSV import on every list, and CSV export from the web app (a cell that would run as a formula in Excel is quoted). Contacts show no avatar unless the type asks for a face. Fields marked sealed show an agent a placeholder, never the value.
 - **Documents.** Fill a Word template from a record and the records linked to it, as Word or PDF, file it on the record, and send it for signature. A signer needs no account.
-- **Files.** One Files place for the Space, shared folders and your own. Link a Google Drive or Dropbox folder and browse it, open files and write changes back, each person through their own account.
+- **Files.** Agent folders and Space folders, Shared with me, and Word, Excel and PowerPoint as a page of their text. Earlier versions can be restored. Link a Google Drive or Dropbox folder and browse it, each person through their own account.
 - **Vault.** Passwords, API keys, logins with one-time codes, cards, notes and SSH keys, in ten groups. Share an item with a person as Can use or Can edit. Agents use a credential without seeing it.
-- **Sites.** An agent builds a site, previews it at a private address, and puts it live with one yes from you. Domains show the DNS record to add and check themselves.
-- **Needs you.** One place for everything waiting on a person: approvals, a file or a date an agent asked for, and tasks that got stuck. Each card is typed, so a date ask has a date picker and a file ask has a file picker.
+- **A project's site.** An agent builds a site, previews it at a private address, and puts it live with one yes from you, from the project's Site tab. Sites is not a place in the sidebar. Domains show the DNS record to add and check themselves.
+- **Home.** What needs you, what is running, and a task field. Your profile photo is under Settings, Your profile. An agent's computer is on its chat: press to wake, open full screen, Take over, and Sign in privately.
 - **Teams.** Members reach their own things on the team's server: their projects, chats, Flows, skills, vault and MCP servers. A Space-wide Google or Microsoft 365 key lets each member read their own mail, calendar and drive and only theirs. Roles, per-project seat levels and invites with a role are built in.
 
 New to the code, or pointing an AI agent at it? Start with [ARCHITECTURE.md](ARCHITECTURE.md): a map of the system and one page per feature. To see how a business would run on Vyre, an agent can follow [Map your business onto Vyre](docs/for-agents/MAP-YOUR-BUSINESS.md).
@@ -61,8 +63,8 @@ New to the code, or pointing an AI agent at it? Start with [ARCHITECTURE.md](ARC
     <td><img src="docs/images/readme/vault.png" alt="The Vault with a login an agent can use without seeing the value."><br><sub><b>Vault.</b> Agents use a credential without ever seeing it.</sub></td>
   </tr>
   <tr>
-    <td><img src="docs/images/readme/agents.png" alt="The Agents screen with each agent's role and projects."><br><sub><b>Agents.</b> Give each agent a role, instructions and its own memory.</sub></td>
-    <td><img src="docs/images/readme/sites.png" alt="Sites with versions, a preview address and a domain."><br><sub><b>Sites.</b> An agent builds and publishes a site on one yes from you.</sub></td>
+    <td><img src="docs/images/readme/agents.png" alt="An agent's page with its role and projects."><br><sub><b>Agents.</b> Give each agent a role, instructions and its own memory.</sub></td>
+    <td><img src="docs/images/readme/sites.png" alt="A project's site, with versions, a preview address and a domain."><br><sub><b>A project's site.</b> An agent builds it, and you put it live with one yes.</sub></td>
   </tr>
 </table>
 
@@ -72,7 +74,7 @@ New to the code, or pointing an AI agent at it? Start with [ARCHITECTURE.md](ARC
 flowchart LR
   subgraph You["You and your team"]
     P["Phone"]
-    M["Mac or Windows app"]
+    M["Computer app"]
     W["Browser"]
   end
   subgraph Server["Your server"]
@@ -115,22 +117,11 @@ Security reports go through [private advisories](https://github.com/vyre-ai/vyre
 
 ## Quick start
 
-You need a server (a Linux machine with Docker, or a Mac that stays on) and an account with at least one model provider.
+You need a server (a Linux machine with Docker, or a computer that stays on) and an account with at least one model provider.
 
-1. Install the Vyre app on your computer and claim your name.
-2. Run the line it shows on your server:
-
-   ```sh
-   curl -fsSL vyre.run/i | sh
-   ```
-
-   To use a Mac as the server, run this in Terminal on that Mac instead:
-
-   ```sh
-   curl -fsSL vyre.run/box/install-mac-server.sh | sh
-   ```
-
-3. Pair the server from the app, then add your phone.
+1. Install the Vyre app on your computer. Sign in with the Space, your username and your password, or Continue with GitHub.
+2. Run the one line the app shows on the server. It looks like `curl -fsSL vyre.run/i | VYRE_CODE=... sh`.
+3. The app waits until the server is online. Then add your phone.
 
 Step by step: [Install](docs/get-started/install.md). The first hour: [Your first day](docs/get-started/first-day.md).
 
@@ -138,7 +129,7 @@ Step by step: [Install](docs/get-started/install.md). The first hour: [Your firs
 
 | Word | What it is |
 |---|---|
-| Space | Your team's workspace: its members, records, chats and files. You also get a Personal one. |
+| Space | Your team's workspace: its members, records, chats and files. You work in one Space at a time. Personal, My Cloud and Cloud are the three kinds. |
 | Assistant | Your own agent. It answers you and hands work to the others. |
 | Agent | An AI teammate with a role, its own instructions and the access you gave it. |
 | Flow | An automation: something to watch for, and the steps to run. |

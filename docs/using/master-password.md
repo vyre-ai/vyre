@@ -1,6 +1,6 @@
 ---
 title: Master password
-summary: One master password unlocks your username and your personal vault. A space vault keeps working for agents when you are away, and they still never see the value.
+summary: You sign in with a Space, a username and a password, or Continue with GitHub. That password unlocks your personal vault. A space vault keeps working for agents when you are away, and they still never see the value.
 audience: users
 owner: docs
 status: draft
@@ -8,19 +8,19 @@ status: draft
 
 # Master password
 
-You have one username and one master password. The username is your address, `https://vyre.run/u/alex` for example, and it is private unless you choose to be listed. An address like `alex.vyre.run` is never a person's: it belongs to a space. Your master password is the root of your identity and your personal vault on this device. A copy of that key stays so agents can lend a value into a call while you are away, without waiting for you to unlock. You enter the password on your device. An agent never sees it, and it never sees your recovery key.
+You sign in with the Space, your username and your password, or **Continue with GitHub**. The username is your address, `https://vyre.run/u/alex` for example, and it is private unless you choose to be listed. An address like `juniper.vyre.run` is never a person's: it belongs to a space. That password unlocks your personal vault on this device. A copy of that key stays so agents can lend a value into a call while you are away, without waiting for you to unlock. You enter the password on your device. An agent never sees it, and it never sees your recovery key.
 
 ## The recovery key
 
-When you create your username, or the first time this device wraps an existing identity, the Vyre app shows a recovery key on one screen. Save it. It is the way back in if you forget the master password. Anyone who has that key can unlock this device, so keep it where you keep a spare house key.
+When you create your username, or the first time this device wraps an existing identity, the Vyre app shows a recovery key on one screen. Save it. It is the way back in if you forget the password. Anyone who has that key can unlock this device, so keep it where you keep a spare house key.
 
 ## GitHub
 
-Login with GitHub links that GitHub account to your username. It signs you in. You still enter the master password to unlock the vault.
+**Continue with GitHub** links that GitHub account to your username. It signs you in and keeps the name and the photo GitHub already gave. The same password unlocks the vault.
 
 ## Another computer
 
-On the new computer, give the space server address, your username and your master password. Or sign in with the linked GitHub account and the same master password. Each space has its own server address. Your username is the same on all of them.
+On the new computer, give the Space, your username and your password, or **Continue with GitHub**. Each space has its own address. You work in one Space at a time. Your username is the same on all of them.
 
 ## Your vault, and a space vault
 
@@ -30,4 +30,4 @@ A space has a vault of its own, with no separate password. The space key is wrap
 
 ## Handing a space on
 
-The owner of a space can hand it to another member. That change is recorded. An agent can propose it. Your one tap is what applies it. The same is true of inviting someone, changing a role, adding a computer or a phone, and setting up the space vault. You enter the master password and any vault value yourself.
+The owner of a space can hand it to another member. That change is recorded. An agent can propose it. Your one tap is what applies it. The same is true of inviting someone, changing a role, adding a computer or a phone, and setting up the space vault. You enter the password and any vault value yourself.

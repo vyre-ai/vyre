@@ -14,7 +14,7 @@ Vyre is one small daemon, `vyred`, on each machine you own, plus a Claude Code p
 
 ## One process per machine
 
-`vyred` runs every service on its machine ([Section 2 of the spec](spec.md#2-principles), principle 3). It is the same code on the box and on the Mac, with different modules enabled, chosen by `role` in `~/.vyre/config.json` (`box` or `local`). Most Core modules run on both; a few run only on the box (names, onboarding, agents' computers, Glass streaming), and the Local modules run only on the Mac. The exact split is in [The box and the Mac](../concepts/box-and-mac.md#one-process-per-machine). The `vyre` CLI is a thin client: every command is a call to `vyred`, over its unix socket (`~/.vyre/vyred.sock`) on the same machine or its HTTP API from elsewhere.
+`vyred` runs every service on its machine ([Section 2 of the spec](spec.md#2-principles), principle 3). It is the same code on the server and on your computer, with different modules enabled, chosen by `role` in `~/.vyre/config.json` (`box` or `local`). Most Core modules run on both; a few run only on the server (names, onboarding, agents' computers, and streaming an agent's screen), and the Local modules run only on the computer you sit at. The exact split is in [The box and the Mac](../concepts/box-and-mac.md#one-process-per-machine). The `vyre` CLI is a thin client: every command is a call to `vyred`, over its unix socket (`~/.vyre/vyred.sock`) on the same machine or its HTTP API from elsewhere.
 
 Everything is a module, including the core services, and every module uses the same contract: a `module.json` manifest and an entry file that registers tools and emits events. See [Modules](../concepts/modules.md) and [The module contract](../build/module-contract.md). The loaded set on this branch is listed in the [module reference](../reference/modules.md).
 
@@ -40,9 +40,9 @@ Every surface talks to `vyred`'s API. None reads the store directly ([Section 9 
 | --- | --- | --- |
 | CLI | `vyre`: home, projects, threads, agents, vault, up, status, and `vyre call` for any tool. | `core/cli` |
 | Lumen | The command bar on the Mac: press Control twice, talk to the assistant, an agent or a session. | `local/capsule` |
-| Vyre app | One Expo app that runs as a web app at your address (`/app/`), on iPhone and on Android: Now, Projects, Memory, Agents, Chat, Vault, Settings. | `apps/app` |
-| Chat | Projects, then every Claude Code session on the machine, each shown as a readable conversation that follows the terminal live. Sending from Chat drives the same session. | `apps/app/src/chat` |
-| Glass | An agent's screen, live, with take-over. | `apps/app/screens/glass` and `core/computers` |
+| Vyre app | One Expo app that runs as a web app at your address (`/app/`), on iPhone and on Android: Home, Chats, Projects, Records, Files, with Vault and Settings at the foot. | `apps/app` |
+| Chat | One row per agent. Every chat with an agent is one of its threads. Sending from Chats drives that thread. | `apps/app/src/chat` |
+| The agent's computer | An agent's screen. Press to wake, open full screen, Take over, Sign in privately. | `apps/app/ui/chat/AgentComputerPane.tsx` and `core/computers` |
 | Phone | The same Vyre app on iPhone and Android, or the web build added to the Home Screen. | `apps/app` |
 | Status line | Vyre's line under every Claude Code session in your terminal, such as `vyre · 2 need you · box ok · juno idle`. `vyre statusline install` adds it. | `core/statusline`, `harness/statusline` |
 
@@ -86,9 +86,9 @@ Architecture decision records live in `docs/adr/`. Each states the problem, the 
 | --- | --- |
 | [0001](../adr/0001-vault-crypto.md) | How the vault seals, releases and shares credentials |
 | [0002](../adr/0002-network-and-identity.md) | Network and identity: how a caller is identified at the server's door |
-| [0003](../adr/0003-glass-stream.md) | How Glass streams an agent's screen, and who may type into it |
+| [0003](../adr/0003-glass-stream.md) | How an agent's computer streams its screen, and who may type into it |
 | [0004](../adr/0004-presence.md) | Presence: proving a person is there before a human-only action |
-| [0005](../adr/0005-glass.md) | Glass: a remote computer you can watch, take over, sign in on and browse |
+| [0005](../adr/0005-glass.md) | An agent's computer: watch it, take over, sign in on it and browse |
 | [0006](../adr/0006-vault-next.md) | The vault, next: a key hierarchy and presence on every value (proposed) |
 | [0007](../adr/0007-intelligence.md) | The memory graph and the learning loop |
 | [0008](../adr/0008-install-journey.md) | The install journey (proposed) |

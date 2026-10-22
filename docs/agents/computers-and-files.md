@@ -21,9 +21,9 @@ when: You need to read or write files, run something on a computer, use a browse
 
 An agent can have its own computer: a screen, a browser and a desktop on the server, separate from the person's own. Ask `tools_call computers.list` for yours, `tools_call computers.checkout` to take one, `tools_call computers.release` when you are done. A computer has limits (`tools_call computers.limits`): time, memory, network. Stay inside them.
 
-## Glass and take-over
+## The agent's computer
 
-Glass shows an agent's screen live. A person can take it over (`computers.takeover`) to type a password or fix something, and give it back (`computers.giveback`). While a person has it, do not act on the screen. When it comes back, look before you continue: the page may have changed.
+The agent's computer shows that agent's screen. A person presses an asleep screen to wake it, and presses a live screen to open it full size. They can take it over (`computers.takeover`) to type a password or fix something, sign in privately, and give it back (`computers.giveback`). While a person has it, do not act on the screen. When it comes back, look before you continue: the page may have changed.
 
 ## A browser
 

@@ -21,7 +21,7 @@ The parts the steps below use. Each links to the page that describes it. The des
 - **Records** (step 3): objects of any type, linked in any web, with views and sealed fields. [Records](https://vyre.run/docs/architecture/features/records.md)
 - **Playbooks and Flows** (steps 4 and 5): each kind of work runs as its own Playbook and Flows over shared records. [Flows](https://vyre.run/docs/architecture/features/flows.md), [Tasks, Needs you and Playbooks](https://vyre.run/docs/architecture/features/tasks-and-needs-you.md)
 - **Documents and signing** (step 6): Word templates filled from records, signed by people with no account. [Documents and signing](https://vyre.run/docs/architecture/features/documents-and-signing.md)
-- **Sites** (step 7): an agent builds and previews a site, and publishing waits for one yes. [Sites and publishing](https://vyre.run/docs/architecture/features/sites-and-publishing.md)
+- **Sites** (step 7): an agent builds and previews a site, and publishing waits for one yes. Sites is not a place in the sidebar. It lives on a project's Site tab. [Sites and publishing](https://vyre.run/docs/architecture/features/sites-and-publishing.md)
 - **Agents in one group chat** (step 8): Claude, Codex, Grok and others answer in the same chat, each with its own job. [Sessions and models](https://vyre.run/docs/architecture/features/sessions-and-models.md)
 - **Vault** (step 9): an agent uses a credential without seeing it. [Vault](https://vyre.run/docs/architecture/features/vault.md)
 - **The Gate** (step 10): nothing leaves the Space until a person approves the exact words. [Gate](https://vyre.run/docs/architecture/features/gate.md)
@@ -112,7 +112,7 @@ Anything that needs a signature goes through signing inside a Flow:
 
 ## Step 7. Pages customers see become Sites
 
-For each page or site customers use, name its job, its owner and its domain. An agent builds it from the business's records and brand, previews it at an unguessable address that is not linked anywhere (it has no login), and shows you the plan. Going live waits for one yes. On the owner's own domain, Vyre shows the DNS record to add and checks it. Every version stays in the history. See [Sites and publishing](https://vyre.run/docs/architecture/features/sites-and-publishing.md).
+For each page or site customers use, name its job, its owner and its domain. Sites is not a place in the sidebar. An agent builds it from the business's records and brand, previews it at an unguessable address that is not linked anywhere (it has no login), and shows you the plan. Going live waits for one yes. It is managed from the project's Site tab. On the owner's own domain, Vyre shows the DNS record to add and checks it. Every version stays in the history. See [Sites and publishing](https://vyre.run/docs/architecture/features/sites-and-publishing.md).
 
 ## Step 8. Judgment work becomes agents
 

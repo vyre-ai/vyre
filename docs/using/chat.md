@@ -1,6 +1,6 @@
 ---
 title: Chat
-summary: Use Chat in the Vyre app, on your laptop or your phone, to read and type into the sessions Vyre runs on your server, pick which provider and model answers, and answer their questions inline.
+summary: Chats is one row per agent. Every chat with an agent is one of its threads, listed on the Threads tab. You still read and type into the session, and pick which provider answers.
 audience: users
 owner: polish-surfaces
 status: draft
@@ -8,21 +8,18 @@ status: draft
 
 # Chat
 
-Chat is the Vyre app's view of sessions as conversations, on a laptop and on your phone. It lists
-every session on the machine that serves the app (normally your server): the Claude Code
-sessions you ran in a terminal, and the ones Vyre runs for you on Claude, Codex, Grok or
-OpenRouter (an agent's thread, the assistant, a thread you started). A session shows its text
-as it is written, its tool calls, file edits as diffs, and anything it needs from you, inline. You
-type into it like a message box, and the words go to the session as you. Chat lives at `/u/chats`
-in the Vyre app. On a server with a paired Mac, Chat also lists the Mac's sessions, and
-a message you type into one goes to the Mac (see [Sessions from your Mac](#sessions-from-your-mac)).
+Chats is a place in the sidebar. The list keeps one row per agent. Every chat with an agent is one of that agent's threads.
+
+Open a row, then the **Threads** tab. It lists that agent's threads, newest first, and marks the one that is open. **New thread** opens a new chat. A thread is titled by the first thing you typed, up to 60 characters, or **New thread**. It is never titled by the agent's reply. The chat header shows the agent's name and face, with the thread title on the same line. Search finds a thread by its title or its last line and opens that thread. With nothing typed, the sidebar stays one row per agent.
+
+A thread shows its text as it is written, its tool calls, file edits as diffs, and anything it needs from you, inline. You type into it like a message box. Chats lives at `/u/chats`. The Computer tab on an agent's chat is [the agent's computer](agent-computer.md): press an asleep screen to wake it, and press a live screen for the full screen.
 
 ## Find a session
 
-1. Open **Chat** (`/u/chats`). It lists every chat, the ones that need you first, each with its
+1. Open **Chats** (`/u/chats`). It lists every chat, the ones that need you first, each with its
    title, the assistants and people in it, the providers that answered, and a **Needs you** chip
    when it waits on you.
-2. Pick one to open it. **New chat** (`/u/chats/new`) starts one with your assistant or an agent.
+2. Pick one to open it. **New chat** (`/u/chats/new`) starts one with your assistant or an agent. **New thread** starts another thread with the same agent.
 
 | Path | Opens |
 | --- | --- |
