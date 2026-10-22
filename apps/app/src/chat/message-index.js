@@ -1,6 +1,7 @@
 // @ts-check
 // The on-device message index: words over the chat messages this app has already opened and decrypted, so Find can search person and group chats without the server ever reading them.
-// It lives in memory only: nothing is written to storage or sent anywhere. A chat's messages leave it when the person leaves that chat, and all of it is cleared when the account locks.
+// It lives in memory only: nothing is written to storage or sent anywhere. A chat's messages leave it when the person leaves that chat
+// and stay out until the chat says they are in it again, so a later frame cannot put a removal back. All of it is cleared when the account locks.
 
 /** @typedef {{ id: string, who: string, text: string }} Msg */
 /** @typedef {{ chat: string, id: string, who: string, snippet: string, score: number }} Hit */
@@ -23,19 +24,26 @@ export function snippetOf(text, ws) {
 
 export function createMessageIndex() {
   /** @type {Map<string, { at: number, msgs: Msg[] }>} */ const chats = new Map();
+  /** Chats the person has left. index() will not put one back until reopen(), so an open chat's later frames cannot restore it. */
+  const closed = new Set();
   let tick = 0;
   return {
-    /** Replace one chat's messages with what the app now holds (idempotent: the same call twice changes nothing). @param {string} chat @param {Msg[]} msgs */
+    /** Replace one chat's messages with what the app now holds (idempotent: the same call twice changes nothing). A chat the person left is left alone. @param {string} chat @param {Msg[]} msgs */
     index(chat, msgs) {
+      if (closed.has(chat)) return;
       const clean = (msgs || []).filter(m => m && m.id && typeof m.text === "string" && m.text.trim());
       const prev = chats.get(chat);
       if (!clean.length) { if (prev) chats.delete(chat); return; }
       chats.set(chat, { at: prev && prev.msgs.length === clean.length && prev.msgs.every((m, i) => m.id === clean[i].id && m.text === clean[i].text) ? prev.at : ++tick, msgs: clean.map(m => ({ id: String(m.id), who: String(m.who || ""), text: m.text })) });
     },
-    /** The person left the chat: its messages go. @param {string} chat */
-    drop(chat) { chats.delete(chat); },
+    /** The person left the chat: its messages go, and stay gone until reopen. @param {string} chat */
+    drop(chat) { chats.delete(chat); closed.add(chat); },
+    /** The chat says they are in it again. @param {string} chat */
+    reopen(chat) { closed.delete(chat); },
+    /** True after drop, until reopen or clear. @param {string} chat */
+    held(chat) { return closed.has(chat); },
     /** The account locked: everything goes. */
-    clear() { chats.clear(); tick = 0; },
+    clear() { chats.clear(); closed.clear(); tick = 0; },
     size() { let n = 0; for (const c of chats.values()) n += c.msgs.length; return n; },
     /**
      * Messages that hold every word of the query (a word may be a start of a longer one), best first: more of the words as whole words, then the exact phrase, then the newer chat and the later message.

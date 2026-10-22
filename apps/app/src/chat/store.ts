@@ -12,6 +12,7 @@ import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { createPacer } from "@vyre/chat-core/pace.js";
 import { createReveal } from "../session/reveal.js";
 import { isKind } from "./frame-type.js";
+import { heldFromFrames, heldFromRead } from "./index-hold.js";
 import { messageIndex } from "./message-index.js";
 import { createFolder, headerState, type Frame as FoldFrame, type Item, type LayoutRow } from "./frames.js";
 import { createMockStream, type Frame, type StreamSource, type StreamState } from "./mock-stream";
@@ -122,6 +123,14 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
     frameSoon(tick);
   }
 
+  // Out of search after a leave, until a join or a read that lists the viewer. A new store for the same chat keeps that.
+  let held = messageIndex.held(session);
+  function applyHeld(next: boolean) {
+    held = next;
+    if (held) messageIndex.drop(session);
+    else { messageIndex.reopen(session); indexMessages(); }
+  }
+
   /** What this chat now holds in words, for the on-device message search (memory only; nothing leaves the app). */
   function indexMessages() {
     const msgs: { id: string; who: string; text: string }[] = [];
@@ -177,7 +186,7 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
         void decryptUserMessage(f.data.enc, openPrivateKey).then((plain) => {
           if (plain && folder.setUserText(ukey, plain)) {
             notifyRow(ukey);
-            indexMessages();
+            if (!held) indexMessages();
             for (const fn of [...layoutSubs]) fn();
           }
         });
@@ -203,8 +212,8 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
       conn.close();
       conn = source.connect({ from, onFrame, onState: (s) => { connection = s; bumpMeta(); } });
     }
-    // The person left this chat: nothing of it stays searchable. Otherwise the index follows what the chat holds now.
-    if (frames.some((f) => isKind(f, "participant-left") && String(f.data?.who) === group.viewer)) messageIndex.drop(session); else indexMessages();
+    // A leave frame takes this chat out of search. A join frame lets it back. A removal that never arrives as a frame is noteChatRead.
+    applyHeld(heldFromFrames(held, group.viewer, frames));
     frameLog = frameLog.concat(frames).slice(-400);
     unsent.settle();
     if (!preloading) saveCache();
@@ -316,6 +325,8 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
     subscribeGroup(f) { groupSubs.add(f); return () => void groupSubs.delete(f); },
     typing() { withActions(source).typing?.(); },
     learnNames(list) { if (group.learn(list)) for (const f of [...groupSubs]) f(); },
+    /** work.chat.get while this chat is open. Out of search when it says the viewer is not in it, back when it lists them. A missed read changes nothing. */
+    noteChatRead(read: { me: string | null; got: unknown; err: { code?: string; message?: string } | null }) { applyHeld(heldFromRead(held, read)); },
     async sendTo(text, o) {
       if (!text.trim()) return null;
       return unsent.send({ via: "sendTo", text, message: newUuid(), o: { ...o } });

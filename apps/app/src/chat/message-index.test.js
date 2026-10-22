@@ -42,8 +42,17 @@ test("leaving a chat drops its messages, locking clears everything, and indexing
   assert.equal(ix.size(), before, "the same messages twice are still the same messages");
   ix.drop("c1");
   assert.deepEqual(ix.search("lease").map(h => h.chat), ["c2"], "nothing of a chat the person left");
+  ix.index("c1", [{ id: "u:1", who: "Dana", text: "Can you send the lease for Park Lane?" }]);
+  assert.equal(ix.held("c1"), true);
+  assert.deepEqual(ix.search("lease").map(h => h.chat), ["c2"], "a later frame cannot put a removal back");
+  ix.reopen("c1");
+  ix.index("c1", [{ id: "u:1", who: "Dana", text: "Can you send the lease for Park Lane?" }]);
+  assert.equal(ix.held("c1"), false);
+  assert.ok(ix.search("lease").some(h => h.chat === "c1"), "back in once the chat says so");
+  ix.drop("c1");
   ix.clear();
   assert.equal(ix.size(), 0);
+  assert.equal(ix.held("c1"), false, "a lock lets the next session search");
   assert.deepEqual(ix.search("lease"), []);
   ix.index("c3", [{ id: "x", who: "", text: "   " }]);
   assert.equal(ix.size(), 0, "an empty message is not kept");

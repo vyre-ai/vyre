@@ -173,6 +173,8 @@ export function ChatScreen(p: ChatScreenProps) {
   const viewer = store.group.viewer;
   // Who is in this chat before the stream says, and the run's thread for the per-run controls (both from work.chat.get).
   const here = useChatMembers(p.sessionId, meta.busy);
+  // A removal that never arrives as a leave frame still takes this chat out of search, and a read that lists you puts it back.
+  useEffect(() => { if (here.read) store.noteChatRead(here.read); }, [store, here.read]);
   const placed = usePlacement(here.thread ?? p.sessionId, !allowsMock());
   const flowDraft = useFlowDraft();
   // Files added to the next message: picked, pasted or dropped, uploaded at once, and sent with the words.

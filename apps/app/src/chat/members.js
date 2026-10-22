@@ -2,7 +2,37 @@
 // Who is in a chat, from work.chat.get ({ people: [person ids], agents: [agent names], ... }) and the space's actors ({ actors: [{ id, name }] }). The viewer is "You"; a person with no name behind their id
 // is "Someone", never the id. An agent is named by its own name.
 
+/** How often an open chat asks whether the viewer is still in it. A removal that never arrives as a leave frame is seen on this read. */
+export const MEMBERSHIP_MS = 10000;
+
 /** @typedef {{ id: string, name: string, family: "person" | "assistant" }} Member */
+
+/**
+ * work.chat.get says this person is not in the chat. A non-member and a missing chat are both not_found
+ * ("no such chat"). A missed network read, and a server that has no such tool, are not a removal.
+ * @param {string | null} me @param {any} got @param {{ code?: string, message?: string } | null} err
+ */
+export function removedFromChat(me, got, err) {
+  if (err) {
+    const message = String(err.message || "");
+    if (/\btool\b/i.test(message)) return false;
+    if (String(err.code || "") === "not_found") return true;
+    return /\bno such chat\b|\bnot found\b/i.test(message);
+  }
+  if (!me || !got || !Array.isArray(got.people) || got.people.length === 0) return false;
+  return !got.people.includes(me);
+}
+
+/**
+ * What one read does to the search hold. "out" the person is not in the chat, "in" they are, "same" this read does not say.
+ * @param {string | null} me @param {any} got @param {{ code?: string, message?: string } | null} err
+ * @returns {"out" | "in" | "same"}
+ */
+export function membershipHold(me, got, err) {
+  if (removedFromChat(me, got, err)) return "out";
+  if (me && got && Array.isArray(got.people) && got.people.includes(me)) return "in";
+  return "same";
+}
 
 /** @param {any} got work.chat.get's answer @param {any} actors records.actors @param {string | null} me @returns {Member[]} */
 export function membersFrom(got, actors, me) {

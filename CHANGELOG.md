@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6.9
 
+- fix(chat): a chat you were removed from leaves search while it is still open. The words go when the chat says you are not in it, even if no leave notice arrived, and they come back when you are in it again (apps/app/src/chat/store.ts).
 - fix(agents): New agent from a project starts in that project. The + menu and /agent pass the project you are in (apps/app/screens/chats/ChatsSidebar.tsx, screens/engineer/model.js).
 - fix(sign-in): pairing a second server in the browser keeps its own sign-in. The first server's token stays put (apps/app/src/auth/paired-key.ts, token-origin.ts).
 - fix(settings): Fast mode and Keep file checkpoints are gone from Settings. Nothing read them, so a change did nothing. File rewind still keeps its own checkpoints.
