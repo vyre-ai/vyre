@@ -1,6 +1,6 @@
 ---
 title: Install
-summary: Put the Vyre app on your computer, sign in with a Space, a username and a password, then join a space or create one, and add a phone.
+summary: Put the Vyre app on your Mac or Windows PC, sign in with a Space, a username and a password, then join a space or create one, and add a phone.
 audience: users, operators
 owner: integrator
 status: stable
