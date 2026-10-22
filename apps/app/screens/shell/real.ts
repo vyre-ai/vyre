@@ -25,8 +25,8 @@ export async function loadReal(): Promise<ShellData> {
   const r = await source.load();
   const data = shellFrom(r.spaces, pickIdentity(r.identity, r.identity?.name || r.identity?.label ? null : await hostIdentity()));
   try {
-    const { markQuietSpaces, keptBoxes } = await import("../../src/real/drop-space");
-    const { offlineServers } = await import("../../src/real/space-servers");
+    const { markQuietSpaces, keptBoxes } = await import("../../src/real/drop-space.ts");
+    const { offlineServers } = await import("../../src/real/space-servers.ts");
     const { listPairings } = await import("../../src/api/relay");
     const { hostStore } = await import("../../src/host/host-store");
     const paired = await listPairings().then((rows) => rows.map((p) => p.box)).catch(() => null);

@@ -1,5 +1,5 @@
 // Drop a Space from this computer: the pairing, the kept shell, the host's kept Spaces and the saved root. Nothing here calls a server, so a server that is gone can still be removed.
-import { clearQuiet } from "./server-wait";
+import { clearQuiet } from "./server-wait.ts";
 
 type SpaceRow = { id: string; server?: string; quiet?: boolean };
 type ShellPack = { v: 1; at: number; space: string; data: { me: unknown; spaces: SpaceRow[] } };
@@ -90,7 +90,7 @@ export async function removeFromComputer(o: { space?: string; box?: string }): P
   const { SHELL_KEY, unpackShell } = await import("../../screens/shell/shell-cache.js");
   const { useShell } = await import("../../screens/shell/shared");
   const { useSpaces } = await import("../../screens/shell/state");
-  const { forgetServer } = await import("./space-servers");
+  const { forgetServer } = await import("./space-servers.ts");
   const got = await dropSpaceHere({
     ...o,
     removePairingFor,

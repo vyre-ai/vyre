@@ -24,7 +24,7 @@ export default function ServersScreen({ embedded = false }: { embedded?: boolean
   const load = useCallback(async () => {
     setErr("");
     if (peerWanted()) {
-      const { listAllSpaces, offlineServers } = await import("../../src/real/space-servers");
+      const { listAllSpaces, offlineServers } = await import("../../src/real/space-servers.ts");
       const [pairings, active] = await Promise.all([listPairings(), loadPairing()]);
       let spaces: any[] = [];
       let offline: string[] = [];
@@ -65,7 +65,7 @@ export default function ServersScreen({ embedded = false }: { embedded?: boolean
         await import("../../src/real/space-list-app").then((m) => m.removeFromList(r.key));
         refreshFromList();
       }
-      if (r.offline) await import("../../src/real/drop-space").then((m) => m.removeFromComputer({ box: r.key, space: r.spaceId || undefined }));
+      if (r.offline) await import("../../src/real/drop-space.ts").then((m) => m.removeFromComputer({ box: r.key, space: r.spaceId || undefined }));
       void load();
     })();
   };

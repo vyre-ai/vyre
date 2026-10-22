@@ -3,9 +3,9 @@
 // given SERVER_WAIT_MS and then left quiet for a minute, so one silent server never holds the others, and a call for the Space showing goes to its server without waiting on the rest.
 import { approvalServersFrom, mergeAmbiguous, chatServersFrom, itemSpacesFrom, mergeSpaceLists, serverFor, spaceServersFrom } from "./server-route.js";
 import { NOT_ANSWERING_SAY } from "./not-answering.js";
-import { askBox, clearQuiet, isQuiet, quietServers, resetServerQuiet, setServerClock, type Asked } from "./server-wait";
+import { askBox, clearQuiet, isQuiet, quietServers, resetServerQuiet, setServerClock, type Asked } from "./server-wait.ts";
 
-export { setServerClock, QUIET_FOR_MS, SERVER_WAIT_MS as CHATS_SERVER_MS } from "./server-wait";
+export { setServerClock, QUIET_FOR_MS, SERVER_WAIT_MS as CHATS_SERVER_MS } from "./server-wait.ts";
 
 type Rows = Array<{ id?: unknown; member?: unknown } | null>;
 
