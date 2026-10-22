@@ -1,10 +1,12 @@
 // @ts-check
 // The computers module in a real vyred, in process: the fake driver, and the real agents and
 // switchboard (module name "threads") modules, both core now and no longer fakeable under their
-// own names (core/modules/index.js: "the first found wins"). kit's thread is a real thread,
-// launched through threads.launch with the fake `claude` at core/switchboard/testing/fake-claude.js
-// standing in for the real binary, so threads.lease has an actual row to hold a lease on. The
-// clock is the pool's own now(), moved by the test; the real sweep timer is off (sweepMs 0).
+// own names (core/modules/index.js: "the first found wins"). A test that needs kit's thread
+// asks for it (session: true): threads.launch then starts the fake `claude` at
+// core/switchboard/testing/fake-claude.js, so threads.lease has an actual row to hold a lease
+// on. Launching that process in every boot holds a child and a watcher and the file does not
+// finish. The clock is the pool's own now(), moved by the test; the real sweep timer is off
+// (sweepMs 0).
 
 import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
@@ -25,9 +27,9 @@ fs.chmodSync(FAKE_CLAUDE, 0o755);
 
 /**
  * A vyred with the computers module on the fake driver, plus real agents "juno" (the assistant),
- * "kit" and "pax" (both computer: true), with a real thread launched for kit.
+ * "kit" and "pax" (both computer: true). kit's thread starts only when `session` is set.
  * @param {any} t
- * @param {{ computers?: any, agents?: boolean, root?: string, glass?: any, presence?: any }} [o]
+ * @param {{ computers?: any, agents?: boolean, root?: string, glass?: any, presence?: any, session?: boolean, vault?: boolean, kitThread?: string }} [o]
  */
 async function boot(t, o = {}) {
   const root = o.root || tempHome(t);
@@ -61,10 +63,12 @@ async function boot(t, o = {}) {
       const r = await d.registry.call("agents.create", { name, kind, projects: kind === "assistant" ? undefined : [], computer: kind === "agent" }, "local");
       if (r.error) throw new Error(`agents.create ${name}: ${r.error.message}`);
     }
-    const work = fs.mkdtempSync(path.join(root, "kit-work-"));
-    const launched = await d.registry.call("threads.launch", { agent: "kit", agent_kind: "agent", cwd: work }, "module:computers-test");
-    if (launched.error) throw new Error(`threads.launch for kit: ${launched.error.message}`);
-    kitThread = launched.data.id;
+    if (o.session) {
+      const work = fs.mkdtempSync(path.join(root, "kit-work-"));
+      const launched = await d.registry.call("threads.launch", { agent: "kit", agent_kind: "agent", cwd: work }, "module:computers-test");
+      if (launched.error) throw new Error(`threads.launch for kit: ${launched.error.message}`);
+      kitThread = launched.data.id;
+    }
   }
   /** Every result a test saw, for the secret scan. */
   const results = [];
@@ -166,7 +170,7 @@ test("computers: an agent's hands get their own computer; only the assistant may
 });
 
 test("computers: endpoint checks out and thaws; may-act touches", async t => {
-  const s = await boot(t);
+  const s = await boot(t, { session: true });
   const e = await s.module("computers.endpoint", { agent: "kit", thread: s.kitThread });
   assert.equal(e.data.cdp, undefined, "Chrome's raw address is never handed out; only computerd's authenticated proxy is");
   assert.equal(e.data.helper.url, "http://fake-kit:7000");
@@ -248,7 +252,7 @@ test("computers: shield refuses every read and action, over pause and take-over 
 });
 
 test("computers: take-over through the lease, chatting that does not pause, and the lease ending it", async t => {
-  const s = await boot(t);
+  const s = await boot(t, { session: true });
   // The user chats with kit from the Deck: the lease moves, kit keeps working.
   await s.cli("threads.lease", { thread: s.kitThread, surface: "deck:laptop" });
   assert.deepEqual((await s.module("computers.may-act", { agent: "kit", tool: "chrome.click" })).data, { ok: true });
@@ -485,7 +489,7 @@ test("computers: limits are a person's or the assistant's to set, and restart ap
 });
 
 test("computers: idle hand-back is 5 min by default, the owner's to change, live, and ends a take-over with why idle", async t => {
-  const s = await boot(t);
+  const s = await boot(t, { session: true });
   assert.deepEqual((await s.cli("computers.handback.status")).data, { minutes: 5, choices: [0, 2, 5, 15], warn_s: 10 });
   assert.match((await s.kit("computers.handback.set", { minutes: 0 })).error.message, /is an agent|not available to mcp callers/);
   assert.ok((await s.cli("computers.handback.set", { minutes: 7 })).error, "a minutes value that is not a choice was saved");

@@ -4,6 +4,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6.9
 
+- fix(computers): a computers test starts kit's thread only when that test needs the thread. Starting a session in every boot held a process and a watcher, and the file was still inside its last boot when its time limit ended (core/computers/computers.test.js).
+- fix(flows): the schedule checklist waits until the run leaves running before it says the Flow is done. The slip existing only means the run has started (test/flows-core-checklist.test.js).
+- perf: an Office preview loads pizzip when a Word, Excel or PowerPoint file is opened, not when the daemon starts, so the idle heap stays under its budget (core/previews/office.js).
 - feat(onboard): the photo step after a Space is online takes a photo from this computer. Choose a photo centre-crops it, scales it down on this computer and saves it as the member photo of this Space, the same save Your profile uses. On a GitHub sign-in that photo is shown, with Use my GitHub photo. Skip for now goes on. The address field is gone, and the first run no longer says a photo is an https address. A GitHub photo is still kept only when it is a GitHub avatar address (apps/app/screens/first-run/AfterSpace.tsx, after-space-photo.js, apps/app/src/state/profiles.ts).
 - fix(records): contacts show no avatar, in the list or on the record page; other records show none either unless their type asks for a face (apps/app/ui/views/view-defs.js, screens/records/RecordScreen.tsx).
 - feat(profile): Your profile is one identity. A 96 px photo, or your look when there is no photo, with Change photo, a menu to change the photo, use a look, or remove the photo, the name edited in place, the @username with copy, and the role in this Space. The assistant has its own section. A photo is centre-cropped and scaled on the device before it is saved. The unused second profile screen is gone.
