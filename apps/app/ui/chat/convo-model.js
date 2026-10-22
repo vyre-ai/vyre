@@ -7,14 +7,15 @@ import { agentWords } from "../../src/state/agent-name.js";
 export const displayName = agentWords;
 
 /** @typedef {{ id: string, title: string, project: string, people: string[], agents: string[], status: string, last: number, line: string, asks: number, unread: number, open: boolean, pinned?: string, place?: string, engineer?: boolean }} ChatRow */
-/** @typedef {{ id: string, kind: "chat" | "group" | "agent" | "person" | "flow", title: string, sub: string, last: number, project: string, projects: string[], chat: string, agent: string, person: string, open: boolean, asks: number, unread: number, pinned: boolean, status: string, dot: "" | "ask" | "unread", names: string[], look: string, lone: "agent" | "person" | "", section: "pinned" | "personal" | "space" | "projects" | "flows", threads: number }} Convo */
+/** @typedef {{ id: string, title: string, line: string }} ThreadHit */
+/** @typedef {{ id: string, kind: "chat" | "group" | "agent" | "person" | "flow", title: string, sub: string, last: number, project: string, projects: string[], chat: string, agent: string, person: string, open: boolean, asks: number, unread: number, pinned: boolean, status: string, dot: "" | "ask" | "unread", names: string[], look: string, lone: "agent" | "person" | "", section: "pinned" | "personal" | "space" | "projects" | "flows", threads: number, search?: readonly ThreadHit[] }} Convo */
 
 const KIND_WORDS = { chat: "Chat", group: "Group chat", agent: "Agent", person: "Teammate", flow: "Flow" };
 /** @param {Convo["kind"]} k */
 export const convoKindWord = (k) => KIND_WORDS[k];
 
 /** @typedef {{ title: string, live?: boolean, needs?: boolean, at?: number }} ThreadInfo */
-/** What work.chat.summary says of an agent: how many threads, the latest and the live one. @typedef {{ count: number, latest?: string, at?: number, live?: string, needs?: boolean }} AgentSummary */
+/** What work.chat.summary says of an agent: how many threads, the latest, the live one, and each thread so a search can open it. @typedef {{ count: number, latest?: string, at?: number, live?: string, needs?: boolean, threads?: readonly ThreadHit[] }} AgentSummary */
 
 /**
  * Where a chat lives, which the person never has to think about: Personal (only you: your agent threads), Space (it only has the people in it), Projects (a project's chat, everyone on it).
@@ -60,7 +61,7 @@ function threadsLine(sum, ts) {
 }
 
 /**
- * @param {{ assistantName?: string, assistantAgent?: string, chats: readonly ChatRow[], agents: readonly { name: string, title?: string, role?: string, projects?: string[], status?: string, look?: string, threads?: readonly ThreadInfo[], summary?: AgentSummary }[], people: readonly { id: string, name: string, role?: string }[], flows?: readonly { id: string, title: string, line?: string, last?: number, runs?: number, needs?: number }[] }} i
+ * @param {{ assistantName?: string, assistantAgent?: string, assistantThreads?: readonly ThreadHit[], chats: readonly ChatRow[], agents: readonly { name: string, title?: string, role?: string, projects?: string[], status?: string, look?: string, threads?: readonly ThreadInfo[], summary?: AgentSummary }[], people: readonly { id: string, name: string, role?: string }[], flows?: readonly { id: string, title: string, line?: string, last?: number, runs?: number, needs?: number }[] }} i
  * @returns {Convo[]}
  */
 export function convosFrom(i) {
@@ -106,18 +107,21 @@ export function convosFrom(i) {
     const last = untitled(c.line) ? "" : c.line;
     // the assistant's own chat is said and drawn as the assistant (its face, not initials)
     const asAsst = pinned && !!asst;
+    const search = asAsst ? (i.assistantThreads ?? []) : (mine || agentOnly ? (sum?.threads ?? []) : []);
     out.push({
       id: `chat:${c.id}`, kind: others >= 2 ? "group" : "chat", title: eng ? "Engineer" : asAsst ? displayName(asst) : mine ? (said.get(c.agents[0]) ?? displayName(c.agents[0])) : c.title === c.agents[0] && agentOnly ? (said.get(c.title) ?? c.title) : c.title,
       sub: mine ? last || threadsLine(sum, ts) : agentOnly ? (sum ? summaryLine(sum, last) : agentLine(ts, last)) : last, last: Math.max(c.last, agentOnly ? sum?.at ?? 0 : 0), project: c.project,
       projects: c.project ? [c.project] : [], chat: c.id, agent: mine ? c.agents[0] : asAsst ? asstId : "", person: "", open: c.open, asks: c.asks, unread: c.unread, pinned: pinned || eng, status: c.status, dot: c.asks > 0 ? "ask" : c.unread > 0 ? "unread" : "",
       names: asAsst && !c.agents.length ? [asstId] : [...c.people, ...c.agents], look: "", lone: agentOnly || asAsst ? "agent" : others === 1 && c.people.length === 1 ? "person" : "",
-      section: pinned ? "pinned" : place, threads: agentOnly ? Math.max(1, ts.length, sum?.count ?? 0, g?.n ?? 0) : 1,
+      section: pinned ? "pinned" : place, threads: agentOnly ? Math.max(1, ts.length, sum?.count ?? 0, g?.n ?? 0) : asAsst ? Math.max(1, search.length) : 1,
+      ...(search.length ? { search } : {}),
     });
   }
   for (const a of i.agents) {
     if (aloneAgent.has(a.name)) continue;
     const ts = a.threads ?? [];
-    out.push({ id: `agent:${a.name}`, kind: "agent", title: a.title || displayName(a.name), sub: a.summary ? summaryLine(a.summary, a.role ?? "") : agentLine(ts, a.role ?? ""), last: Math.max(0, a.summary?.at ?? 0, ...ts.map((t) => t.at ?? 0)), project: "", projects: (a.projects ?? []).map(String), chat: "", agent: a.name, person: "", open: true, asks: 0, unread: 0, pinned: false, status: a.status ?? "", dot: "", names: [a.name], look: a.look ?? "", lone: "agent", section: "personal", threads: Math.max(1, ts.length, a.summary?.count ?? 0) });
+    const search = a.summary?.threads ?? [];
+    out.push({ id: `agent:${a.name}`, kind: "agent", title: a.title || displayName(a.name), sub: a.summary ? summaryLine(a.summary, a.role ?? "") : agentLine(ts, a.role ?? ""), last: Math.max(0, a.summary?.at ?? 0, ...ts.map((t) => t.at ?? 0)), project: "", projects: (a.projects ?? []).map(String), chat: "", agent: a.name, person: "", open: true, asks: 0, unread: 0, pinned: false, status: a.status ?? "", dot: "", names: [a.name], look: a.look ?? "", lone: "agent", section: "personal", threads: Math.max(1, ts.length, a.summary?.count ?? 0), ...(search.length ? { search } : {}) });
   }
   for (const p of i.people) {
     if (alonePerson.has(p.name)) continue;
@@ -128,7 +132,8 @@ export function convosFrom(i) {
   }
   // Your assistant is always at the top: with no chat of its own yet, a row that starts a new thread with it.
   if (asst && !out.some((r) => r.pinned && r.section === "pinned" && r.chat)) {
-    out.push({ id: "assistant:new", kind: "agent", title: displayName(asst), sub: "Your assistant", last: Number.MAX_SAFE_INTEGER, project: "", projects: [], chat: "", agent: asst, person: "", open: true, asks: 0, unread: 0, pinned: true, status: "", dot: "", names: [asst], look: "", lone: "agent", section: "pinned", threads: 1 });
+    const search = i.assistantThreads ?? [];
+    out.push({ id: "assistant:new", kind: "agent", title: displayName(asst), sub: "Your assistant", last: Number.MAX_SAFE_INTEGER, project: "", projects: [], chat: "", agent: asst, person: "", open: true, asks: 0, unread: 0, pinned: true, status: "", dot: "", names: [asst], look: "", lone: "agent", section: "pinned", threads: Math.max(1, search.length), ...(search.length ? { search } : {}) });
   }
   // The second line never repeats the name above it: an agent says what it is, the assistant says whose it is, anything else says nothing rather than its title twice.
   for (const r of out) {
@@ -166,13 +171,27 @@ export function convoChips(items) {
   return [{ id: "all", label: "All" }, ...names.map((n) => ({ id: n, label: n })), { id: "none", label: "No project" }];
 }
 
-/** The rows a type, a project and a search leave. The search reads the title, the line and the project. The pinned Assistant is Personal. @param {readonly Convo[]} items @param {{ project: string, query: string, type?: string }} f */
+/** The rows a type, a project and a search leave. With no search the list stays one row per agent. A search also reads each of that agent's threads (its title and its last line) and a hit opens that thread. The pinned Assistant is Personal. @param {readonly Convo[]} items @param {{ project: string, query: string, type?: string }} f */
 export function convosShown(items, f) {
   const word = f.query.trim().toLowerCase();
   const type = f.type ?? "all";
-  return items.filter((c) => {
+  const kept = items.filter((c) => {
     if (type !== "all" && !(c.section === type || (c.section === "pinned" && type === "personal"))) return false;
     if (f.project === "none" ? c.projects.length > 0 : f.project !== "all" && !c.projects.includes(f.project)) return false;
-    return !word || [c.title, c.sub, ...c.projects].join(" ").toLowerCase().includes(word);
+    return true;
   });
+  if (!word) return kept;
+  /** @type {Convo[]} */ const out = [];
+  for (const c of kept) {
+    const self = [c.title, c.sub, ...c.projects].join(" ").toLowerCase().includes(word);
+    for (const t of c.search ?? []) {
+      if (!`${t.title} ${t.line}`.toLowerCase().includes(word)) continue;
+      if (self && t.id === c.chat) continue;
+      const title = t.title || "New thread";
+      const line = t.line.trim();
+      out.push({ ...c, id: `thread:${t.id}`, title, sub: line && line.toLowerCase() !== title.toLowerCase() ? line : "", chat: t.id, threads: 1 });
+    }
+    if (self) out.push(c);
+  }
+  return out;
 }

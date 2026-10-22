@@ -28,7 +28,8 @@ import { createFollow, follow, pillLabel } from "./follow.js";
 import type { StreamSource } from "./mock-stream";
 import { useSessionStream, type PerfSink } from "./store";
 import { ChatHeader } from "./ChatHeader";
-import { chatKind, threadSub, threadsTab, titleFrom, untitledTitle } from "./threads-model.js";
+import { chatKind, threadSub, threadTitleOf, threadsTab, untitledTitle } from "./threads-model.js";
+import { useAssistant } from "./assistant-of";
 import { agentThreads } from "./threads-source";
 import { ForwardSheet } from "./ForwardSheet";
 import { OriginBlock } from "./OriginBlock";
@@ -247,6 +248,7 @@ export function ChatScreen(p: ChatScreenProps) {
   const muted = prefs.muted.includes(p.sessionId);
   const pinned = prefs.pinned.includes(p.sessionId);
   const chatRow = useChats().rows.find((c) => c.id === p.sessionId);
+  const asst = useAssistant();
   const engineerChat = chatRow?.engineer === true;
   const noFork = !canFork(useChats().rows.find((c) => c.id === p.sessionId));
   const setMuted = (on: boolean) => chatPrefs.setMuted(p.sessionId, on);
@@ -424,9 +426,9 @@ export function ChatScreen(p: ChatScreenProps) {
   // A thread is named from its first message (a short title, as chat apps do), never left as "New chat": once, when the chat has a first message and no title of its own.
   const titled = useRef(false);
   useEffect(() => {
-    if (allowsMock() || loading || titled.current || !chatRow || !untitledTitle(chatRow.title) || chatRow.engineer || chatRow.pinned) return;
+    if (allowsMock() || loading || titled.current || !chatRow || chatRow.engineer || chatRow.pinned === "engineer" || !untitledTitle(chatRow.title)) return;
     const first = rows.find((r) => r.kind === "user");
-    const t = first ? titleFrom(store.item(first.key)?.text) : "";
+    const t = first ? threadTitleOf(store.item(first.key)?.text) : "";
     if (!t) return;
     titled.current = true;
     void chatTools.rename(p.sessionId, t).then((r) => { if (r.ok) void refresh(); });
@@ -441,11 +443,15 @@ export function ChatScreen(p: ChatScreenProps) {
   const sample = [{ id: viewer, name: parseName(viewer), family: "person" as const }, { id: "assistant:juno", name: "juno", family: "assistant" as const },
     ...(p.sampleGroup ? [{ id: "per_sam", name: "Sam Reyes", family: "person" as const }, { id: "assistant:scout", name: "scout", family: "assistant" as const }] : [])];
   const faces = found.length ? found : allowsMock() ? sample : here.members;
+  // The pinned assistant chat lists nobody. The header and the Threads tab still show that agent: its name, its face, and every thread.
+  const shown = chatRow?.pinned === "assistant" && asst && !faces.some((f) => f.family === "assistant")
+    ? [...faces, { id: `agent:${asst.id}`, name: asst.id, family: "assistant" as const }]
+    : faces;
   const viewerId = found.length || allowsMock() || !here.me ? viewer : `person:${here.me}`;
-  const who = whoOfChat(faces, viewerId, p.sessionId);
+  const who = whoOfChat(shown, viewerId, p.sessionId);
   const info: AboutInfo = { record: null, sealed: 0, ...p.about, runsOn };
   // What kind of chat this is decides the side panel's tabs and what /threads opens.
-  const others = faces.filter((f) => f.id !== viewerId);
+  const others = shown.filter((f) => f.id !== viewerId);
   const agentNames = others.filter((f) => f.family === "assistant").map((f) => f.name);
   const kind = chatKind({ others, flow: p.flow });
   forkAsThread.current = kind === "agent"; threadRef.current = here.thread ?? p.sessionId;
@@ -487,8 +493,11 @@ export function ChatScreen(p: ChatScreenProps) {
   const newThread = async (agent: string): Promise<string | null> => { const r = await agentThreads.start(agent); if ("problem" in r) return r.problem; openThread(r.thread); return null; };
   const answering = faces.filter((f) => f.family === "assistant" || f.family === "model").map((f) => f.name);
   const head = headerParts({ title: p.title, project: chatProject.current?.name ?? p.project ?? info.record?.title ?? null, space: info.space ?? null, answeredBy: answering, where: allowsMock() ? null : here.where });
-  // an agent chat is said by the agent's name as a person reads it ("Engineer", never "engineer"); the thread's own title follows only when it has one
+  // an agent chat is said by the agent's name as a person reads it ("Engineer", never "engineer"); the thread's own title, the first thing the person typed, follows only when it has one
   const agentTitle = kind === "agent" && agentNames[0] ? agentWords(agentNames[0]) : "";
+  const firstUser = rows.find((r) => r.kind === "user");
+  const saidTitle = firstUser ? threadTitleOf(store.item(firstUser.key)?.text) : "";
+  const threadLabel = saidTitle || head.title;
   const assistantsHere = faces.filter((f) => f.family === "assistant").length;
   // The sealed note speaks of the AI in the chat: with none here (a chat between people) it stays away until one joins or is asked.
   const aiHere = faces.filter((f) => f.family === "assistant" || f.family === "model").length;
@@ -508,13 +517,13 @@ export function ChatScreen(p: ChatScreenProps) {
   const sharedChat = Math.max(found.filter((f) => f.family !== "assistant").length, (here.members ?? []).filter((f) => f.family !== "assistant").length) > 1;
   // A chat between people: a message goes to the people and no AI answers unless one is asked for it (reply mode "mention", or no AI in the chat).
   const peopleChat = peopleOnly({ shared: sharedChat, replyMode: store.group.replyMode(), ais: faces.filter((f) => f.family === "assistant" || f.family === "model").length });
-  const startOthers = faces.filter((f) => f.id !== viewerId);
+  const startOthers = shown.filter((f) => f.id !== viewerId);
   const startLone = startOthers.length === 1 ? startOthers[0] : null;
   const paneOpen = usePreviewPane();
   const panelEl = (
     <ChatPanel
-        open={panel !== null} onClose={() => setPanel(null)} phone={phone} page={panel ?? "root"} onPage={setPanel} tab={panelTab} onTab={setPanelTab} flow={p.flow} onNewThread={newThread} onSwitchThread={openThread} title={head.title}
-        participants={found.length ? found : faces.map((f) => ({ ...f, family: f.family as "person" | "assistant" }))} viewer={viewerId} info={info}
+        open={panel !== null} onClose={() => setPanel(null)} phone={phone} page={panel ?? "root"} onPage={setPanel} tab={panelTab} onTab={setPanelTab} flow={p.flow} onNewThread={newThread} onSwitchThread={openThread} title={agentTitle || head.title}
+        participants={shown.map((f) => ({ ...f, family: f.family as "person" | "assistant" }))} viewer={viewerId} info={info}
         muted={muted} pinned={pinned} onMute={setMuted} onPin={setPinned} onFind={() => setFindOpen(true)} onMove={() => { const to = runsOn === "mac" ? "server" : "mac"; void placed.move(to); }} onOpenTerminal={p.onOpenTerminal}
         addable={realComposer ? addable(realComposer.people, found) : undefined}
         onAdd={realComposer ? async (who) => {
@@ -537,7 +546,7 @@ export function ChatScreen(p: ChatScreenProps) {
   );
   const body = (
     <View onLayout={(e) => { const w = Math.round(e.nativeEvent.layout.width); setThreadW((o) => (Math.abs(o - w) > 8 ? w : o)); }} style={{ flex: 1, backgroundColor: color["surface-1"], paddingTop: insets.top }}>
-      <ChatHeader title={agentTitle || head.title} sub={agentTitle ? threadSub(head.title, agentNames[0]) : undefined} onOpenWho={who ? () => (p.onOpenWho ?? openWho)(who.kind, who.id) : undefined} participants={faces} viewer={viewerId} phone={phone} onBack={p.onBack} onOpen={togglePanel} project={chatProject.current && chatProject.current.slug !== "general" ? chatProject.current : null}
+      <ChatHeader title={agentTitle || head.title} sub={agentTitle ? threadSub(threadLabel, agentNames[0]) : undefined} onOpenWho={who ? () => (p.onOpenWho ?? openWho)(who.kind, who.id) : undefined} participants={shown} viewer={viewerId} phone={phone} onBack={p.onBack} onOpen={togglePanel} project={chatProject.current && chatProject.current.slug !== "general" ? chatProject.current : null}
         place={<PlacementSwitch placement={placed.placement} onMove={(to) => void placed.move(to)} />}
         menu={[
           { label: "Details", onPress: () => { setPanelTab("details"); setPanel("root"); } },

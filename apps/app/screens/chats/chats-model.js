@@ -18,10 +18,16 @@ const PROVIDERS = AIS;
 /** The chat id out of a record address (vyre://<space>/chat/<id>) or the id itself. @param {string} urn */
 export const chatIdOf = (urn) => { const m = /\/chat\/([^/?#]+)$/.exec(urn); return m ? m[1] : urn; };
 
-/** A chat nobody named ("New chat", "New site") is called by what was said in it, so a list of them does not read as one title repeated. @param {string} title @param {string} line */
-export function titleOf(title, line) {
+/**
+ * A chat nobody named ("New chat", "New site") is called by what was said in it, so a list of them does not read as one title repeated.
+ * A thread with one agent is never called by the agent's reply: until it has its own title it is "New thread".
+ * @param {string} title @param {string} line @param {boolean} [agentThread]
+ */
+export function titleOf(title, line, agentThread = false) {
   const t = title.trim();
-  if (t && !/^(new chat|new thread|new site|chat|untitled)$/i.test(t)) return t;
+  const generic = !t || /^(new chat|new thread|new site|chat|untitled)$/i.test(t);
+  if (!generic && !(agentThread && /^assistant$/i.test(t))) return t;
+  if (agentThread) return "New thread";
   const l = line.replace(/\s+/g, " ").trim();
   if (!l) return t || "New chat";
   return l.length > 48 ? `${l.slice(0, 47).trimEnd()}\u2026` : l;
@@ -40,8 +46,10 @@ export function chatsFrom(data) {
     // `chat` is the kernel chat id and the one every other chat tool takes; `id` and `urn` are the record's.
     const id = chatIdOf(str(d.chat) || str(d.id) || str(d.urn));
     if (!id) continue;
+    const people = strs(d.people), agents = strs(d.agents);
+    const agentThread = d.pinned === "assistant" || (agents.length === 1 && people.length <= 1);
     out.push({
-      id, place: str(d.place), title: titleOf(str(d.title), str(d.last_line) || str(d.summary)), project: str(d.project_name) || str(d.projectName) || projectName(d.project), people: strs(d.people), agents: strs(d.agents), models: strs(d.models),
+      id, place: str(d.place), title: titleOf(str(d.title), str(d.last_line) || str(d.summary), agentThread), project: str(d.project_name) || str(d.projectName) || projectName(d.project), people, agents, models: strs(d.models),
       tags: parseTags(d.tags), providers: strs(d.providers).filter((p) => PROVIDERS.includes(p)), status: str(d.status) || "idle",
       pinned: d.pinned === "assistant" || d.pinned === "engineer" ? d.pinned : "", last: Number(d.last_active ?? d.updated_at ?? d.last ?? 0) || 0, line: str(d.last_line) || str(d.summary), asks: Number(d.asks ?? 0) || 0, engineer: d.engineer_chat === true, unread: Number.isInteger(d.unread) && d.unread > 0 ? d.unread : 0, open: d.open === true,
     });

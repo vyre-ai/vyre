@@ -65,12 +65,22 @@ export function addPeopleLine(names, agent) {
  */
 export function threadSub(title, agent) {
   const t = String(title ?? "").trim();
-  if (!t || /^(new chat|new thread|chat)$/i.test(t)) return undefined;
+  if (!t || /^(new chat|new thread|chat|assistant)$/i.test(t)) return undefined;
   return t.toLowerCase() === String(agent ?? "").trim().toLowerCase() ? undefined : t;
 }
 
 /** A title that says nothing yet. @param {unknown} t */
-export const untitledTitle = (t) => !String(t ?? "").trim() || /^(new chat|new thread|chat)$/i.test(String(t ?? "").trim());
+export const untitledTitle = (t) => !String(t ?? "").trim() || /^(new chat|new thread|chat|assistant)$/i.test(String(t ?? "").trim());
+
+/**
+ * A one-agent thread's title from the first thing the person typed: trimmed, at most 60 characters. Nothing for a command or an empty message, so the thread stays "New thread".
+ * @param {unknown} text @returns {string}
+ */
+export function threadTitleOf(text) {
+  const line = String(text ?? "").replace(/\s+/g, " ").trim();
+  if (!line || line.startsWith("/")) return "";
+  return line.length > 60 ? line.slice(0, 60).trimEnd() : line;
+}
 
 /**
  * A short title for a thread from its first message, as chat apps do: the first line, without mentions, tags, links or markup, cut at a word to about six words. Nothing for a command or a message

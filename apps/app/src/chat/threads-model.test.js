@@ -3,7 +3,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { chatKind, panelTabs, threadsTab, tabOf, threadRows, agentHint, groupView, addPeopleLine, threadSub, titleFrom, untitledTitle } from "./threads-model.js";
+import { chatKind, panelTabs, threadsTab, tabOf, threadRows, agentHint, groupView, addPeopleLine, threadSub, threadTitleOf, titleFrom, untitledTitle } from "./threads-model.js";
 
 const agent = { family: "assistant" }, person = { family: "person" };
 
@@ -88,4 +88,9 @@ test("a thread is titled from its first message, short, as chat apps do; a comma
   assert.equal(untitledTitle("New chat"), true);
   assert.equal(untitledTitle("Chat"), true);
   assert.equal(untitledTitle("Pricing page"), false);
+  assert.equal(untitledTitle("Assistant"), true, "the pinned chat's own title is not a thread title");
+  const words = "please draft the spring note for the bakery and keep it under one page of plain words";
+  assert.equal(threadTitleOf(`  ${words}  `), words.slice(0, 60).trimEnd());
+  assert.equal(threadTitleOf("/threads"), "");
+  assert.equal(threadTitleOf(""), "");
 });

@@ -176,4 +176,7 @@ test("a chat nobody named is called by what was said in it, never by one generic
   assert.equal(titleOf("", ""), "New chat");
   assert.equal(titleOf("Lease reply", "Draft ready"), "Lease reply");
   assert.ok(titleOf("New chat", "x".repeat(80)).length <= 48);
+  assert.equal(titleOf("New chat", "I'm Claude Code, running on Opus", true), "New thread", "a thread with one agent is never titled by the reply");
+  assert.equal(titleOf("Assistant", "hello", true), "New thread");
+  assert.equal(titleOf("Spring note", "hello", true), "Spring note");
 });
