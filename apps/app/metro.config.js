@@ -12,6 +12,7 @@
 //   - `@vyre/perf/<file>` is ../../lib/perf/<file>: the DOM-free frame meter and its BAR, shared with
 //     the Deck's native-bar harness.
 //   - ../../core/vault is watched so the Vault's Add sheet reads the providers catalog (providers.js) as it is.
+//   - ../../core/assistant is watched so the page host reads the first chat (welcome.js) as the server does.
 // Only those folders are watched, not the whole repo. tsconfig.json has the same paths.
 
 import { createRequire } from "node:module";
@@ -38,7 +39,7 @@ const ALIASES = [
 // ui/views/logic reaches the shared expression rules (lib/expr, one copy for the kernel and the app).
 // The phone's sealed Personal records (src/personal) run memory's kernel/store/sealed.js as it is: it reaches kernel/core, lib (databox, keywrap) and core/memory/identity (the remote backend) by relative path.
 // ui/marks reaches the Deck's mark generators (lib/wink-code) and the seed rule (lib/avatar-seed) by relative path.
-const EXTRA_WATCH = [path.resolve(here, "../../kernel/identity"), path.resolve(here, "../../names/worker"), path.resolve(here, "../../kernel/contracts"), path.resolve(here, "../../lib/theme"), path.resolve(here, "../../lib/avatar-seed"), path.resolve(here, "../../lib/wink-code"), path.resolve(here, "../../lib/expr"), path.resolve(here, "../../lib/time"), path.resolve(here, "../../lib"), path.resolve(here, "../../kernel/store"), path.resolve(here, "../../kernel/core"), path.resolve(here, "../../core/memory/identity"), path.resolve(here, "../../core/vault")];
+const EXTRA_WATCH = [path.resolve(here, "../../kernel/identity"), path.resolve(here, "../../names/worker"), path.resolve(here, "../../kernel/contracts"), path.resolve(here, "../../lib/theme"), path.resolve(here, "../../lib/avatar-seed"), path.resolve(here, "../../lib/wink-code"), path.resolve(here, "../../lib/expr"), path.resolve(here, "../../lib/time"), path.resolve(here, "../../lib"), path.resolve(here, "../../kernel/store"), path.resolve(here, "../../kernel/core"), path.resolve(here, "../../core/memory/identity"), path.resolve(here, "../../core/vault"), path.resolve(here, "../../core/assistant")];
 
 const config = getDefaultConfig(here);
 config.watchFolders = [...(config.watchFolders ?? []), ...ALIASES.map((a) => a.dir), ...EXTRA_WATCH];
