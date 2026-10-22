@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6.9
 
+- fix(server): the start log no longer says the Documents kit is not an app module. A kit file next to a catalog manifest is not itself a manifest (core/appmods).
 - fix(server): a fresh Ubuntu or Debian server installs Docker from Docker's apt repository with no second question, through sudo when the account is not root. `vyre update` on that install finishes with no prompt (scripts/install-box.sh).
 - fix(sessions): an agent idle for 15 minutes sleeps, its process stops, and the next message resumes the same conversation with one short "waking" (core/sessions, core/switchboard/idle-wake.js).
 - fix(doctor): a slow call or a retry at or before `vyred` is up is warmup and is not counted. An error still is (core/cli/commands/doctor-log.js).
