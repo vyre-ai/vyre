@@ -140,7 +140,7 @@ export default function MemoryScreen() {
         </View>
       )) : load.state === "loading" ? <LoadingState rows={3} />
         : load.state === "error" ? <ErrorState title="Memory did not load" reason={load.say ?? "Try again in a moment."} />
-        : <Card><EmptyState title="Nothing here yet" body={real ? "Nothing is remembered yet. Facts appear as your agents learn them." : `No ${mode} facts in this space.`} /></Card>}
+        : <Card flush><EmptyState quiet title="Nothing here yet" body={real ? "Nothing is remembered yet. Facts appear as your agents learn them." : `No ${mode} facts in this space.`} /></Card>}
 
       {real ? <RealExtras /> : null}
 

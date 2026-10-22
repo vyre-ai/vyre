@@ -85,7 +85,7 @@ export default function RealChromeSites() {
             );
           })}
         </Card>
-      ) : <Card><EmptyState title="No sites yet" body="Vyre Computer learns a site as you and your agents use it. Nothing is learned from pages you have not opened with Vyre." /></Card>}
+      ) : <Card flush><EmptyState quiet title="No sites yet" body="Vyre Computer learns a site as you and your agents use it. Nothing is learned from pages you have not opened with Vyre." /></Card>}
       {data.forgotten.length ? (
         <View className="gap-s2 pt-s2">
           <Button kind="ghost" size="sm" label={`${recent ? "Hide" : "Show"} recently forgotten (${data.forgotten.length})`} onPress={() => setRecent((v) => !v)} />

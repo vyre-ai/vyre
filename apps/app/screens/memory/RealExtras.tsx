@@ -59,7 +59,7 @@ export function RealExtras() {
     <View className="gap-s2 pt-s6">
       {err ? <Banner><View className="flex-row flex-wrap items-center gap-s3"><Text className="min-w-0 flex-1">{err}</Text><Button size="sm" label="Try again" onPress={load} /></View></Banner> : null}
       <Text strong size="secondary">What Memory holds</Text>
-      {graph && !rooms.length ? <Card><EmptyState title="Nothing mapped yet" body="People and projects appear here once Memory has read your chats." /></Card> : null}
+      {graph && !rooms.length ? <Card flush><EmptyState quiet title="Nothing mapped yet" body="People and projects appear here once Memory has read your chats." /></Card> : null}
       {rooms.map((r) => (
         <View key={r.id} className="gap-s1 pt-s2">
           <View className="flex-row items-baseline gap-s2"><Text strong>{r.name}</Text><Text size="caption" tone="faint">{r.counts}</Text></View>
@@ -79,7 +79,7 @@ export function RealExtras() {
       {graph?.truncated ? <Text size="caption" tone="faint">{`Showing ${graph.counts.drawn} of ${graph.counts.nodes}, the most seen first.`}</Text> : null}
 
       <View className="pt-s6"><Text strong size="secondary">What you corrected</Text></View>
-      {fixes && !list.length ? <Card><EmptyState title="No corrections" body="When you edit or forget a fact, it is listed here and can be undone." /></Card> : null}
+      {fixes && !list.length ? <Card flush><EmptyState quiet title="No corrections" body="When you edit or forget a fact, it is listed here and can be undone." /></Card> : null}
       {list.length ? (
         <Card flush>
           {list.map((c, i) => (

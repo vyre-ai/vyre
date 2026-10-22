@@ -5,8 +5,16 @@ import { Button } from "./Button";
 import { SkeletonRows } from "../motion/Skeleton";
 import { isSettingUp, SETTING_UP_RETRY_MS, SETTING_UP_WORDS } from "./setting-up.js";
 
-/** The state kit: say what happened and what to do next. */
-export function EmptyState({ title, body, action }: { title: string; body?: string; action?: { label: string; onPress: () => void } }) {
+/** The state kit: say what happened and what to do next. `quiet` is one line for a list, with the next step beside it. */
+export function EmptyState({ title, body, action, quiet }: { title: string; body?: string; action?: { label: string; onPress: () => void }; quiet?: boolean }) {
+  if (quiet) {
+    return (
+      <View className="flex-row flex-wrap items-center gap-s2 px-s4 py-s2">
+        <Text tone="muted" className="min-w-0 flex-1">{body ? `${title}. ${body}` : title}</Text>
+        {action ? <Button kind="ghost" size="sm" label={action.label} onPress={action.onPress} /> : null}
+      </View>
+    );
+  }
   return (
     <View className="items-center gap-s2 p-s6">
       <Text strong>{title}</Text>

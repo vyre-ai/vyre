@@ -99,7 +99,7 @@ export default function RealLessons({ onCount }: { onCount?: (n: number) => void
   if (!d) return <LoadingState rows={3} />;
   const g = groupLessons(d.lessons);
   const skills = (d.skills ?? []).filter((k) => !k.status || k.status === "proposed");
-  if (!d.lessons.length && !skills.length) return <Card><EmptyState title="No lessons yet" body="When you correct Vyre, it proposes a lesson here. Say yes and it is enforced from the next turn." /></Card>;
+  if (!d.lessons.length && !skills.length) return <Card flush><EmptyState quiet title="No lessons yet" body="When you correct Vyre, it proposes a lesson here. Say yes and it is enforced from the next turn." /></Card>;
   const list = (title: string, rows: Lesson[]) => rows.length ? (
     <View className="gap-s2 pt-s4">
       <View className="flex-row items-baseline gap-s2"><Text strong size="secondary">{title}</Text><Text size="caption" tone="faint">{String(rows.length)}</Text></View>
