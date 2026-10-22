@@ -115,8 +115,9 @@ test("vyre kit deploy <file> proposes a card, the Space keeps where it came from
   const stillMine = (JSON.parse((await run(root, ["kit", "--json"])).out).space_kits || []).find((/** @type {any} */ r) => r.id === "demo-kit");
   assert.equal(stillMine.source, file, "the installed Kit still says where it came from");
 
-  // a higher version from another file: proposed, but the installed Kit still says where it came from
-  fs.writeFileSync(other, JSON.stringify(kit(2)));
+  // a later version from another file is proposed: the installed Kit still says where it came from
+  // (a version of its own, so the kernel makes a second card: one card per Kit content)
+  fs.writeFileSync(other, JSON.stringify(kit(3)));
   const otherHigher = /** @type {any} */ (await run(root, ["kit", "deploy", other, "--json"]));
   assert.equal(otherHigher.code, 0, otherHigher.out + " :: " + daemonSaid(lines));
   const unchanged = (JSON.parse((await run(root, ["kit", "--json"])).out).space_kits || []).find((/** @type {any} */ r) => r.id === "demo-kit");
