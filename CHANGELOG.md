@@ -12,6 +12,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - fix(glass): a live computer opens over the whole window: the screen, Take over (Hand back while you hold the keyboard), Sign in privately, and close. Escape hands the keyboard back, then closes. The old page chrome (title, Screen/Files, Activity, and the paused card while the window is visible) is gone (apps/app/screens/glass/ComputerOverlay.tsx).
 - fix(computers): an agent's own screen is a glass computer. Glass used to list only desktops and agents marked computer: true, so a live assistant was "Glass does not know a computer". computers.list now includes a computers_agent_users row, and computers.watch and take-over open that screen instead of checking out a desktop (core/computers/glass-map.js).
 - chore(design): the Computer tab picture is the screen, the line under it, and Reset (design-refs/who-agent-computer).
+- feat(home): Home is a column at most 760 wide. The date and the greeting sit over the ask field ("Ask anything, or @ an agent", the send arrow inside it, Enter sends). Under it, small face chips for the assistant and the agents the person made. The Engineer is never a chip. Needs you, Doing, Today and Recent appear only when they have something, as a small label with a count. Today's Day and Week toggle sits on that label. On a quiet day one line says "All clear. Nothing needs you today." The task field is one line, "Add a task, like remind me at 7", with a plus inside it. (apps/app/screens/now)
+- fix(home): the busy Home picture leaves off the space monogram and the project monogram. Both sit under 12, so the picture rule refused them. Doing shows what finished today. (apps/app/screens/now/HomePreview.tsx)
+- chore(design): picture references for Home on a quiet day and a busy day, at app and phone width, in both themes (design-refs).
 
 ## 0.6.8
 
