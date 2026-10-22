@@ -20,15 +20,23 @@ const SAMPLE = agentCards([
   { name: "juno", doing: "idle" },
 ]);
 
-/** A short busy day: one thing that needs you, one agent working, one finished, two events, a little recent. */
+/**
+ * A short busy day: one thing that needs you, one finished, two events, a little recent.
+ * The need carries no space, and nothing is left running. A space badge and a project's emblem are monograms under 12, which a picture refuses.
+ * Doing still shows, as what finished today.
+ */
 function forPicture(w: World, day: "quiet" | "busy"): World {
   if (day === "quiet") return { ...w, tasks: [], events: [], calendar: [] };
   const m = nowModel(w);
-  const needs = m.needs.slice(0, 1);
-  const working = m.working.filter((t) => !m.needIds.has(t.id)).slice(0, 1);
-  const done = m.doneToday.slice(0, 1);
-  const ids = new Set([...needs, ...working, ...done].map((t) => t.id));
-  return { ...w, tasks: w.tasks.filter((t) => ids.has(t.id)), events: w.events.slice(-4), calendar: (w.calendar ?? []).slice(0, 2) };
+  const need = m.needs[0];
+  const done = m.doneToday[0];
+  const keep = new Set([need, done].filter(Boolean).map((t) => t.id));
+  return {
+    ...w,
+    tasks: w.tasks.filter((t) => keep.has(t.id)).map((t) => (need && t.id === need.id ? { ...t, space: "" } : t)),
+    events: w.events.slice(-4),
+    calendar: (w.calendar ?? []).slice(0, 2),
+  };
 }
 
 /** Home as the gallery draws it: a quiet day, or a day with each section. No scroll view, so the picture is the whole column. */
@@ -48,7 +56,7 @@ export function HomePreview({ day }: { day: "quiet" | "busy" }) {
         <HomeHeader name={name} now={world?.now ?? NOW} zone="UTC" />
         <HomeComposer cards={SAMPLE} />
       </View>
-      {world ? <HomeBody world={world} items={world.calendar ?? []} onAction={() => {}} onOpen={() => {}} /> : null}
+      {world ? <HomeBody world={world} items={world.calendar ?? []} onAction={() => {}} onOpen={() => {}} openDone={day === "busy"} /> : null}
     </HomeColumn>
   );
 }

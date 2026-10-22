@@ -30,11 +30,18 @@ function MoreRow({ label, onPress, up }: { label: string; onPress: () => void; u
  * Needs you and Doing, only when they have something. Three cards show before the rest fold open here.
  * What finished today is a quiet line under Doing. Empty days draw neither section.
  */
-export function HomeWork({ world, notice, onAction, onOpen }: { world: World; notice?: string | null; onAction: Act; onOpen: (task: any) => void }) {
+export function HomeWork({ world, notice, onAction, onOpen, openDone = false }: {
+  world: World;
+  notice?: string | null;
+  onAction: Act;
+  onOpen: (task: any) => void;
+  /** A picture starts with what finished today open. */
+  openDone?: boolean;
+}) {
   const { scope } = useNowScope(world);
   const [moreNeeds, setMoreNeeds] = useState(false);
   const [moreDoing, setMoreDoing] = useState(false);
-  const [doneOpen, setDoneOpen] = useState(false);
+  const [doneOpen, setDoneOpen] = useState(openDone);
   const { phone } = useUiTheme();
   const later = useSnoozed(world.now);
   const m = nowModel(world, scope, later);
