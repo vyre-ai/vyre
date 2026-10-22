@@ -54,7 +54,7 @@ test("an agent asked in a project's chat makes a Flow that shows under that proj
   assert.ok(flowsHere(listed.data, []).some((/** @type {any} */ r) => r.id === made.data.id), "the project's Flows pane lists it");
   const other = await call("flows.list", { project: "other-desk" }, "cli", await person());
   assert.equal(other.data.some((/** @type {any} */ r) => r.id === made.data.id), false);
-  const fromChat = await call("flows.from-chat", { name: "quill chat", calls: [{ tool: "work.call", input: { tool: "slip.create", input: { data: { body: "from the chat", kind: "chat" } } } }] }, "mcp:agent:scout", await agent("th-quill"));
+  const fromChat = await call("flows.from-chat", { name: "quill chat", calls: [{ tool: "work.call", input: { tool: "slips.create", input: { data: { body: "from the chat", kind: "chat" } } } }] }, "mcp:agent:scout", await agent("th-quill"));
   assert.equal(fromChat.error, undefined, JSON.stringify(fromChat.error));
   assert.equal(fromChat.data.ok, true, JSON.stringify(fromChat.data));
   const chatFlow = await call("flows.get", { id: fromChat.data.id }, "cli", await person());
@@ -120,7 +120,8 @@ test("a watcher the agent made starts the Flow armed on it", { skip: skipOffRunn
   assert.equal(row.data.body, "Quill form arrived");
   const runs = await host.flows.tools["flows.runs"](host.personChain(), { id: def.data.id });
   assert.equal(runs.length, 1);
-  assert.equal(runs[0].trigger && (await host.flows.tools["flows.run"](host.personChain(), { run: runs[0].id })).run.trigger.kind, "watcher");
+  const shown = await host.flows.tools["flows.run"](host.personChain(), { run: runs[0].id });
+  assert.equal(shown.run.trigger.kind, "watcher", JSON.stringify(shown.run.trigger));
   void root;
 });
 
