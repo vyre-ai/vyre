@@ -69,7 +69,7 @@ test("a Flow runs when its schedule comes round, through the wake timer", { time
   await approve(def.data);
   const row = await until(async () => (await d.kernel.gateway.records.query(admin, "slip", { page: { limit: 20 } })).rows.find((/** @type {any} */ r) => r.data.kind === "schedule") || null, "the schedule to start the Flow", 40_000);
   assert.equal(row.data.body, "the schedule ran");
-  const runs = await host.flows.tools["flows.runs"](host.personChain(), { id: def.data.id });
+  const runs = await until(async () => { const r = await host.flows.tools["flows.runs"](host.personChain(), { id: def.data.id }); return r.length && r[0].state !== "running" ? r : null; }, "the schedule's run to leave running");
   assert.equal(runs.length, 1);
   assert.equal(runs[0].state, "done", JSON.stringify(runs[0].error || runs[0].state));
 });

@@ -1,7 +1,14 @@
 // @ts-check
 // A Word, Excel or PowerPoint file as a plain page: the text of the document, nothing that can run.
 // The preview server (static.js) sends this instead of the raw zip. The app's viewer draws the same kinds itself.
-import PizZip from "pizzip";
+//
+// pizzip weighs about a megabyte of heap once loaded and only an Office preview needs it. It loads on the first
+// preview, not when this module starts (the idle heap budget, scripts/perf-check). createRequire keeps the call synchronous.
+import { createRequire } from "node:module";
+
+const need = createRequire(import.meta.url);
+/** @type {any} */ let pizzip = null;
+const zipLib = () => (pizzip ||= need("pizzip"));
 
 const OFFICE = new Set([".docx", ".xlsx", ".pptx"]);
 
@@ -28,7 +35,7 @@ function take(xml, re, out) {
  * @param {Buffer | Uint8Array} buf @param {string} ext
  */
 export function officeHtml(buf, ext) {
-  const z = new PizZip(buf);
+  const z = new (zipLib())(buf);
   /** @type {string[]} */ const texts = [];
   const e = String(ext).toLowerCase();
   if (e === ".docx") {
