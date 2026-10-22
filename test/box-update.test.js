@@ -1016,6 +1016,8 @@ test("publish-release: modules.json is published when the signed list has it, th
   release(3004100);
   const old = /** @type {any} */ (await b.run(["publish-release", src], {}));
   assert.match(old.out, /older \(counter 3004100\) than the one already published \(counter 3004200\)/);
+  assert.match(old.out, /vyre updater remove/);
+  assert.match(old.out, /vyre uninstall --delete-data/);
   assert.equal(counterOf(), 3004200);
   // The same counter again is not a rollback (a re-run of the same release).
   release(3004200);
@@ -1047,6 +1049,7 @@ test("L-1: an update whose module list is refused (an older counter) stops there
   const r = /** @type {any} */ (await b.run(["update"]));
   assert.notEqual(r.code, 0, r.out);
   assert.match(r.out, /older \(counter 3004100\) than the one already published \(counter 3004200\)/);
+  assert.match(r.out, /vyre updater remove/);
   assert.equal(JSON.parse(fs.readFileSync(path.join(rel, "modules.json"), "utf8")).counter, 3004200, "the old list stays");
   assert.equal(b.read(path.join(b.FAKE, "running")), "orig", "the old image is the one running");
 });

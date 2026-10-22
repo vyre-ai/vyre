@@ -185,7 +185,7 @@ export async function bootHomeKernel(cfg) {
             if (t.ok) await k.log.append(k.chains.fromFacts({ kind: "module", module: "home", first_party: true }), { type: "kernel.modules-list", sv: 1, subject: `vyre://${id.space}/kernel/modules-list`, data: { counter: cur.counter, raw: cur.raw }, vis: "owner", red: "internal" });
             else log(`kernel: this build's modules do not all match its signed list (${t.bad.join(", ")}); the list counter is not advanced`);
           }
-        } else log(`kernel: this build's module list (counter ${cur.counter}) is older than one already accepted (${accepted.counter}); the accepted one stays in force`);
+        } else log(`kernel: this build's module list (counter ${cur.counter}) is older than one already accepted (${accepted.counter}); the accepted one stays in force. To use this release, the owner approves it with vyre update --rollback. A fresh start is vyre uninstall --delete-data, then install again.`);
       } else if (accepted && !isPackaged(root)) log(`kernel: ${cur.why}; the last accepted module list stays in force (a development build)`);
       else if (accepted) {
         // SG-5-3: a packaged build whose signed release files are missing, unreadable or badly signed has NO first-party list, the same as a changed tree: the last accepted list is never a fallback

@@ -653,7 +653,7 @@ publish_release() {
     oldc=$(counter_of "$UPD_STATE/release/modules.json")
     if [ -f "$rt/modules.json" ] && [ -z "$newc" ]; then echo "vyre: this release's module list has no readable counter; nothing was published" >&2; rm -rf "$rt"; return 1; fi
     if [ -n "$newc" ] && [ -n "$oldc" ] && [ "$newc" -lt "$oldc" ]; then
-      echo "vyre: this release's module list is older (counter $newc) than the one already published (counter $oldc); nothing was published" >&2
+      echo "vyre: this release's module list is older (counter $newc) than the one already published (counter $oldc); nothing was published. To install this release, run vyre updater remove, remove $UPD_ROOT, and install again. vyre uninstall --delete-data also clears it." >&2
       rm -rf "$rt"; return 1
     fi
     if mkdir -p "$UPD_STATE" && new=$(mktemp -d "$UPD_STATE/release.new.XXXXXX") && chmod 755 "$new"; then

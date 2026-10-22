@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6.9
 
+- fix(install): an older release over one already accepted says how to clear it (vyre updater remove and remove the update folder, or vyre uninstall --delete-data; a running server asks the owner with vyre update --rollback).
 - fix(relay): one invitation can hold two channels open, so it cannot fill every slot. The person still sees "try again in a minute" when the cap is reached.
 - fix(files): On your computer lists the folders chats worked in lately.
 - fix(records): search opened from a record type stays on that type.
