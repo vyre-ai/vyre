@@ -21,7 +21,8 @@ export function addressFacts(h) {
   if (!h) return { state: "none", address: "", line: "This server does not take webhooks yet." };
   if (!h.open || !h.address) return { state: "off", address: "", line: h.why || "Turn the Flow on and its address shows here." };
   if (h.address.url) return { state: "live", address: h.address.url, line: "" };
-  return { state: "here", address: "", line: h.why || "The server has no public address yet, so senders on the internet cannot reach it." };
+  // No public url yet: the path is still the address (it carries the token), and the page copies it. `line` says why senders on the internet cannot use it yet.
+  return { state: "here", address: typeof h.address.path === "string" ? h.address.path : "", line: h.why || "The server has no public address yet, so senders on the internet cannot reach it." };
 }
 
 /** The last delivery in words: when, OK or refused and why, its size. Never the token or the body. @param {Last | null | undefined} l */

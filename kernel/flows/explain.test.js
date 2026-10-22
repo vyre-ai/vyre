@@ -3,7 +3,7 @@
 import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { world, install, settle } from "./testing/world.js";
+import { world, install, settle, ALEX } from "./testing/world.js";
 import { explainRun } from "./describe.js";
 import { sourceHash } from "./schema.js";
 
@@ -31,7 +31,27 @@ test("t3: a failed run says where it stopped and what a person can do", async ()
   await install(w, flowOf([fn("f", { retry: false, label: "the letter" })]));
   const run = await fire(w);
   const text = explainRun(run, await flowOfRun(w, run));
-  assert.match(text, /It stopped at the letter \(bad_output\); retry it, skip that step, or stop the run\./);
+  assert.match(text, /It stopped at the letter: port said bad_output\. Retry it, skip that step, or stop the run\./);
+});
+
+test("t3: a deadline that passes says the Flow took that step's on timeout path, then that it finished", async () => {
+  const w = await world({});
+  const flow = flowOf([
+    { id: "go", kind: "agent", assistant: "teammate:research", title: "Draft the note", label: "the draft", instructions: "Write it", output: { kind: "note" }, timeout_ms: 3_600_000, on_fail: { then: "continue", steps: [{ id: "late", kind: "create", type: "matter", label: "the late note", set: { client: "late" } }] } },
+  ]);
+  const { id } = await install(w, flow);
+  await w.runner.start(id, {}, w.kernel.as(ALEX));
+  await settle(w);
+  w.clock.t += 3_600_000 + 1000;
+  await w.runner.tick();
+  await settle(w);
+  const run = (await w.runner.listRuns())[0];
+  const text = explainRun(run, await flowOfRun(w, run));
+  assert.equal(run.state, "done", JSON.stringify(run.error));
+  assert.equal(run.steps.go.status, "failed_handled");
+  assert.match(text, /made the late note/);
+  assert.match(text, /The deadline on the draft passed, so the Flow took that step's on timeout path\./);
+  assert.match(text, /It finished\./);
 });
 
 test("t3: a run waiting for a person's yes says so, and a held run says why", async () => {

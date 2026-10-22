@@ -86,7 +86,9 @@ test("a step in a failure path can read what went wrong, and no other step is of
 test("what the panel offers follows what the engine does with each kind of step", () => {
   assert.deepEqual(policyKeys("wait"), ["retry", "on_fail", "verify"]);
   assert.deepEqual(policyKeys("decide"), ["on_fail", "verify"]);
-  assert.equal(offers("agent").timeout, false, "the engine ignores a time limit on a step that waits for an agent");
+  assert.equal(offers("agent").timeout, true, "an agent step's timeout_ms is its deadline");
+  assert.equal(offers("ask").timeout, false, "a step that waits for a person has no deadline");
+  assert.equal(offers("assign").timeout, false);
   assert.equal(offers("create").timeout, true);
   assert.equal(offers("create").readback, true);
   assert.equal(offers("email").readback, false);

@@ -38,6 +38,14 @@ export { compileFlow, nextCron, parseCron, deriveCaps } from "./compile.js";
 export { TRIGGER_REGISTRY, TRIGGER_ONS, kindOf, whyRan } from "./triggers.js";
 export { bridgeWatchers } from "./watcher-bridge.js";
 export { printFlow, parseFlowText, parseFlowTextBounded, normalizeFlow, sameFlow } from "./text.js";
+
+const PROJECT_SLUG = /^[a-z0-9][a-z0-9-]{0,119}$/;
+/** The project's short name from the call, when the Flow itself does not name one (the chat's project, stamped by the flows module). */
+function stampProject(flow, project) {
+  if (!flow || typeof flow !== "object" || Array.isArray(flow) || flow.project !== undefined) return flow;
+  if (typeof project !== "string" || !PROJECT_SLUG.test(project)) return flow;
+  return { ...flow, project };
+}
 export { defineFlow, step, expr } from "./sdk.js";
 export { RecordsFlowStore, FLOW_TYPES } from "./store.js";
 export { Proposals, proposerOf, assistantOf } from "./proposals.js";
@@ -140,6 +148,7 @@ export function createFlows(o) {
         if (!r.ok || !parsed) return { ok: false, errors: r.errors.length ? r.errors : [{ path: "", message: "that text could not be read" }] };
         flow = r.flow;
       }
+      flow = stampProject(flow, i.project);
       const by = chain.hops[chain.hops.length - 1].actor;
       const d = await runner.define(i.id || null, flow, by);
       if (d.ok) return { ...d, changes: i.id ? flowChanges((await view(i.id)).flow, flow, c) : [] };
@@ -432,9 +441,10 @@ export function createFlows(o) {
       const m = flowFromCalls({ name: String(name), ...(i.label ? { label: String(i.label) } : {}), calls: i.calls, ...(isPlain(i.variables) ? { variables: i.variables } : {}) }, { types: c.types, actions: c.actions });
       if (!m.flow.steps.length) return { ok: false, errors: [{ path: "calls", message: "none of those calls can be a step of a Flow" }], unmapped: m.unmapped };
       const by = chain.hops[chain.hops.length - 1].actor;
-      const d = await runner.define(null, normalizeFlow(m.flow), by);
+      const flow = stampProject(normalizeFlow(m.flow), i.project);
+      const d = await runner.define(null, flow, by);
       if (!d.ok) return { ...d, unmapped: m.unmapped };
-      const out = { ok: true, id: d.id, version: d.version, hash: d.hash, lines: printLines(normalizeFlow(m.flow)), inputs: m.inputs, unmapped: m.unmapped, warnings: d.warnings,
+      const out = { ok: true, id: d.id, version: d.version, hash: d.hash, lines: printLines(flow), inputs: m.inputs, unmapped: m.unmapped, warnings: d.warnings,
         next: "Read the lines, add what is unmapped (flows.patch), save a test case (flows.test.save), then flows.propose, which checks it before a person is asked." };
       if (i.propose === true) return { ...out, proposal: await tools["flows.propose"](chain, { what: "flow", id: d.id, version: d.version }) };
       return out;
