@@ -982,7 +982,7 @@ shardTest("usage on the subscription: turns and time, no dollars, and the rate-l
   assert.equal(turn, `${r.thread}:1`, "every event of a turn says which turn (ADR 0030)");
   assert.deepEqual(rest, { thread: r.thread, status: "allowed_warning", kind: "five_hour", resets_at: 1790000000, utilization: 0.85 });
   const said = await until(() => of(s.got, r.thread, "thread.text").find(e => e.payload.notice), "the notice");
-  assert.match(said.payload.text, /^Claude's five-hour usage limit is at 85%; it resets at \d\d:\d\d UTC\.$/);
+  assert.match(said.payload.text, /^Claude's five-hour usage limit is at 85%; it resets (Mon|Tue|Wed|Thu|Fri|Sat|Sun) \d{1,2} (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec), \d{2}:\d{2}\.$/);
   const all = (await tool("agents.usage", {})).data;
   const juno = all.find(x => x.agent === "juno");
   assert.equal(juno.turns, 1);

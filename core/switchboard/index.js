@@ -24,6 +24,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { translate, cut, clip, CAPS, failedTurnLine } from "./translate.js";
+import { LIMIT_NOTICE_AT, limitLoud, limitNotice, zoneOf } from "./limit-notice.js";
 import { validZone, zoneFrom } from "../../lib/time/index.js";
 import { userLine, answerLine, run as defaultRun } from "./runner.js";
 import { hostSafe } from "../../lib/api-endpoint.js";
@@ -272,17 +273,7 @@ export function learnedDirs(root, project, agent = null) {
   return dirs.filter(d => fs.existsSync(path.join(d, ".claude-plugin", "plugin.json")));
 }
 
-/** A rate-limit report in words, for the thread. @param {{ status: string, kind: string|null, resets_at: number|null, utilization?: number }} l */
-function limitNotice(l) {
-  const which = l.kind ? String(l.kind).replace(/_/g, "-") + " " : "";
-  const when = l.resets_at ? `; it resets at ${new Date(l.resets_at * 1000).toISOString().slice(11, 16)} UTC` : "";
-  if (l.status === "rejected") return `Claude's ${which}usage limit is reached${when}.`;
-  const pct = typeof l.utilization === "number" ? ` is at ${Math.round(l.utilization * 100)}%` : " is close";
-  return `Claude's ${which}usage limit${pct}${when}.`;
-}
-
-/** A rate-limit warning is said in the thread from this much of the limit used. */
-export const LIMIT_NOTICE_AT = 0.8;
+export { LIMIT_NOTICE_AT };
 
 /** The events a watch waits for, and the reason each gives. */
 const WATCHED = { "thread.finished": "finished", "ask.raised": "asked", "thread.stopped": "stopped" };
@@ -1734,16 +1725,17 @@ export class Switchboard {
    * noise in every reply.
    */
   limit(id, st, l, project) {
+    const { windows: _windows, ...one } = l;
     this.db.prepare("UPDATE threads_runs SET last_limit = ? WHERE id = ?").run(JSON.stringify({ ...l, at: Date.now() }), id);
     this.emit("thread.limit", l, id, project);
-    // The plan's usage per credential, where the usage pause is decided (sessions.usage.*).
+    // The plan's usage per credential, where the usage pause is decided (sessions.usage.*). One window, the one Claude named.
     const rec = this.record(id);
-    this.deps.call("sessions.usage.report", { auth: (rec && rec.auth) || "ambient", ...l }).catch(() => {});
+    this.deps.call("sessions.usage.report", { auth: (rec && rec.auth) || "ambient", ...one }).catch(() => {});
     if (l.status === "allowed") { st.limitStatus = l.status; return; }
-    const loud = l.status === "rejected" || (typeof l.utilization === "number" && l.utilization >= LIMIT_NOTICE_AT);
-    if (!loud || st.limitStatus === l.status) return;
+    if (!limitLoud(l) || st.limitStatus === l.status) return;
     st.limitStatus = l.status;
-    this.emit("thread.text", { message: "vyre", text: limitNotice(l), done: true, notice: true }, id, project);
+    const row = /** @type {any} */ (this.db.prepare("SELECT tz, opts FROM threads_runs WHERE id = ?").get(id));
+    this.emit("thread.text", { message: "vyre", text: limitNotice(l, zoneOf(row)), done: true, notice: true }, id, project);
   }
 
   /** Say something in a thread as Vyre (a notice, not the model). */

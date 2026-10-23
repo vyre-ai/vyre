@@ -8,6 +8,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - fix(switchboard): a chat turn's kernel session stays open while Claude Code is still producing events. It ends 30 s after the last event of the process, not 30 s after the first result. A frame that arrives for a session ended moments ago reopens that session for the same person and is delivered (core/switchboard/turn-tail.js).
 - fix(switchboard): Try again after a dropped reply resends the last message the person typed, on a fresh kernel session, when the chat's message id is not a transcript uuid or that message is the first of the session. The chat stream's hold on the keyboard yields to that retry; a terminal or another person still refuses it. When the transcript has no such line, the last turn the thread recorded is sent (core/switchboard/retry-fresh.js).
 - fix(stream): a new working turn clears a reply that was dropped for want of a session, so Try again can show the answer (core/stream/group.js).
+- fix(chat): an open chat over the relay shows a reply while it stays open. Frames that arrived with the stream's answer were dropped before the chat was listening, so a reply written while the chat was open never appeared and the person's own message stayed on Sending. After the peer stream drops and opens again, the next frame still arrives (apps/app/src/real/peer-stream.js).
+- fix(chat): threads.tasks, threads.get, runner.placement and assistant.welcome wait after a failure, and a chat calls them with its run's thread id or not at all (apps/app/src/chat/call-quiet.js).
+- fix(chat): a Claude usage line names the window Claude named, with that window's own percentage, and says the reset in the person's own time zone, such as "resets Fri 24 Oct, 10:00". The Opus weekly window and the overall weekly window are never mixed (core/switchboard/limit-notice.js).
 
 ## 0.6.8
 

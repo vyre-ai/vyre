@@ -169,7 +169,7 @@ function MentionPage({ onPick }: { onPick: (m: Mention) => void }) {
 }
 
 export function TasksPage({ thread }: { thread: string }) {
-  const { data, err, load } = useRead<Task[]>(() => chatTools.tasks(thread), [thread]);
+  const { data, err, load } = useRead<Task[]>(() => (thread ? chatTools.tasks(thread) : Promise.resolve([])), [thread]);
   const [problem, setProblem] = useState("");
   if (err) return <Banner tone="warn">{err}</Banner>;
   if (!data) return <LoadingState rows={2} />;

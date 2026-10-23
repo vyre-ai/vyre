@@ -7,9 +7,10 @@ import { Icon, Menu, Text, showToast, useUiTheme } from "@vyre/ui";
 import { listen } from "../api/box";
 import { runner } from "../../screens/runner/runner";
 import { chipOf, fresher, leaseLine, movedLine, placingLine, placingWords, runRefusal, runsOnWords, type Placement } from "../../screens/runner/runner-model.js";
+import { callQuiet } from "./call-quiet.js";
 
-/** The session's placement, kept current by the box's own move events. */
-export function usePlacement(thread: string, real: boolean) {
+/** The session's placement, kept current by the box's own move events. No thread id means no ask: a chat id is not a thread. */
+export function usePlacement(thread: string | null, real: boolean) {
   const router = useRouter();
   const [p, setP] = useState<Placement | null>(null);
   const [lines, setLines] = useState<{ at: number; text: string }[]>([]);
@@ -20,16 +21,21 @@ export function usePlacement(thread: string, real: boolean) {
   // The screen only shows where the session runs. The home alone takes a session from a computer that stopped answering (its sweep, one move, with the reason); no screen moves a session on a timer, so a computer that
   // comes and goes cannot bounce one back and forth, and only the session's own person moves it (the switch in the header).
   useEffect(() => {
-    if (!real) return;
+    if (!real || !thread) return;
     let live = true;
-    runner.placement(thread).then((x) => { if (live) setP(x); }).catch(() => {});
+    const ask = () => {
+      void callQuiet("runner.placement:" + thread, () => runner.placement(thread)).then((r) => {
+        if (live && r && r.ok) setP((cur) => (!r.value || fresher(cur?.epoch, r.value.epoch) ? r.value : cur));
+      });
+    };
+    ask();
     const off = listen((e: any) => {
       if (e?.type === "thread.placing" && String(e?.payload?.thread ?? "") === thread) {
         setStarting(placingWords(e.payload));
         const line = placingLine(e.payload);
         if (line) say(Date.now(), line);
         // Where it runs may have changed under it (the row is taken back on a fallback): ask again, the box is the one fact.
-        if (e.payload.state !== "starting") runner.placement(thread).then((x) => { if (live) setP((cur) => (x && fresher(cur?.epoch, x.epoch) ? x : cur)); }).catch(() => {});
+        if (e.payload.state !== "starting") ask();
         return;
       }
       if (e?.type === "lease.borrowed" && String(e?.payload?.thread ?? "") === thread) {
@@ -48,6 +54,7 @@ export function usePlacement(thread: string, real: boolean) {
     return () => { live = false; off?.(); };
   }, [thread, real, say]);
   const move = useCallback(async (to: "mac" | "server") => {
+    if (!thread) return;
     try { const x = await runner.move(thread, to); if (x) setP(x); } catch (e) {
       // This computer is not set up: one short line, and the switch in Settings as the next step (or the admin, where no Space allows it).
       const rules = await runner.spaceRules().catch(() => []);

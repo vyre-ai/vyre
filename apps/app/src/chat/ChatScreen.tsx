@@ -68,6 +68,7 @@ import { MovedLines, PlacementSwitch, usePlacement } from "./placement";
 import { chipOf } from "../../screens/runner/runner-model.js";
 import { useChatMembers } from "./useChatMembers";
 import { useChatKeyLease } from "./useChatKeyLease";
+import { callQuiet } from "./call-quiet.js";
 import { queueFrom } from "./extras.js";
 import { tool } from "../real/box";
 import { secureSecrets } from "./secure-paste.js";
@@ -181,7 +182,7 @@ export function ChatScreen(p: ChatScreenProps) {
   const here = useChatMembers(p.sessionId, meta.busy);
   // A removal that never arrives as a leave frame still takes this chat out of search, and a read that lists you puts it back.
   useEffect(() => { if (here.read) store.noteChatRead(here.read); }, [store, here.read]);
-  const placed = usePlacement(here.thread ?? p.sessionId, !allowsMock());
+  const placed = usePlacement(here.thread, !allowsMock());
   const flowDraft = useFlowDraft();
   // Files added to the next message: picked, pasted or dropped, uploaded at once, and sent with the words.
   const att = useAttachments(allowsMock() ? undefined : p.sessionId);
@@ -193,6 +194,7 @@ export function ChatScreen(p: ChatScreenProps) {
   const realComposerOn = !allowsMock();
   const caps = useChatCapabilityChrome({
     chat: p.sessionId,
+    thread: here.thread,
     store,
     faces: store.group.participants().map((f) => ({ id: f.id, name: f.name, family: f.family })),
     real: realComposerOn,
@@ -224,33 +226,41 @@ export function ChatScreen(p: ChatScreenProps) {
   const [queued, setQueued] = useState<{ queued: number; text: string }[]>([]);
   const [threadState, setThreadState] = useState<{ mode?: string | null; modes?: string[] | null; thinking?: boolean | null; effort?: string | null } | undefined>();
   useEffect(() => {
-    const thread = here.thread ?? p.sessionId;
+    const thread = here.thread;
     if (!toolsOpen || allowsMock() || !thread) return;
     let live = true;
-    tool<{ thread?: { mode?: string; effort?: string; thinking?: boolean; modes?: string[] } }>("threads.get", { thread, limit: 1 })
-      .then((d) => {
-        if (!live || !d?.thread) return;
-        const t = d.thread;
+    void callQuiet("threads.get:" + thread, () => tool<{ thread?: { mode?: string; effort?: string; thinking?: boolean; modes?: string[] } }>("threads.get", { thread, limit: 1 }))
+      .then((r) => {
+        if (!live || !r || r.skipped || !r.ok) { if (live && r && !r.skipped && !r.ok) setThreadState(undefined); return; }
+        const t = r.value?.thread;
+        if (!t) { setThreadState(undefined); return; }
         setThreadState({ mode: t.mode ?? null, effort: t.effort ?? null, thinking: typeof t.thinking === "boolean" ? t.thinking : null, modes: Array.isArray(t.modes) ? t.modes : null });
-      })
-      .catch(() => { if (live) setThreadState(undefined); });
+      });
     return () => { live = false; };
-  }, [toolsOpen, here.thread, p.sessionId]);
+  }, [toolsOpen, here.thread]);
   // What this chat's driver can do (threads.get: provider and caps): Retry, Edit and Rewind go back, Fork needs a fork. Until it is known, everything is offered.
   const [may, setMay] = useState(() => threadMay(null));
   useEffect(() => {
-    const thread = here.thread ?? p.sessionId;
+    const thread = here.thread;
     if (allowsMock() || !thread) return;
     let live = true;
-    tool<{ thread?: { provider?: string; caps?: unknown } }>("threads.get", { thread, limit: 1 }).then((d) => { if (live) setMay(threadMay(d?.thread)); }).catch(() => {});
+    void callQuiet("threads.get:" + thread, () => tool<{ thread?: { provider?: string; caps?: unknown } }>("threads.get", { thread, limit: 1 })).then((r) => {
+      if (!live || !r || !r.ok) return;
+      const d = r.value;
+      if (live) setMay(threadMay(d?.thread));
+    });
     return () => { live = false; };
-  }, [here.thread, p.sessionId]);
+  }, [here.thread]);
   useEffect(() => {
-    if (!toolsOpen || allowsMock()) return;
+    const thread = here.thread;
+    if (!toolsOpen || allowsMock() || !thread) return;
     let live = true;
-    tool("threads.queue", { thread: here.thread ?? p.sessionId }).then((d) => { if (live) setQueued(queueFrom(d)); }).catch(() => { if (live) setQueued([]); });
+    void callQuiet("threads.queue:" + thread, () => tool("threads.queue", { thread })).then((r) => {
+      if (!live || !r || r.skipped) return;
+      setQueued(r.ok ? queueFrom(r.value) : []);
+    });
     return () => { live = false; };
-  }, [toolsOpen, p.sessionId, here.thread]);
+  }, [toolsOpen, here.thread]);
   const prefs = useChatPrefs();
   const muted = prefs.muted.includes(p.sessionId);
   const pinned = prefs.pinned.includes(p.sessionId);

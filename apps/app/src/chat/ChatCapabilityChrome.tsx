@@ -4,7 +4,8 @@ import { View } from "react-native";
 import { useRouter } from "expo-router";
 import { BackgroundTasksCard, LaterPlannerNote, RewindSheet, SecondOpinionSheet, showToast, type LaterPlannerState } from "@vyre/ui";
 import { chatTools } from "../../screens/chat-tools/instance";
-import { taskLive } from "../../screens/chat-tools/model.ts";
+import { taskLive, type Task } from "../../screens/chat-tools/model.ts";
+import { callQuiet } from "./call-quiet.js";
 import { tool } from "../real/box";
 import { providers } from "../../screens/settings/real";
 import { laterNoteFromLine, rewindPointsFromStore, secondOpinionTargets } from "./capabilities-model.js";
@@ -20,9 +21,11 @@ export function useLaterPlanner() {
 }
 
 export function useChatCapabilityChrome({
-  chat, store, faces, real, onOpenPanel,
+  chat, thread, store, faces, real, onOpenPanel,
 }: {
   chat: string;
+  /** The run's thread id. A chat id is not a thread: with none, threads.tasks is not called. */
+  thread: string | null;
   store: ChatStore;
   faces: readonly { id: string; name: string; family: string }[];
   real: boolean;
@@ -50,14 +53,21 @@ export function useChatCapabilityChrome({
   }, [real, opinionOpen]);
   const opinionTargets = useMemo(() => (opinionMsg ? secondOpinionTargets(faces, opinionAuthor, provRows) : []), [faces, opinionMsg, opinionAuthor, provRows]);
 
+  const showTasks = (t: Task[]) => t.map((x) => ({ id: x.id, title: x.title, status: x.status, live: taskLive(x) }));
+  // A failure waits (call-quiet). The stream's rev is not a reason to ask again: a gap reconnect used to call this several times a second, with the chat id.
   useEffect(() => {
-    if (!real) return;
+    if (!real || !thread) { setTasks([]); return; }
     let live = true;
-    chatTools.tasks(chat).then((t) => {
-      if (live) setTasks(t.map((x) => ({ id: x.id, title: x.title, status: x.status, live: taskLive(x) })));
-    }).catch(() => { if (live) setTasks([]); });
-    return () => { live = false; };
-  }, [real, chat, store.meta().rev, store.meta().busy]);
+    const load = () => {
+      void callQuiet("threads.tasks:" + thread, () => chatTools.tasks(thread)).then((r) => {
+        if (!live || !r || r.skipped) return;
+        setTasks(r.ok ? showTasks(r.value) : []);
+      });
+    };
+    load();
+    const timer = setInterval(load, 10_000);
+    return () => { live = false; clearInterval(timer); };
+  }, [real, thread]);
 
   const doRewind = async (uuid: string) => {
     setRewindBusy(true); setRewindProblem("");
@@ -104,7 +114,7 @@ export function useChatCapabilityChrome({
       <>
         {real && tasks.some((t) => t.live) ? (
           <View style={{ width: "100%", maxWidth: 760, alignSelf: "center", paddingHorizontal: 12, paddingTop: 6 }}>
-            <BackgroundTasksCard tasks={tasks} onOpen={() => onOpenPanel("tasks")} onStop={(id) => { void chatTools.stopTask(chat, id).then(() => chatTools.tasks(chat).then((t) => setTasks(t.map((x) => ({ id: x.id, title: x.title, status: x.status, live: taskLive(x) }))))); }} />
+            <BackgroundTasksCard tasks={tasks} onOpen={() => onOpenPanel("tasks")} onStop={(id) => { if (!thread) return; void chatTools.stopTask(thread, id).then(() => callQuiet("threads.tasks:" + thread, () => chatTools.tasks(thread))).then((r) => { if (r && r.ok) setTasks(showTasks(r.value)); }); }} />
           </View>
         ) : null}
         <RewindSheet open={rewindOpen} points={points} busy={rewindBusy} problem={rewindProblem} onClose={() => setRewindOpen(false)} onPick={(u) => void doRewind(u)} />

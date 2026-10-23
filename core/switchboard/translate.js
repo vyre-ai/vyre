@@ -17,6 +17,7 @@
 // capped, never into an event.
 
 import { rememberTool, screenshotsOf } from "../sessions/providers.js";
+import { limitFrom } from "./limit-notice.js";
 import { redact } from "../transcripts/sanitize.js";
 import { redact as redactSecrets } from "../../lib/sanitize.js";
 import { receiptOf, argsOf } from "../../lib/receipt.js";
@@ -273,11 +274,11 @@ export function translate(m) {
   if (m.type === "control_cancel_request") { out.cancel = m.request_id; return out; }
 
   // The subscription's rate limit, as Claude Code reports it: every status is passed on (a warning
-  // is worth showing), and "rejected" also means the limit was hit.
+  // is worth showing), and "rejected" also means the limit was hit. Each window keeps its own
+  // utilization (limit-notice.js); the top-level number is not given to a different window.
   if (m.type === "rate_limit_event" && m.rate_limit_info) {
     const r = m.rate_limit_info;
-    out.limit = { status: String(r.status || "unknown"), kind: r.rateLimitType || null, resets_at: typeof r.resetsAt === "number" ? r.resetsAt : null,
-      ...(typeof r.utilization === "number" ? { utilization: r.utilization } : {}) };
+    out.limit = limitFrom(r);
     if (r.status === "rejected") out.limited = true;
     return out;
   }
